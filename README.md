@@ -7,7 +7,9 @@ calendar interface. Currently in planning; no application is implemented yet.
 
 - [Product specification](docs/specs/oh-my-days.md)
 - [Backend architecture and build order](docs/plans/backend.md)
-- [Initial application identity](docs/identity/oh-my-days.md)
+- [Application identity](docs/identity/oh-my-days.md)
+- [Telegram and connection-page experience](docs/design/experience.md)
+- [Product context](PRODUCT.md)
 - [Contributor and agent instructions](AGENTS.md)
 
 Work happens in feature branches from `develop`, with incremental commits.

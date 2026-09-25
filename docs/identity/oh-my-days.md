@@ -1,71 +1,88 @@
-# Oh My Days — initial identity
+# Oh My Days — identity
 
-Status: Working creative direction for discussion, not a finalized brand system.  
+Status: Name, voice, and minimal presentation direction confirmed in the design interview. Logo and detailed visual system deferred.
+
 Date: 2026-09-25
 
 ## Core idea
 
 **A little less to keep in your head.**
 
-Oh My Days helps turn everyday messages into clear commitments. Capture a task,
-check your day, and get a useful nudge without maintaining another planning app.
-Telegram is where you talk; Google Calendar is where you see the schedule.
+Oh My Days turns messages into events, tasks, and reminders. Telegram is where you
+talk; Google Calendar is where you see the schedule. Preserve the small amount of
+character in the name and tagline throughout the experience, without making routine
+interactions chatty or emotional.
 
-The name carries a small moment of recognition: life gets busy, and getting it
-back in order can feel lighter. The application should feel calm, capable, and
-lightly playful. It must never make busyness or overdue work feel like failure.
+The user initially asked for an objective interface, then clarified that the
+identity should remain present and slightly personalized. The resulting rule is:
+**brief, factual messages with light first-person language, without addressing the
+user by name.** This supersedes the earlier lightly playful creative proposal.
 
 ## Naming and positioning
 
 - Display name: **Oh My Days**.
+- Tagline: **A little less to keep in your head.**
+- Factual supporting description: Events, tasks, and reminders in Telegram, connected
+  to Google Calendar. Supporting copy is a draft, not a replacement for the tagline.
 - Repository/service stem: `oh-my-days`; suffix environments explicitly.
 - Dedicated task calendar: **Tasks - Oh My Days**, exactly as specified.
-- Draft tagline: **A little less to keep in your head.**
-- Short description: **Your days and to-dos, a message away.**
-- Bot profile draft: **Plan events, capture tasks, and get timely reminders in
-  Telegram, with your schedule in Google Calendar. Private access for now.**
 
-Do not abbreviate the display name to OMD in user messages. Telegram usernames,
-domains, trademarks, and deployed service identifiers have not been checked or
-reserved. Choose the bot username after an availability check; keep it separate
-from the display name.
+Keep the full display name in user-facing branding. Bot usernames, domains,
+trademarks, and deployed identifiers have not been checked or reserved.
 
-## Voice
+## Voice rules
 
-Be warm, brief, specific, and honest. Lead with what happened and the exact time
-or deadline. Use ordinary words. Acknowledge overdue tasks without guilt. Reserve
-humor for low-stakes onboarding; keep errors, conflicts, and invitations direct.
+- Lead with the result, relevant date/time, or action needed.
+- Use first-person language when it makes the interaction natural: “I'll remind
+  you tomorrow” and “I'll retry automatically.” Do not force “I” into every response.
+- Do not greet or address users by name, including agendas and onboarding.
+- Keep routine confirmations and errors factual. No jokes, praise, encouragement,
+  guilt, celebratory language, or commentary about the user's productivity.
+- Let the identity appear in small phrases such as “Here's your day” and “Your
+  calendar is clear today.” Use the tagline on introductory surfaces; do not repeat
+  it on every notification.
+- Use emoji only as functional symbols. For example, ✓ communicates completion.
+  No decorative emoji, mascots, or mood-setting symbols. Pair status symbols with
+  text where their meaning could be unclear; do not replace action labels with emoji.
+- Never imply a Calendar operation succeeded while pending, or promise perfect
+  privacy, instant synchronization, or guaranteed delivery.
+
+## Copy examples
+
+Examples use synthetic data and illustrate the confirmed voice. Include the year,
+timezone, calendar, recipients, and recurrence scope when needed for clarity.
 
 | Situation | Example wording |
 |---|---|
-| Event created | Event added: Dinner · Fri 25 Sep, 7–8pm · Asia/Singapore. |
+| Introduction | A little less to keep in your head. Connect Google Calendar to get started. |
+| Daily agenda | Here's your day. |
+| Empty event section | Your calendar is clear today. |
+| Event created | Event added: Dinner · Fri 25 Sep 2026, 7–8pm · Personal. |
 | Task created | Task added to Inbox: Buy milk. Due Sat 26 Sep. |
 | No deadline | Task added to Inbox: Buy milk. No deadline. |
-| Snoozed | I'll remind you on Monday at 9am. The deadline stays Friday. |
-| Calendar unavailable | Saved as pending. Google Calendar hasn't updated yet. I'll retry. |
+| Snoozed | I'll remind you on Sat 26 Sep at 8am. Deadline unchanged: Fri 25 Sep, 3pm. |
+| Calendar unavailable | Pending: Dinner has not been added to Google Calendar. I'll retry automatically. |
 | Conflict | This event moved to 5pm in Calendar. Keep 5pm or use 4pm? |
-| Invitation preview | Send an invitation to alex@example.com for Dinner on Fri 25 Sep, 7–8pm? |
-| Structured fallback | Please use /task or /event for this request. I'll guide you through it. |
-| Overdue summary | 3 tasks are overdue. View tasks · Snooze |
+| Clarification | Which Friday? |
+| Guided fallback | I can't process this request automatically. Continue with guided input. |
+| Overdue summary | 3 tasks are overdue. |
 
-Examples illustrate tone, not a complete message contract. Actual messages must
-include relevant year, timezone, calendar, recipients, and scope when needed to
-avoid ambiguity. Distinguish “Task added,” “Event added,” and “Pending.” Buttons
-use explicit verbs such as Done, Snooze, Undo, Reauthorize, and Confirm cancellation.
-Do not claim perfect privacy, guaranteed delivery, or instant synchronization.
+“Your calendar is clear today” refers only to events. Do not use it to imply there
+are no due or overdue tasks. Keep task sections visible when relevant.
 
-## Visual direction to explore later
+## Presentation direction
 
-A warm paper background, dark ink, and a restrained sunrise accent could connect
-the name to a fresh start without becoming a productivity dashboard cliché.
-Candidate colors: paper `#FAF7F0`, ink `#24332F`, moss `#426B58`, sunrise `#E9AD55`.
-These are exploration swatches; contrast and accessibility are not yet validated.
+Use a plain light background, dark text, and one restrained accent for primary
+buttons on connection pages. No illustrations, gradients, or decorative animation.
+Use readable type, clear hierarchy, and explicit action labels. Telegram retains
+its native fonts, colors, and message/button appearance.
 
-Explore a small calendar-page mark with a rising sun. It must remain recognizable
-at Telegram avatar size and in monochrome. Keep the full wordmark in normal title
-case. Use a readable humanist sans-serif direction; choose fonts and licensing
-when designing actual surfaces. Do not rely on color alone to convey task state.
+Logo design is on hold. No symbol, mascot, or logo concept is approved. The earlier
+calendar/sun concept and palette were exploratory and are not binding. Exact colors,
+typefaces, spacing tokens, and dark-mode behavior remain undecided. Validate contrast
+and keyboard/focus behavior when building web pages; never use color alone for status.
 
-The next design conversation should decide the mark, palette, typography, and
-which authorization/onboarding surfaces are needed. This draft does not introduce
-a separate calendar or task-management frontend into the agreed product scope.
+## Related decisions
+
+See the [experience brief](../design/experience.md) for the confirmed Telegram and
+connection-page flows. This identity does not add a standalone planning frontend.
