@@ -14,8 +14,9 @@ calendar or task-management web application in the agreed scope.
 ## Stack
 
 Backend proposal: TypeScript on Cloudflare Workers, D1, and scheduled work.
-The connection-page implementation stack has not been chosen. This interview
-established an experience brief, not permission to select a frontend framework.
+The connection-page plan proposes small Worker-rendered HTML templates and shared
+CSS; no frontend framework has been selected or implemented. The user requested
+a written plan and explicitly declined a prototype.
 
 ## Users
 
@@ -71,5 +72,7 @@ logo, approved visual mockup, or measured user outcomes exist. Examples are synt
 
 ## Open Decisions
 
-Exact visual tokens, typography, responsive connection-page layouts, frontend
-stack, and logo. Do not infer a separate web app from this platform record.
+Exact visual tokens and logo remain open. A narrow single-column connection layout
+and explicit Continue in Telegram action are approved; no automatic return. See
+[the connection-page plan](docs/plans/connection-pages.md) for implementation details.
+Do not infer a separate web app from this platform record.

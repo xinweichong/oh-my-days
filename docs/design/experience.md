@@ -1,6 +1,6 @@
 # Oh My Days — experience brief
 
-Status: Interview decisions recorded; ready for user review. No interface implemented.
+Status: Interview brief and connection-page layout approved. No interface implemented.
 
 Date: 2026-09-25
 
@@ -92,7 +92,7 @@ visual states for these cases remain to be authored during implementation.
 
 Use the application name and existing tagline with minimal page chrome. Show a
 short access summary, a primary **Connect Google Calendar** action, and an
-expandable **Access and data details** section. Proposed main copy:
+expandable **Access and data details** section. Approved content direction:
 
 > Connect Google Calendar
 >
@@ -109,11 +109,11 @@ must match the actual scopes, task calendar creation, token handling, and privac
 behavior established by the OAuth implementation. Do not claim scope restrictions
 that Google does not enforce.
 
-After successful authorization, return the user to Telegram for setup. Never show
-success before the backend verifies the connection. Provide an explicit return
-path if automatic navigation is unavailable. Cancellation, expired linking state,
-account mismatch, and provider errors need clear recovery actions; detailed page
-layouts are not yet approved.
+After verified authorization, show **✓ Google Calendar connected**, followed by
+“Choose your calendars and finish setup in Telegram” and **Continue in Telegram**.
+Wait for the button; do not return automatically. Use a narrow single-column layout
+for both connection and result screens. Recovery states are specified in the
+[connection-page implementation plan](../plans/connection-pages.md).
 
 ## Setup in Telegram
 
@@ -133,9 +133,8 @@ Confirmed web direction: plain light background, dark text, one restrained accen
 for primary actions. No illustrations, gradients, or decorative animation. Native
 Telegram styling remains intact. Logo design is deferred.
 
-Before implementation, resolve exact web typography/colors, responsive layout,
-accessibility checks, authorization recovery states, and the prototype/build stack.
-No framework or image-first/code-first workflow was chosen in this interview.
-No prototype, final visual system, or logo is approved by this brief. The next design
-step is a reviewable connection-page layout and representative Telegram messages
-within these boundaries, without adding a separate calendar/task web app.
+The user requested a written implementation plan instead of a prototype. Follow
+the [connection-page plan](../plans/connection-pages.md) for layout, states, build
+order, and acceptance checks. Exact visual tokens remain implementation details
+within the approved minimal direction. No logo or separate calendar/task web app
+is included. No image-first/code-first workflow preference was selected.
