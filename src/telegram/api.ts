@@ -30,6 +30,11 @@ export type TelegramCall =
       };
     }
   | {
+      /** Used to remove buttons once they have been acted on. */
+      method: "editMessageReplyMarkup";
+      params: { chat_id: number; message_id: number; reply_markup?: InlineKeyboardMarkup };
+    }
+  | {
       method: "answerCallbackQuery";
       params: { callback_query_id: string; text?: string };
     };

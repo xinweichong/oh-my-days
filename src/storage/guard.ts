@@ -12,3 +12,10 @@ export interface Guard {
 }
 
 export const unguarded: Guard = { sql: "1", params: [] };
+
+export function allOf(...guards: Guard[]): Guard {
+  return {
+    sql: guards.map((g) => `(${g.sql})`).join(" AND "),
+    params: guards.flatMap((g) => g.params),
+  };
+}

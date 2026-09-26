@@ -138,7 +138,9 @@ export async function finishDelivery(
  * pending; a sendMessage may already have been delivered, so it becomes unknown.
  */
 export async function recoverExpiredDeliveries(db: D1Database, now: number): Promise<number> {
-  const replaySafe = (["sendMessage", "editMessageText", "answerCallbackQuery"] as const)
+  const replaySafe = (
+    ["sendMessage", "editMessageText", "editMessageReplyMarkup", "answerCallbackQuery"] as const
+  )
     .filter(isReplaySafe)
     .map((m) => `'${m}'`)
     .join(", ");

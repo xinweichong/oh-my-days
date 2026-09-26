@@ -39,7 +39,8 @@ CREATE TABLE telegram_outbox (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users (id),
   logical_key TEXT NOT NULL,
-  method TEXT NOT NULL CHECK (method IN ('sendMessage', 'editMessageText', 'answerCallbackQuery')),
+  method TEXT NOT NULL CHECK (method IN (
+    'sendMessage', 'editMessageText', 'editMessageReplyMarkup', 'answerCallbackQuery')),
   payload TEXT,
   status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'unknown', 'failed')),
   attempts INTEGER NOT NULL DEFAULT 0,

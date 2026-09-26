@@ -1,10 +1,11 @@
 import type { Services } from "../../src/app";
+import { eventOperationHandlers } from "../../src/application/event-operations";
+import { registry } from "../../src/application/operation-types";
 import type { AppConfig } from "../../src/env";
 import type { Clock } from "../../src/shared/clock";
 import type { IdGenerator } from "../../src/shared/ids";
 import type { TelegramCall } from "../../src/telegram/api";
 import type { TelegramClient, TelegramResult } from "../../src/telegram/client";
-import { createUpdateHandler } from "../../src/telegram/router";
 
 export const T0 = Date.UTC(2026, 8, 25, 1, 0, 0); // 2026-09-25 09:00 Asia/Singapore
 
@@ -66,7 +67,8 @@ export function testServices(db: D1Database, overrides: Partial<Services> = {}):
     ids: new SequentialIds(),
     random: () => 0.5,
     telegram: new FakeTelegram(),
-    handler: createUpdateHandler(),
+    handlers: registry(...eventOperationHandlers),
+    calendarFor: async () => null,
     ...overrides,
   };
 }
