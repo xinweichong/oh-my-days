@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local development. Never commit real values.
+# Deployed values are Worker secrets (wrangler secret put <NAME>).
+
+# Bot token from @BotFather.
+TELEGRAM_BOT_TOKEN=000000000:replace-me
+# Random value Telegram echoes in X-Telegram-Bot-Api-Secret-Token (1-256 chars of A-Z a-z 0-9 _ -).
+TELEGRAM_WEBHOOK_SECRET=replace-with-a-long-random-value
+# Comma-separated numeric Telegram user IDs permitted to use the bot.
+TELEGRAM_ALLOWED_USER_IDS=123456789
