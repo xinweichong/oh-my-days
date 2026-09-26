@@ -13,5 +13,6 @@ calendar interface. Currently in planning; no application is implemented yet.
 - [Product context](PRODUCT.md)
 - [Contributor and agent instructions](AGENTS.md)
 
-Work happens in feature branches from `develop`, with incremental commits.
+Work happens in `feature/<purpose>` or `bugfix/<purpose>` branches from
+`develop`, with incremental commits.
 Never commit directly to `main` or `master`, and never push without specific approval.

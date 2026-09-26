@@ -20,8 +20,8 @@ currently contains planning documents, not an implemented application.
 
 - Never commit directly to `main` or `master`.
 - `develop` holds the integration baseline. This initial documentation setup is
-  explicitly authorized on `develop`; subsequent work uses feature branches
-  from `develop`, normally `codex/<short-purpose>`.
+  explicitly authorized on `develop`; subsequent work branches from `develop`
+  as `feature/<short-purpose>` for features or `bugfix/<short-purpose>` for fixes.
 - Check the current branch and working tree before editing or committing. Preserve
   unrelated user changes and stage explicit paths, not the entire working tree.
 - Commit incrementally at coherent, reviewable milestones with descriptive messages.
