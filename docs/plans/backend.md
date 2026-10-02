@@ -339,9 +339,12 @@ implementation work. Frontend decisions remain outside this delivery plan.
 
 Stage 2 decisions to review:
 
-- Undo of a just-created event deletes it without a second confirmation, bound
-  to the created version; any later edit makes Undo unavailable. Undo of a
-  deletion is not offered yet.
+- Undo of a just-created event is a deletion, so it shows the standard delete
+  confirmation (decided 2026-10-02). It is bound to the created version; any
+  later edit makes Undo unavailable. Undo of a deletion is not offered yet.
+- Users outside the allowlist who message the bot privately receive "This bot
+  is private." as the webhook response; nothing about them is stored, and
+  group chats get no reply (decided 2026-10-02).
 - Callback effects (confirm/cancel/undo) commit in their own batch, keyed by the
   Telegram callback query ID, rather than inside the inbox lease; a redelivered
   press reports the original result.

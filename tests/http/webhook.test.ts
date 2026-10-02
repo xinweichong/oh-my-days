@@ -61,11 +61,16 @@ describe("Telegram webhook", () => {
     expect(telegram.calls).toHaveLength(1);
   });
 
-  it("drops messages from users outside the allowlist without storing content", async () => {
+  it("tells users outside the allowlist the bot is private, without storing anything", async () => {
     const telegram = new FakeTelegram();
     const services = testServices(env.DB, { telegram });
     const response = await post(webhookRequest(textUpdate(STRANGER, "hello")), services);
     expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      method: "sendMessage",
+      chat_id: STRANGER,
+      text: "This bot is private.",
+    });
     expect(await count(env.DB, "users")).toBe(0);
     expect(await count(env.DB, "telegram_inbox")).toBe(0);
     expect(telegram.calls).toHaveLength(0);
@@ -74,7 +79,9 @@ describe("Telegram webhook", () => {
   it("drops allowlisted users' messages from group chats", async () => {
     const services = testServices(env.DB);
     const update = textUpdate(OWNER, "/start", { chatType: "group", chatId: -500 });
-    expect((await post(webhookRequest(update), services)).status).toBe(200);
+    const response = await post(webhookRequest(update), services);
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe(""); // no reply into groups
     expect(await count(env.DB, "telegram_inbox")).toBe(0);
   });
 

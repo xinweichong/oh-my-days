@@ -147,7 +147,7 @@ async function commitAttempt(
     case "succeeded": {
       attempt = { status: "succeeded", result: outcome.result, outcomeUnknown: false };
       const settled = { ...op, status: "succeeded" as const, result: outcome.result };
-      const undo = handler.inverse?.(settled) ?? null;
+      const undo = handler.inverse?.(settled, user) ?? null;
       const keyboard = undo
         ? {
             inline_keyboard: [

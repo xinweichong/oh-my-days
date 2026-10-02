@@ -56,8 +56,11 @@ export interface OperationHandler {
   execute(ctx: ExecutionContext): Promise<ExecutionOutcome>;
   /** User-facing text for an outcome, or null to stay quiet. */
   notice(op: OperationRecord, event: NoticeEvent, user: UserRecord): string | null;
-  /** The inverse change offered as Undo after success, if any. */
-  inverse?(op: OperationRecord): Omit<Proposal, "idempotencyKey"> | null;
+  /**
+   * The inverse change offered as Undo after success, if any. Undo follows the
+   * normal confirmation rules: an inverse that deletes still asks first.
+   */
+  inverse?(op: OperationRecord, user: UserRecord): Omit<Proposal, "idempotencyKey"> | null;
 }
 
 export type HandlerRegistry = ReadonlyMap<string, OperationHandler>;

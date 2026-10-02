@@ -28,3 +28,5 @@ export const TEXT_ONLY = "I can only read text messages. Send the request as tex
 export const PROCESSING_FAILED = "I couldn't process that message. Please send it again.";
 
 export const BUTTON_EXPIRED = "This button is no longer valid.";
+
+export const PRIVATE_BOT = "This bot is private.";

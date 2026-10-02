@@ -54,6 +54,21 @@ async function press(
   return handler(user, callback);
 }
 
+/** The confirmation prompt a press produced, with its button tokens. */
+function promptOf(result: HandlerResult): {
+  text: string;
+  buttons: { text: string; token: string }[];
+} {
+  const call = result.replies.find((r) => r.method === "sendMessage");
+  if (call?.method !== "sendMessage") throw new Error("no prompt");
+  return {
+    text: call.params.text,
+    buttons: (call.params.reply_markup?.inline_keyboard ?? [])
+      .flat()
+      .map((b) => ({ text: b.text, token: b.callback_data.replace(/^o:/, "") })),
+  };
+}
+
 function answerText(result: HandlerResult): string | undefined {
   const call = result.replies.find((r) => r.method === "answerCallbackQuery");
   return call?.method === "answerCallbackQuery" ? call.params.text : undefined;
@@ -215,28 +230,55 @@ describe("confirmation", () => {
 });
 
 describe("Undo", () => {
-  it("removes a just-created event once", async () => {
+  it("asks before deleting a just-created event, then removes it once", async () => {
     const h = harness(env.DB);
     const owner = await createUser(h, OWNER);
     const undo = await createAndRun(h, owner);
 
-    expect(answerText(await press(h, owner, undo))).toBe(CALLBACK_TEXT.undoRequested);
+    const pressed = await press(h, owner, undo);
+    expect(answerText(pressed)).toBe(CALLBACK_TEXT.undoNeedsConfirmation);
     expect(answerText(await press(h, owner, undo))).toBe(BUTTON_EXPIRED);
-    await runDueOperations(h, 10);
+    const prompt = promptOf(pressed);
+    expect(prompt.text).toBe(
+      "Delete event: Dinner\nFri 25 Sep 2026, 7–8pm\n\nThis removes it from Google Calendar.",
+    );
+    expect(prompt.buttons.map((b) => b.text)).toEqual(["Delete", "Cancel"]);
 
+    // Nothing is deleted until the deletion itself is confirmed.
+    expect(await runDueOperations(h, 10)).toBe(0);
+    expect(calendarOf(h, owner).live(CAL, "evt1")).not.toBeNull();
+
+    expect(answerText(await press(h, owner, prompt.buttons[0]?.token ?? ""))).toBe(
+      CALLBACK_TEXT.confirmed,
+    );
+    await runDueOperations(h, 10);
     expect(calendarOf(h, owner).live(CAL, "evt1")).toBeNull();
     expect((await messages(env.DB, owner.id)).at(-1)?.text).toBe(
       "Undone: Dinner was removed from Google Calendar.",
     );
   });
 
+  it("keeps the event when the Undo deletion is cancelled", async () => {
+    const h = harness(env.DB);
+    const owner = await createUser(h, OWNER);
+    const undo = await createAndRun(h, owner);
+    const prompt = promptOf(await press(h, owner, undo));
+
+    expect(answerText(await press(h, owner, prompt.buttons[1]?.token ?? ""))).toBe(
+      CALLBACK_TEXT.cancelled,
+    );
+    await runDueOperations(h, 10);
+    expect(calendarOf(h, owner).live(CAL, "evt1")).not.toBeNull();
+  });
+
   it("does not overwrite an edit made after the original change", async () => {
     const h = harness(env.DB);
     const owner = await createUser(h, OWNER);
     const undo = await createAndRun(h, owner);
+    const prompt = promptOf(await press(h, owner, undo));
     calendarOf(h, owner).externalEdit(CAL, "evt1", { summary: "Dinner at 8" });
 
-    await press(h, owner, undo);
+    await press(h, owner, prompt.buttons[0]?.token ?? "");
     await runDueOperations(h, 10);
 
     expect(calendarOf(h, owner).live(CAL, "evt1")?.fields.summary).toBe("Dinner at 8");

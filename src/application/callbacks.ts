@@ -20,6 +20,7 @@ export const CALLBACK_TEXT = {
   confirmed: "Confirmed.",
   cancelled: "Cancelled. Nothing was changed.",
   undoRequested: "Undoing.",
+  undoNeedsConfirmation: "Confirm below to undo.",
   undoUnavailable: "Undo isn't available for this change.",
   outdated: "This confirmation is out of date.",
 } as const;
@@ -124,7 +125,8 @@ async function undo(
   op: OperationRecord,
   usedBy: string,
 ): Promise<HandlerResult> {
-  const inverse = op.status === "succeeded" ? deps.handlers.get(op.kind)?.inverse?.(op) : null;
+  const inverse =
+    op.status === "succeeded" ? deps.handlers.get(op.kind)?.inverse?.(op, user) : null;
   if (!inverse) return answer(callback, CALLBACK_TEXT.undoUnavailable);
 
   // Undo is a new operation through the same pipeline; its validity (nothing
@@ -135,7 +137,7 @@ async function undo(
   });
   const won = await consumeWith(deps, ref, usedBy, (guard) => prepared.statements(deps.db, guard));
   if (!won) return answer(callback, CALLBACK_TEXT.undoUnavailable);
-  const result = settled(user, callback, "undo");
+  const result = settled(user, callback, "undo", inverse.confirmation !== null);
   return { replies: [...result.replies, ...prepared.replies] };
 }
 
@@ -162,13 +164,16 @@ function settled(
   user: UserRecord,
   callback: InboundCallback,
   action: CallbackRef["action"],
+  undoNeedsConfirmation = false,
 ): HandlerResult {
   const text =
     action === "confirm"
       ? CALLBACK_TEXT.confirmed
       : action === "cancel"
         ? CALLBACK_TEXT.cancelled
-        : CALLBACK_TEXT.undoRequested;
+        : undoNeedsConfirmation
+          ? CALLBACK_TEXT.undoNeedsConfirmation
+          : CALLBACK_TEXT.undoRequested;
   const replies: TelegramCall[] = [
     {
       method: "answerCallbackQuery",

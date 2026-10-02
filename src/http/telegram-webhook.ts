@@ -5,6 +5,7 @@ import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
 import { insertInboxStatement } from "../storage/inbox";
 import { upsertUserStatement } from "../storage/users";
+import { PRIVATE_BOT } from "../telegram/messages";
 import { parseUpdate } from "../telegram/update";
 
 /** Telegram updates are small; anything larger is rejected before parsing. */
@@ -60,6 +61,11 @@ export async function handleTelegramWebhook(
     !deps.config.allowedTelegramUserIds.has(update.fromId)
   ) {
     logEvent("webhook.rejected", { updateId: update.updateId, chatType: update.chatType });
+    // A stranger messaging the bot directly gets a short notice, sent as the
+    // webhook response: no outbound request, nothing stored, no detail revealed.
+    if (update.kind === "message" && update.chatType === "private") {
+      return Response.json({ method: "sendMessage", chat_id: update.chatId, text: PRIVATE_BOT });
+    }
     return ok();
   }
 

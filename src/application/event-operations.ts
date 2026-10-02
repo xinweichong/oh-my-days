@@ -119,21 +119,18 @@ export const createEventHandler: OperationHandler = {
     }
   },
 
-  inverse(op) {
+  inverse(op, user) {
     const intent = op.intent as CreateEventIntent;
     const result = op.result as CreateResult;
-    return {
-      kind: DELETE_EVENT,
-      intent: {
-        calendarId: intent.calendarId,
-        eventId: intent.eventId,
-        base: result.fields,
-        undo: true,
-      } satisfies DeleteEventIntent,
-      // Undo of a just-created event without attendees is the requested action
-      // itself; it is bound to the created version and refused if edited since.
-      confirmation: null,
+    const undo: DeleteEventIntent = {
+      calendarId: intent.calendarId,
+      eventId: intent.eventId,
+      base: result.fields,
+      undo: true,
     };
+    // Undoing a create deletes the event, so it is confirmed like any deletion.
+    // It stays bound to the created version and is refused if edited since.
+    return { kind: DELETE_EVENT, intent: undo, confirmation: deletePreview(undo, user) };
   },
 };
 
