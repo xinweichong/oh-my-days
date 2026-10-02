@@ -3,8 +3,9 @@
 A little less to keep in your head.
 
 A private Telegram scheduling and task assistant, with Google Calendar as the
-calendar interface. Under construction: the local Worker foundation exists; no
-Google Calendar, task, or reminder features are implemented, and nothing is deployed.
+calendar interface. Under construction: the Telegram foundation, safe-operation
+core, and Google Calendar connection and setup exist and are tested locally.
+Events, tasks, and reminders are not implemented yet, and nothing is deployed.
 
 - [Product specification](docs/specs/oh-my-days.md)
 - [Backend architecture and build order](docs/plans/backend.md)
@@ -36,6 +37,11 @@ npm run check                    # lint + typecheck + tests
 | `npm test` | Vitest inside the Workers runtime with a local D1 (unit and integration) |
 | `npm run db:migrate:local` | Apply `migrations/` to the local D1 used by `wrangler dev` |
 | `npm run dev` | Local Worker at `http://localhost:8787` |
+
+Configuration lives in `wrangler.jsonc` (non-secret `vars`) and Worker secrets;
+`.dev.vars.example` lists every setting. The production origin is
+`https://ohmydays.xinweichong.com` ([ADR 0002](docs/adr/0002-custom-domain-and-oauth-verification.md)).
+Set `CONTACT_EMAIL` to show a contact address in the privacy policy.
 
 Tests reset and re-migrate the local database before each test and use fake
 clocks, IDs, and provider clients. Real-account smoke tests are separate and need
