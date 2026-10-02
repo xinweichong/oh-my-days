@@ -11,7 +11,8 @@
   // Non-secret settings. .dev.vars overrides PUBLIC_BASE_URL for local development.
   "vars": {
     "PUBLIC_BASE_URL": "https://ohmydays.xinweichong.com",
-    "TELEGRAM_BOT_USERNAME": "oh_my_days_bot"
+    "TELEGRAM_BOT_USERNAME": "oh_my_days_bot",
+    "CONTACT_EMAIL": "xwchong@gmail.com"
   },
   "d1_databases": [
     {

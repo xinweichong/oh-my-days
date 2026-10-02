@@ -1,6 +1,6 @@
 # ADR 0002: Serve from ohmydays.xinweichong.com and pursue Google OAuth verification
 
-Status: Accepted
+Status: Accepted; verification submission deferred by the owner on 2026-10-02 (Testing mode continues)
 Date: 2026-10-02
 
 ## Context
