@@ -3,7 +3,8 @@
 A little less to keep in your head.
 
 A private Telegram scheduling and task assistant, with Google Calendar as the
-calendar interface. Currently in planning; no application is implemented yet.
+calendar interface. Under construction: the local Worker foundation exists; no
+Google Calendar, task, or reminder features are implemented, and nothing is deployed.
 
 - [Product specification](docs/specs/oh-my-days.md)
 - [Backend architecture and build order](docs/plans/backend.md)
@@ -16,3 +17,26 @@ calendar interface. Currently in planning; no application is implemented yet.
 Work happens in `feature/<purpose>` or `bugfix/<purpose>` branches from
 `develop`, with incremental commits.
 Never commit directly to `main` or `master`, and never push without specific approval.
+
+## Development
+
+Requires Node.js 24+. Everything below runs locally; no Cloudflare, Google, or
+Telegram account is needed for tests.
+
+```sh
+npm ci
+cp .dev.vars.example .dev.vars   # local secrets; never commit .dev.vars
+npm run check                    # lint + typecheck + tests
+```
+
+| Command | Purpose |
+|---|---|
+| `npm run lint` | Biome lint and formatting check (`npm run format` fixes) |
+| `npm run typecheck` | TypeScript strict type check |
+| `npm test` | Vitest inside the Workers runtime with a local D1 (unit and integration) |
+| `npm run db:migrate:local` | Apply `migrations/` to the local D1 used by `wrangler dev` |
+| `npm run dev` | Local Worker at `http://localhost:8787` |
+
+Tests reset and re-migrate the local database before each test and use fake
+clocks, IDs, and provider clients. Real-account smoke tests are separate and need
+explicit authorization.

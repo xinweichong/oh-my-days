@@ -13,8 +13,9 @@ Read these documents before changing behavior:
 - `docs/identity/oh-my-days.md`: initial identity and conversation-writing direction.
 
 The spec takes precedence over implementation proposals. Flag contradictions;
-do not silently reduce scope. Frontend design is a later discussion. This repo
-currently contains planning documents, not an implemented application.
+do not silently reduce scope. Frontend design is a later discussion. The backend
+is partially implemented; `docs/plans/backend.md` §10 records which stages exist,
+and `README.md` lists the check commands (`npm run check`).
 
 ## Git workflow
 

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "oh-my-days",
+  "main": "src/worker.ts",
+  // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
+  "compatibility_date": "2026-08-15",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "oh-my-days",
+      // Placeholder for local development. Replace only when a remote database is
+      // explicitly provisioned; no remote resource exists yet.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // One scheduled handler per the shared-account cron budget.
+  "triggers": { "crons": ["* * * * *"] }
+  // Secrets (never committed): see .dev.vars.example.
+}

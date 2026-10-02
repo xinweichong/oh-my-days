@@ -1,7 +1,8 @@
 # Oh My Days — backend architecture and delivery plan
 
-Status: Proposed implementation design; no backend implemented or provisioned.  
-Date: 2026-09-25  
+Status: Stages 1–2 implemented and tested locally (see §10); later stages proposed.
+Nothing provisioned or deployed.  
+Date: 2026-09-25; status updated 2026-09-27  
 Source of truth: [product specification](../specs/oh-my-days.md).
 
 ## 1. Outcome and constraints
@@ -324,7 +325,29 @@ unknown send outcomes, invalid sync tokens, lost permissions, user separation,
 malicious callback data, unsafe AI input, and cost/CPU limits. Passing unit tests
 alone is insufficient to release OAuth, Calendar projections, or invitations.
 
-Initial work is this documentation baseline. Next implementation task: stage 0
-feasibility records and a local stage 1 scaffold, with unresolved external checks
-kept explicit. Do not provision services or send real invitations as a side effect
-of writing the plan. Frontend decisions remain outside this delivery plan.
+Do not provision services or send real invitations as a side effect of
+implementation work. Frontend decisions remain outside this delivery plan.
+
+## 10. Implementation status
+
+| Stage | Status | Evidence |
+|---|---|---|
+| 0. Feasibility | Partial: local D1 semantics only | [Stage 0 status](../feasibility/stage-0.md); account-dependent checks pending |
+| 1. Foundation | Implemented, tested locally | Webhook secret, allowlist, private-chat filter, durable deduplicated inbox, per-user serialized processing, outbox with unknown-outcome handling, scheduled recovery and retention (`tests/http`, `tests/jobs`) |
+| 2. Safe operations | Implemented, tested locally with fake Calendar | Operation state machine, leases and guarded batches ([ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md)), confirmations bound to preview hash, reconfirmation on changed targets, bounded retries with one pending notice, reconciliation after lost responses and crashes, field-level conflict detection, version-checked Undo (`tests/application`, `tests/domain`) |
+| 3–10 | Not started | — |
+
+Stage 2 decisions to review:
+
+- Undo of a just-created event is a deletion, so it shows the standard delete
+  confirmation (decided 2026-10-02). It is bound to the created version; any
+  later edit makes Undo unavailable. Undo of a deletion is not offered yet.
+- Users outside the allowlist who message the bot privately receive "This bot
+  is private." as the webhook response; nothing about them is stored, and
+  group chats get no reply (decided 2026-10-02).
+- Callback effects (confirm/cancel/undo) commit in their own batch, keyed by the
+  Telegram callback query ID, rather than inside the inbox lease; a redelivered
+  press reports the original result.
+- Calendar event handlers (create/patch/delete) exist against the provider port
+  only. No Google adapter exists, so production wiring reports that Calendar
+  must be connected.
