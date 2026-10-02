@@ -5,6 +5,14 @@
   // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
   "compatibility_date": "2026-08-15",
   "observability": { "enabled": true },
+  // Served only from the custom domain (ADR 0002); no workers.dev hostname.
+  "workers_dev": false,
+  "routes": [{ "pattern": "ohmydays.xinweichong.com", "custom_domain": true }],
+  // Non-secret settings. .dev.vars overrides PUBLIC_BASE_URL for local development.
+  "vars": {
+    "PUBLIC_BASE_URL": "https://ohmydays.xinweichong.com",
+    "TELEGRAM_BOT_USERNAME": "oh_my_days_bot"
+  },
   "d1_databases": [
     {
       "binding": "DB",

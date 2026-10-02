@@ -1,14 +1,11 @@
-import type { Guard } from "../storage/guard";
+import type { Reaction } from "../application/reactions";
 import type { UserRecord } from "../storage/users";
 import type { TelegramCall } from "./api";
 import { BUTTON_EXPIRED, helpText, introText, NOT_AVAILABLE_YET, TEXT_ONLY } from "./messages";
 import type { InboundCallback, InboundMessage, InboundUpdate } from "./update";
 
-export interface HandlerResult {
-  replies: TelegramCall[];
-  /** Local state changes committed atomically with the replies and inbox completion. */
-  statements?: (guard: Guard) => D1PreparedStatement[];
-}
+/** Replies and local state changes committed atomically with the inbox completion. */
+export type HandlerResult = Reaction;
 
 /**
  * Handles one accepted update. Handlers must be idempotent: after a crash the
@@ -21,9 +18,15 @@ export type CallbackHandler = (
   callback: InboundCallback,
 ) => Promise<HandlerResult>;
 
+export type MessageHandler = (user: UserRecord, message: InboundMessage) => Promise<HandlerResult>;
+
 export interface RouterDeps {
   /** Handles button presses; defaults to treating every button as expired. */
   onCallback?: CallbackHandler;
+  /** Slash commands by name; these override the built-in /start and /help. */
+  commands?: Readonly<Record<string, MessageHandler>>;
+  /** Non-command text; null falls through to the default reply. */
+  onText?: (user: UserRecord, message: InboundMessage) => Promise<HandlerResult | null>;
 }
 
 export function createUpdateHandler(deps: RouterDeps = {}): UpdateHandler {
@@ -38,6 +41,15 @@ export function createUpdateHandler(deps: RouterDeps = {}): UpdateHandler {
           },
         ],
       };
+    }
+    if (update.text !== null) {
+      const name = commandName(update.text);
+      const command = name ? deps.commands?.[name] : undefined;
+      if (command) return command(user, update);
+      if (!name && deps.onText) {
+        const handled = await deps.onText(user, update);
+        if (handled) return handled;
+      }
     }
     return { replies: [reply(user, messageResponse(update))] };
   };

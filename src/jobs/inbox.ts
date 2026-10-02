@@ -77,7 +77,7 @@ async function commit(
   const now = deps.clock.now();
   const guard = inboxLeaseGuard(claim);
   const statements = [
-    ...(result.statements?.(guard) ?? []),
+    ...(result.statements?.(deps.db, guard) ?? []),
     ...result.replies.map((call, index) =>
       enqueueStatement(
         deps.db,

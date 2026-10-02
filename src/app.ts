@@ -1,18 +1,29 @@
-import { createCallbackHandler } from "./application/callbacks";
+import { createCalendarHandler } from "./application/calendar-operations";
+import { createConversation } from "./application/conversation";
 import { eventOperationHandlers } from "./application/event-operations";
+import { type ConnectionDeps, connectedCalendar } from "./application/google-connection";
 import { type RunnerDeps, runDueOperations } from "./application/operation-runner";
 import { type HandlerRegistry, registry } from "./application/operation-types";
-import type { CalendarPortFactory } from "./calendar/port";
+import { setupPrompt } from "./application/setup";
+import type {
+  CalendarDirectory,
+  CalendarDirectoryFactory,
+  CalendarPort,
+  CalendarPortFactory,
+} from "./calendar/port";
 import { type AppConfig, type Env, readConfig } from "./env";
+import { type AccessTokenSource, createGoogleCalendar } from "./google/calendar-api";
+import { createGoogleOAuth, type GoogleOAuth } from "./google/oauth";
 import type { HttpDeps } from "./http/router";
 import { type DeliveryDeps, deliverDue } from "./jobs/delivery";
 import { type InboxDeps, processUserInbox } from "./jobs/inbox";
 import type { TickDeps } from "./jobs/tick";
+import { createTokenCipher, type TokenCipher } from "./security/token-cipher";
 import { type Clock, systemClock } from "./shared/clock";
 import { type IdGenerator, randomIds } from "./shared/ids";
 import { findUserByTelegramId } from "./storage/users";
 import { createTelegramClient, type TelegramClient } from "./telegram/client";
-import { createUpdateHandler, type UpdateHandler } from "./telegram/router";
+import type { UpdateHandler } from "./telegram/router";
 
 /** Everything the application needs from the platform. Tests substitute fakes. */
 export interface Services {
@@ -23,9 +34,18 @@ export interface Services {
   random: () => number;
   telegram: TelegramClient;
   handlers: HandlerRegistry;
-  calendarFor: CalendarPortFactory;
+  google: GoogleServices;
+  /** Default to the user's Google connection; overridden in tests. */
+  calendarFor?: CalendarPortFactory;
+  directoryFor?: CalendarDirectoryFactory;
   /** Built from the other services unless overridden. */
   handler?: UpdateHandler;
+}
+
+export interface GoogleServices {
+  oauth: GoogleOAuth;
+  cipher: () => Promise<TokenCipher>;
+  calendarApi: (tokens: AccessTokenSource) => CalendarPort & CalendarDirectory;
 }
 
 /** Bounds for the processing started right after a webhook is acknowledged. */
@@ -40,25 +60,45 @@ export function createServices(env: Env): Services {
     ids: randomIds,
     random: Math.random,
     telegram: createTelegramClient(config.telegramBotToken),
-    handlers: registry(...eventOperationHandlers),
-    // No Google connection exists until backend stage 3; operations that need
-    // Calendar report that reconnection is required instead of guessing.
-    calendarFor: async () => null,
+    handlers: registry(...eventOperationHandlers, createCalendarHandler(config)),
+    google: {
+      oauth: createGoogleOAuth({
+        clientId: config.googleClientId,
+        clientSecret: config.googleClientSecret,
+        redirectUri: `${config.publicBaseUrl}/oauth/callback`,
+      }),
+      cipher: memoize(() => createTokenCipher(config.tokenEncryptionKey)),
+      calendarApi: (tokens) => createGoogleCalendar(tokens),
+    },
   };
 }
 
+function memoize<T>(make: () => Promise<T>): () => Promise<T> {
+  let value: Promise<T> | null = null;
+  return () => {
+    value ??= make();
+    return value;
+  };
+}
+
+export function connectionDeps(s: Services): ConnectionDeps {
+  return {
+    db: s.db,
+    clock: s.clock,
+    ids: s.ids,
+    config: s.config,
+    oauth: s.google.oauth,
+    cipher: s.google.cipher,
+    calendarApi: s.google.calendarApi,
+  };
+}
+
+function setupDeps(s: Services) {
+  return { db: s.db, clock: s.clock, ids: s.ids, config: s.config };
+}
+
 export function updateHandler(s: Services): UpdateHandler {
-  return (
-    s.handler ??
-    createUpdateHandler({
-      onCallback: createCallbackHandler({
-        db: s.db,
-        clock: s.clock,
-        ids: s.ids,
-        handlers: s.handlers,
-      }),
-    })
-  );
+  return s.handler ?? createConversation({ ...setupDeps(s), handlers: s.handlers });
 }
 
 export function inboxDeps(s: Services): InboxDeps {
@@ -72,7 +112,8 @@ export function runnerDeps(s: Services): RunnerDeps {
     ids: s.ids,
     random: s.random,
     handlers: s.handlers,
-    calendarFor: s.calendarFor,
+    calendarFor: s.calendarFor ?? ((userId) => connectedCalendar(connectionDeps(s), userId)),
+    directoryFor: s.directoryFor ?? ((userId) => connectedCalendar(connectionDeps(s), userId)),
   };
 }
 
@@ -108,5 +149,16 @@ export function httpDeps(services: () => Services): HttpDeps {
         },
       };
     },
+    connect: () => {
+      const s = services();
+      return {
+        connection: connectionDeps(s),
+        setupPrompt: (user) => setupPrompt(setupDeps(s), user),
+        afterCallback: async () => {
+          await deliverDue(deliveryDeps(s), AFTER_ACCEPT_LIMITS.deliveries);
+        },
+      };
+    },
+    contactEmail: () => services().config.contactEmail,
   };
 }

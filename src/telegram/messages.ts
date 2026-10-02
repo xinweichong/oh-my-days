@@ -14,7 +14,9 @@ export function introText(): string {
 export function helpText(): string {
   return [
     "Available commands:",
-    "/start – Introduction",
+    "/start – Introduction, or continue setup",
+    "/settings – Calendars, default calendar, and timezone",
+    "/health – Google Calendar connection status",
     "/help – This list",
     "",
     "Events, tasks, and reminders are still being built.",

@@ -1,10 +1,12 @@
 /** The subset of Telegram Bot API calls the bot makes. Text is sent without parse_mode. */
 
-export interface InlineKeyboardButton {
-  text: string;
-  /** At most 64 bytes; always an opaque server-side reference, never data to trust. */
-  callback_data: string;
-}
+export type InlineKeyboardButton =
+  | {
+      text: string;
+      /** At most 64 bytes; always an opaque server-side reference, never data to trust. */
+      callback_data: string;
+    }
+  | { text: string; url: string };
 
 export interface InlineKeyboardMarkup {
   inline_keyboard: InlineKeyboardButton[][];

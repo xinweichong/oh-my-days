@@ -1,4 +1,4 @@
-import type { CalendarPortFactory } from "../calendar/port";
+import type { CalendarDirectoryFactory, CalendarPortFactory } from "../calendar/port";
 import { type BackoffPolicy, retryDelayMs } from "../domain/retry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
@@ -37,6 +37,8 @@ export interface RunnerDeps {
   random: () => number;
   handlers: HandlerRegistry;
   calendarFor: CalendarPortFactory;
+  /** Calendar-list access; absent where no handler needs it. */
+  directoryFor?: CalendarDirectoryFactory;
 }
 
 /**
@@ -80,6 +82,7 @@ export async function runDueOperations(
         op,
         user,
         calendar: await deps.calendarFor(user.id),
+        directory: (await deps.directoryFor?.(user.id)) ?? null,
         now: deps.clock.now(),
       });
     } catch (error) {
@@ -161,6 +164,29 @@ async function commitAttempt(
           }
         : undefined;
       notify("result", outcome, keyboard);
+      const follow = await handler.onSucceeded?.({
+        op: settled,
+        user,
+        result: outcome.result,
+        now,
+        ids: deps.ids,
+        db: deps.db,
+      });
+      if (follow) {
+        statements.push(...(follow.statements?.(deps.db, guard) ?? []));
+        follow.replies.forEach((call, i) => {
+          statements.push(
+            enqueueStatement(
+              deps.db,
+              deps.ids,
+              user.id,
+              { logicalKey: `op:${op.id}:after:${i}`, call },
+              now,
+              guard,
+            ),
+          );
+        });
+      }
       break;
     }
     case "retry": {

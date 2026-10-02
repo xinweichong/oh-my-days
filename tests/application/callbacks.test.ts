@@ -63,9 +63,10 @@ function promptOf(result: HandlerResult): {
   if (call?.method !== "sendMessage") throw new Error("no prompt");
   return {
     text: call.params.text,
-    buttons: (call.params.reply_markup?.inline_keyboard ?? [])
-      .flat()
-      .map((b) => ({ text: b.text, token: b.callback_data.replace(/^o:/, "") })),
+    buttons: (call.params.reply_markup?.inline_keyboard ?? []).flat().map((b) => ({
+      text: b.text,
+      token: "callback_data" in b ? b.callback_data.replace(/^o:/, "") : "",
+    })),
   };
 }
 
