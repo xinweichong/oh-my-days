@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build and test output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Wrangler local state (local D1, caches, temporary bundles)
+.wrangler/
+
+# Secrets and local environment (commit *.example templates only)
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+
+# Locally installed agent tooling and per-user settings
+.agents/
+.claude/
+.codex/
+.opencode/
+.impeccable/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
