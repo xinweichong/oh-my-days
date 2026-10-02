@@ -263,7 +263,8 @@ input. Never use an external model as the privacy filter. Validate outbound payl
 with adversarial synthetic fixtures. Recheck [Gemini service terms](https://ai.google.dev/gemini-api/terms),
 model free eligibility, and project quota before enabling real requests.
 
-Preserve the spec's internal half-account budgets: 50,000 Worker requests/day,
+Preserve the spec's operating targets (half of each account allowance; no other
+application uses Workers or D1 in the account): 50,000 Worker requests/day,
 2.5 million D1 rows read/day, 50,000 rows written/day, and 2.5 GB aggregate storage.
 Start with one database and observe its separate size limit. Current documentation
 lists 10ms Free Worker CPU and 500 MB per Free D1 database; these are implementation
