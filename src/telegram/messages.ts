@@ -14,7 +14,7 @@ export function helpText(): string {
     ...BOT_COMMANDS.map((c) => `/${c.command} – ${c.description}`),
     "",
     "The same list is in the Menu button next to the message box.",
-    "Reminders and daily agendas are still being built.",
+    "I send a daily agenda at 8am and reminders before events and deadlines.",
   ].join("\n");
 }
 

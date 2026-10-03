@@ -109,7 +109,14 @@ function setupDeps(s: Services) {
 }
 
 export function updateHandler(s: Services): UpdateHandler {
-  return s.handler ?? createConversation({ ...setupDeps(s), handlers: s.handlers });
+  return (
+    s.handler ??
+    createConversation({
+      ...setupDeps(s),
+      handlers: s.handlers,
+      sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+    })
+  );
 }
 
 export function inboxDeps(s: Services): InboxDeps {
@@ -152,6 +159,12 @@ export function tickDeps(s: Services): TickDeps {
     runner: runnerDeps(s),
     delivery: deliveryDeps(s),
     sync: syncDeps(s),
+    reminders: {
+      db: s.db,
+      clock: s.clock,
+      ids: s.ids,
+      sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+    },
   };
 }
 
