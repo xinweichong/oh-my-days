@@ -11,6 +11,12 @@ import {
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
 import { syncBotCommands } from "./bot-commands";
+import {
+  refreshCalendarLists,
+  type SyncDeps,
+  scheduleCalendarsStatements,
+  syncDueCalendars,
+} from "./calendar-sync";
 import { type DeliveryDeps, deliverDue } from "./delivery";
 import { type InboxDeps, processUserInbox } from "./inbox";
 
@@ -22,6 +28,9 @@ export const TICK_LIMITS = {
   inboxUsers: 10,
   inboxUpdatesPerUser: 5,
   operations: 10,
+  /** Calendars synchronized per tick; each may fetch up to MAX_PAGES_PER_RUN pages. */
+  calendars: 4,
+  calendarLists: 2,
   deliveries: 20,
   purgeRows: 500,
 } as const;
@@ -37,6 +46,7 @@ export interface TickDeps {
   inbox: InboxDeps;
   runner: RunnerDeps;
   delivery: DeliveryDeps;
+  sync: SyncDeps;
 }
 
 export interface TickSummary {
@@ -44,6 +54,7 @@ export interface TickSummary {
   processedUpdates: number;
   attemptedOperations: number;
   attemptedDeliveries: number;
+  syncedCalendars: number;
 }
 
 /** One scheduled tick. Interactive work comes before maintenance. */
@@ -58,6 +69,10 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
 
   const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
   const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
+
+  await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
+  const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
+  await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
 
   // Maintenance: keep Telegram's command menu in step with the deployed code.
   await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
@@ -83,6 +98,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     processedUpdates,
     attemptedOperations,
     attemptedDeliveries,
+    syncedCalendars,
   };
   logEvent("tick.finished", { ...summary });
   return summary;

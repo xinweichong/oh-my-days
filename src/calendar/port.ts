@@ -73,3 +73,50 @@ export interface CalendarDirectory {
 }
 
 export type CalendarDirectoryFactory = (userId: string) => Promise<CalendarDirectory | null>;
+
+/** An event as seen by synchronization, with the facts views and policies need. */
+export interface SyncedEvent {
+  id: string;
+  etag: string;
+  status: "confirmed" | "tentative" | "cancelled";
+  /** Null for cancelled entries, which carry no reliable details. */
+  fields: EventFields | null;
+  /** A recurring series master (has recurrence rules). */
+  recurring: boolean;
+  /** Set on an instance or exception of a recurring series. */
+  recurringEventId: string | null;
+  /** Marked "free", e.g. task deadline markers; never a scheduling conflict. */
+  transparent: boolean;
+  /** The user declined this invitation. */
+  declined: boolean;
+  /** Has attendees other than the user; changing it could notify them. */
+  hasGuests: boolean;
+  /** The user organizes it (or it has no organizer distinct from the user). */
+  organizerSelf: boolean;
+}
+
+export type EventPageResult =
+  | {
+      ok: true;
+      items: SyncedEvent[];
+      nextPageToken: string | null;
+      /** Present on the last page; resume incremental sync with it. */
+      nextSyncToken: string | null;
+    }
+  /** The sync token expired; a full resynchronization is required. */
+  | { ok: false; reset: true }
+  | { ok: false; reset?: false; error: ProviderError };
+
+export interface CalendarSyncSource {
+  /** One page of changes (with a sync token) or of all events (without one). */
+  listEventPage(
+    calendarId: string,
+    cursor: { syncToken: string | null; pageToken: string | null },
+  ): Promise<EventPageResult>;
+  /** Event occurrences overlapping a time window, recurring instances expanded. */
+  listWindow(
+    calendarId: string,
+    timeMin: number,
+    timeMax: number,
+  ): Promise<ProviderResult<SyncedEvent[]>>;
+}

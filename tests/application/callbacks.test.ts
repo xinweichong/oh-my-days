@@ -185,6 +185,7 @@ describe("confirmation", () => {
         telegram: new FakeTelegram(),
         random: h.random,
       },
+      sync: { db: h.db, clock: h.clock, ids: h.ids, random: h.random, sourceFor: async () => null },
     });
     expect(await operationRow(env.DB, operationId)).toMatchObject({
       status: "cancelled",

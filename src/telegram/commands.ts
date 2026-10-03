@@ -11,6 +11,7 @@ export interface BotCommand {
 
 export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "start", description: "Introduction, or continue setup" },
+  { command: "event", description: "Add, rename, move, or delete an event" },
   { command: "settings", description: "Calendars, default calendar, and timezone" },
   { command: "health", description: "Google Calendar connection status" },
   { command: "help", description: "Available commands" },

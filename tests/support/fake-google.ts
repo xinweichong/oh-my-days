@@ -1,10 +1,5 @@
-import type {
-  CalendarDirectory,
-  CalendarListEntry,
-  CalendarPort,
-  ProviderResult,
-} from "../../src/calendar/port";
-import type { AccessTokenSource } from "../../src/google/calendar-api";
+import type { CalendarListEntry, ProviderResult } from "../../src/calendar/port";
+import type { AccessTokenSource, GoogleCalendarApi } from "../../src/google/calendar-api";
 import { type GoogleOAuth, pkceChallenge, REQUIRED_CALENDAR_SCOPES } from "../../src/google/oauth";
 import { FakeCalendar } from "./fake-calendar";
 
@@ -123,7 +118,7 @@ export class FakeGoogle {
   };
 
   /** Calendar API bound to whichever account the access token belongs to. */
-  readonly calendarApi = (tokens: AccessTokenSource): CalendarPort & CalendarDirectory => {
+  readonly calendarApi = (tokens: AccessTokenSource): GoogleCalendarApi => {
     const withAccount = async <T>(
       use: (account: Account) => Promise<ProviderResult<T>>,
     ): Promise<ProviderResult<T>> => {
@@ -147,6 +142,14 @@ export class FakeGoogle {
       insertEvent: (c, e, f) => withAccount((a) => a.events.insertEvent(c, e, f)),
       patchEvent: (c, e, p, m) => withAccount((a) => a.events.patchEvent(c, e, p, m)),
       deleteEvent: (c, e, m) => withAccount((a) => a.events.deleteEvent(c, e, m)),
+      listEventPage: async (c, cursor) => {
+        const token = await tokens(false);
+        const subject = token.ok ? this.accessTokens.get(token.token) : undefined;
+        const account = subject ? this.accounts.get(subject) : undefined;
+        if (!account) return { ok: false, error: { kind: "auth_required" } };
+        return account.events.listEventPage(c, cursor);
+      },
+      listWindow: (c, min, max) => withAccount((a) => a.events.listWindow(c, min, max)),
       listCalendars: () => withAccount(async (a) => ({ ok: true, value: [...a.calendars] })),
       createCalendar: (summary) =>
         withAccount(async (a) => {

@@ -4,6 +4,13 @@ import { BUTTON_EXPIRED, TAGLINE } from "../telegram/messages";
 import { createUpdateHandler, type UpdateHandler } from "../telegram/router";
 import type { InboundCallback } from "../telegram/update";
 import { createCallbackHandler } from "./callbacks";
+import {
+  eventMenu,
+  handleEventAction,
+  handleEventInput,
+  isEventAction,
+  isEventInput,
+} from "./event-flow";
 import type { HandlerRegistry } from "./operation-types";
 import { message, type Reaction, UI_PREFIX } from "./reactions";
 import {
@@ -37,6 +44,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
           ],
         };
       }
+      if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
       return handleUiAction(deps, user, callback, action);
     }
     return operationCallbacks(user, callback);
@@ -53,11 +61,15 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
         );
       },
       settings: (user) => settingsView(deps, user),
+      event: (user) => eventMenu(deps, user),
       health: (user) => healthView(deps, user),
     },
     onText: async (user, input) => {
       const pending = await findPendingInput(deps.db, user.id, deps.clock.now());
-      if (pending) return handlePendingInput(deps, user, input, pending);
+      if (pending && isEventInput(pending.kind)) {
+        return handleEventInput(deps, user, input, pending);
+      }
+      if (pending) return handlePendingInput(deps, user, input, pending.kind);
       if (user.setupStep !== "done") {
         return message(user.privateChatId, "Finish setup first: send /start to continue.");
       }

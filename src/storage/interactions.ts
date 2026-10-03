@@ -47,7 +47,23 @@ export async function findUiAction(
   return row ? { action: row.action, payload: JSON.parse(row.payload) } : null;
 }
 
-export type PendingInputKind = "new_default_calendar_name" | "timezone";
+export const PENDING_INPUT_KINDS = [
+  "new_default_calendar_name",
+  "timezone",
+  "event_title",
+  "event_date",
+  "event_time",
+  "event_duration",
+  "event_rename",
+] as const;
+
+export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];
+
+export interface PendingInput {
+  kind: PendingInputKind;
+  /** Draft state for guided flows (server-side only). */
+  payload: Record<string, unknown>;
+}
 
 export function setPendingInputStatement(
   db: D1Database,
@@ -55,26 +71,30 @@ export function setPendingInputStatement(
   kind: PendingInputKind,
   expiresAt: number,
   now: number,
+  payload: Record<string, unknown> = {},
 ): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO pending_inputs (user_id, kind, expires_at, created_at) VALUES (?, ?, ?, ?)
-       ON CONFLICT (user_id) DO UPDATE SET kind = excluded.kind, expires_at = excluded.expires_at,
-         created_at = excluded.created_at`,
+      `INSERT INTO pending_inputs (user_id, kind, payload, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT (user_id) DO UPDATE SET kind = excluded.kind, payload = excluded.payload,
+         expires_at = excluded.expires_at, created_at = excluded.created_at`,
     )
-    .bind(userId, kind, expiresAt, now);
+    .bind(userId, kind, JSON.stringify(payload), expiresAt, now);
 }
 
 export async function findPendingInput(
   db: D1Database,
   userId: string,
   now: number,
-): Promise<PendingInputKind | null> {
+): Promise<PendingInput | null> {
   const row = await db
-    .prepare("SELECT kind FROM pending_inputs WHERE user_id = ? AND expires_at > ?")
+    .prepare("SELECT kind, payload FROM pending_inputs WHERE user_id = ? AND expires_at > ?")
     .bind(userId, now)
-    .first<{ kind: PendingInputKind }>();
-  return row?.kind ?? null;
+    .first<{ kind: string; payload: string }>();
+  const kind = PENDING_INPUT_KINDS.find((k) => k === row?.kind);
+  if (!row || !kind) return null;
+  return { kind, payload: JSON.parse(row.payload) as Record<string, unknown> };
 }
 
 export function clearPendingInputStatement(db: D1Database, userId: string): D1PreparedStatement {
