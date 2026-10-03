@@ -6,7 +6,7 @@ import type { GoogleOAuth } from "../../src/google/oauth";
 import { createTokenCipher } from "../../src/security/token-cipher";
 import type { Clock } from "../../src/shared/clock";
 import type { IdGenerator } from "../../src/shared/ids";
-import type { TelegramCall } from "../../src/telegram/api";
+import type { TelegramAdminCall, TelegramCall } from "../../src/telegram/api";
 import type { TelegramClient, TelegramResult } from "../../src/telegram/client";
 
 export const T0 = Date.UTC(2026, 8, 25, 1, 0, 0); // 2026-09-25 09:00 Asia/Singapore
@@ -33,6 +33,8 @@ export class SequentialIds implements IdGenerator {
 /** Records calls; replies with scripted results, defaulting to success. */
 export class FakeTelegram implements TelegramClient {
   readonly calls: TelegramCall[] = [];
+  /** Bot-level configuration calls (command menu), kept apart from chat traffic. */
+  readonly adminCalls: TelegramAdminCall[] = [];
   private readonly script: TelegramResult[] = [];
   private nextMessageId = 500;
 
@@ -41,8 +43,12 @@ export class FakeTelegram implements TelegramClient {
     return this;
   }
 
-  async call(call: TelegramCall): Promise<TelegramResult> {
-    this.calls.push(call);
+  async call(call: TelegramCall | TelegramAdminCall): Promise<TelegramResult> {
+    if (call.method === "setMyCommands" || call.method === "setChatMenuButton") {
+      this.adminCalls.push(call);
+    } else {
+      this.calls.push(call);
+    }
     return this.script.shift() ?? { kind: "ok", messageId: this.nextMessageId++ };
   }
 

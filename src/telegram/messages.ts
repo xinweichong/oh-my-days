@@ -1,24 +1,19 @@
 /** User-facing copy. Brief and factual; see docs/identity/oh-my-days.md. */
 
+import { BOT_COMMANDS } from "./commands";
+
 export const TAGLINE = "A little less to keep in your head.";
 
 export function introText(): string {
-  return [
-    "Oh My Days",
-    TAGLINE,
-    "",
-    "Google Calendar connection isn't available yet. Send /help to see what I can do now.",
-  ].join("\n");
+  return ["Oh My Days", TAGLINE, "", "Send /help to see what I can do now."].join("\n");
 }
 
 export function helpText(): string {
   return [
     "Available commands:",
-    "/start – Introduction, or continue setup",
-    "/settings – Calendars, default calendar, and timezone",
-    "/health – Google Calendar connection status",
-    "/help – This list",
+    ...BOT_COMMANDS.map((c) => `/${c.command} – ${c.description}`),
     "",
+    "The same list is in the Menu button next to the message box.",
     "Events, tasks, and reminders are still being built.",
   ].join("\n");
 }

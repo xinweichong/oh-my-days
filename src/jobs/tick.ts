@@ -10,6 +10,7 @@ import {
   purgeFinishedOperationsStatements,
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
+import { syncBotCommands } from "./bot-commands";
 import { type DeliveryDeps, deliverDue } from "./delivery";
 import { type InboxDeps, processUserInbox } from "./inbox";
 
@@ -57,6 +58,9 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
 
   const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
   const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
+
+  // Maintenance: keep Telegram's command menu in step with the deployed code.
+  await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
 
   const later = deps.clock.now();
   const cutoff = later - FINISHED_RETENTION_MS;

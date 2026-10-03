@@ -1,4 +1,4 @@
-import type { TelegramCall } from "./api";
+import type { TelegramAdminCall, TelegramCall } from "./api";
 
 export type TelegramResult =
   | { kind: "ok"; messageId: number | null }
@@ -8,7 +8,7 @@ export type TelegramResult =
   | { kind: "permanent"; errorClass: string };
 
 export interface TelegramClient {
-  call(call: TelegramCall): Promise<TelegramResult>;
+  call(call: TelegramCall | TelegramAdminCall): Promise<TelegramResult>;
 }
 
 const TIMEOUT_MS = 8_000;
