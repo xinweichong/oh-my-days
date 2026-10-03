@@ -5,6 +5,7 @@ import type {
   CalendarListEntry,
   CalendarPort,
   CalendarSyncSource,
+  EventExtras,
   ProviderError,
   ProviderResult,
   SyncedEvent,
@@ -91,23 +92,26 @@ export function createGoogleCalendar(
     getEvent(calendarId, eventId) {
       return request("read", "GET", eventPath(calendarId, eventId), (b) => toEvent(calendarId, b));
     },
-    insertEvent(calendarId, eventId, fields) {
+    insertEvent(calendarId, eventId, fields, extras) {
       return request(
         "write",
         "POST",
         `/calendars/${encodeURIComponent(calendarId)}/events`,
         (b) => toEvent(calendarId, b),
-        { body: { id: eventId, ...toGoogleFields(fields) }, query: { sendUpdates: "none" } },
+        {
+          body: { id: eventId, ...toGoogleFields(fields), ...toGoogleExtras(extras) },
+          query: { sendUpdates: "none" },
+        },
       );
     },
-    patchEvent(calendarId, eventId, patch, ifMatchEtag) {
+    patchEvent(calendarId, eventId, patch, ifMatchEtag, extras) {
       return request(
         "write",
         "PATCH",
         eventPath(calendarId, eventId),
         (b) => toEvent(calendarId, b),
         {
-          body: toGoogleFields(patch),
+          body: { ...toGoogleFields(patch), ...toGoogleExtras(extras) },
           ifMatch: ifMatchEtag,
           query: { sendUpdates: "none" },
         },
@@ -238,6 +242,16 @@ function toGoogleFields(fields: Partial<EventFields>): Record<string, unknown> {
   if (fields.summary !== undefined) out.summary = fields.summary;
   if (fields.start !== undefined) out.start = fields.start;
   if (fields.end !== undefined) out.end = fields.end;
+  return out;
+}
+
+function toGoogleExtras(extras: EventExtras | undefined): Record<string, unknown> {
+  if (!extras) return {};
+  const out: Record<string, unknown> = {};
+  if (extras.transparent !== undefined)
+    out.transparency = extras.transparent ? "transparent" : "opaque";
+  if (extras.silent) out.reminders = { useDefault: false, overrides: [] };
+  if (extras.privateProperties) out.extendedProperties = { private: extras.privateProperties };
   return out;
 }
 

@@ -3,6 +3,7 @@ import { httpDeps, type Services, tickDeps } from "../../src/app";
 import { createCalendarHandler } from "../../src/application/calendar-operations";
 import { eventOperationHandlers } from "../../src/application/event-operations";
 import { registry } from "../../src/application/operation-types";
+import { projectTaskHandler } from "../../src/application/task-projection";
 import { route } from "../../src/http/router";
 import { runTick } from "../../src/jobs/tick";
 import { createTokenCipher } from "../../src/security/token-cipher";
@@ -27,7 +28,11 @@ export class World {
       clock: this.clock,
       ids: this.ids,
       telegram: this.telegram,
-      handlers: registry(...eventOperationHandlers, createCalendarHandler(testConfig)),
+      handlers: registry(
+        ...eventOperationHandlers,
+        createCalendarHandler(testConfig),
+        projectTaskHandler,
+      ),
       google: {
         oauth: this.google.oauth,
         cipher: () => createTokenCipher(testConfig.tokenEncryptionKey),

@@ -139,8 +139,8 @@ export class FakeGoogle {
     };
     return {
       getEvent: (c, e) => withAccount((a) => a.events.getEvent(c, e)),
-      insertEvent: (c, e, f) => withAccount((a) => a.events.insertEvent(c, e, f)),
-      patchEvent: (c, e, p, m) => withAccount((a) => a.events.patchEvent(c, e, p, m)),
+      insertEvent: (c, e, f, x) => withAccount((a) => a.events.insertEvent(c, e, f, x)),
+      patchEvent: (c, e, p, m, x) => withAccount((a) => a.events.patchEvent(c, e, p, m, x)),
       deleteEvent: (c, e, m) => withAccount((a) => a.events.deleteEvent(c, e, m)),
       listEventPage: async (c, cursor) => {
         const token = await tokens(false);
