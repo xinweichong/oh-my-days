@@ -1,7 +1,9 @@
 import type { CalendarEvent, ProviderError } from "../calendar/port";
 import { type EventField, type EventFields, pickEventFields } from "../domain/calendar-event";
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
+import { DEFAULT_EVENT_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
+import { claimReminderStatement } from "../storage/reminders";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
 import type {
@@ -397,9 +399,35 @@ function writtenNotice(
 async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<Reaction> {
   const intent = op.intent as { calendarId: string; eventId: string };
   const written = result as WriteResult;
+  const start = written.fields.start;
+  const startsAt = "dateTime" in start ? Date.parse(start.dateTime) : null;
+  // Created or moved inside the reminder window: this confirmation is the
+  // approaching notice, so no separate reminder follows.
+  const insideWindow =
+    startsAt !== null &&
+    startsAt > now &&
+    startsAt - DEFAULT_EVENT_REMINDER_MINUTES * 60_000 <= now;
   return {
     replies: [],
     statements: (db, guard) => [
+      ...(insideWindow && startsAt !== null
+        ? [
+            claimReminderStatement(
+              db,
+              user.id,
+              reminderKeys.event(
+                intent.calendarId,
+                intent.eventId,
+                startsAt,
+                DEFAULT_EVENT_REMINDER_MINUTES,
+              ),
+              "confirmed_on_create",
+              op.id,
+              now,
+              guard,
+            ),
+          ]
+        : []),
       cacheOwnWriteStatement(
         db,
         user.id,

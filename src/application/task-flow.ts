@@ -1,6 +1,8 @@
 import { parseLocalDate, parseWallTime } from "../domain/parse-input";
+import { DEFAULT_TASK_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
 import { addDays, type LocalDate, localDateAt, rfc3339, zonedInstant } from "../domain/time";
+import type { Guard } from "../storage/guard";
 import {
   clearPendingInputStatement,
   type PendingInput,
@@ -8,6 +10,7 @@ import {
   setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
+import { claimReminderStatement } from "../storage/reminders";
 import {
   deleteListStatements,
   ensureInboxStatement,
@@ -199,7 +202,19 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
       ? [
           [
             buttons.button("Done", "task_done", ref),
+            buttons.button("Snooze", "snooze_menu", { taskId: task.id }),
             buttons.button("Edit", "task_edit", ref),
+          ],
+          [
+            ...(task.deadline.kind === "datetime"
+              ? [
+                  buttons.button("Reminder", "reminder_menu", {
+                    kind: "task",
+                    targetKey: task.id,
+                    title: task.title,
+                  }),
+                ]
+              : []),
             buttons.button("Cancel task", "task_cancel", ref),
           ],
         ]
@@ -303,6 +318,35 @@ function askDueTime(deps: SetupDeps, user: UserRecord, draft: TaskDraft): Reacti
 
 // --- Changes -----------------------------------------------------------------------
 
+/**
+ * A deadline set inside its reminder window: the confirmation is the
+ * approaching notice, so no separate reminder follows.
+ */
+function confirmedOnCreate(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  deadline: Deadline,
+  now: number,
+  claimedBy: string,
+  guard: Guard,
+): D1PreparedStatement[] {
+  if (deadline.kind !== "datetime") return [];
+  const due = deadline.at - DEFAULT_TASK_REMINDER_MINUTES * 60_000;
+  if (deadline.at <= now || due > now) return [];
+  return [
+    claimReminderStatement(
+      db,
+      userId,
+      reminderKeys.taskDue(taskId, deadline.at, DEFAULT_TASK_REMINDER_MINUTES),
+      "confirmed_on_create",
+      claimedBy,
+      now,
+      guard,
+    ),
+  ];
+}
+
 function needsProjection(task: TaskRecord, changes: TaskChanges): boolean {
   const deadline = changes.deadline ?? task.deadline;
   return task.projection !== null || deadline.kind !== "none";
@@ -339,6 +383,17 @@ function change(
     ],
     statements: (db, guard) => [
       updateTaskStatement(db, user.id, task.id, task.version, changes, now, guard),
+      ...(changes.deadline
+        ? confirmedOnCreate(
+            db,
+            user.id,
+            task.id,
+            changes.deadline,
+            now,
+            `task:${task.id}:${version}`,
+            guard,
+          )
+        : []),
       ...(needsProjection(task, changes)
         ? [
             projectTaskStatement(
@@ -403,6 +458,7 @@ async function createTask(
       ...(deadline.kind === "none"
         ? []
         : [projectTaskStatement(db, deps.ids, task, 1, now, guard)]),
+      ...confirmedOnCreate(db, user.id, id, deadline, now, `task:${id}:1`, guard),
       ...buttons.statements(db, guard),
     ],
   };

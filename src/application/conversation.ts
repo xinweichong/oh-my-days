@@ -3,6 +3,7 @@ import type { UserRecord } from "../storage/users";
 import { BUTTON_EXPIRED, TAGLINE } from "../telegram/messages";
 import { createUpdateHandler, type UpdateHandler } from "../telegram/router";
 import type { InboundCallback } from "../telegram/update";
+import type { SourceFor } from "./calendar-view";
 import { createCallbackHandler } from "./callbacks";
 import {
   eventMenu,
@@ -29,9 +30,21 @@ import {
   taskMenu,
   tasksCommand,
 } from "./task-flow";
+import {
+  calendarsView,
+  dailyView,
+  handleSnoozeInput,
+  handleViewAction,
+  isViewAction,
+  monthView,
+  overdueView,
+  remindersView,
+  weekView,
+} from "./view-flow";
 
 export interface ConversationDeps extends SetupDeps {
   handlers: HandlerRegistry;
+  sourceFor: SourceFor;
 }
 
 /** The Telegram conversation: commands, setup, settings, health, and buttons. */
@@ -54,6 +67,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       }
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
+      if (isViewAction(action.action)) return handleViewAction(deps, user, callback, action);
       return handleUiAction(deps, user, callback, action);
     }
     return operationCallbacks(user, callback);
@@ -73,6 +87,12 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       event: (user) => eventMenu(deps, user),
       task: (user) => taskMenu(deps, user),
       tasks: (user) => tasksCommand(deps, user),
+      daily: (user) => dailyView(deps, user),
+      weekly: (user) => weekView(deps, user, null, null, null),
+      monthly: (user) => monthView(deps, user, null, null),
+      calendars: (user) => calendarsView(deps, user),
+      overdue: (user) => overdueView(deps, user),
+      reminders: (user) => remindersView(deps, user),
       health: (user) => healthView(deps, user),
     },
     onText: async (user, input) => {
@@ -80,6 +100,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (pending && isEventInput(pending.kind)) {
         return handleEventInput(deps, user, input, pending);
       }
+      if (pending?.kind === "task_snooze") return handleSnoozeInput(deps, user, input, pending);
       if (pending && isTaskInput(pending.kind)) {
         return handleTaskInput(deps, user, input, pending);
       }

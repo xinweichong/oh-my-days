@@ -10,6 +10,7 @@ import {
   purgeFinishedOperationsStatements,
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
+import { purgeOldReminderStatements } from "../storage/reminders";
 import { syncBotCommands } from "./bot-commands";
 import {
   refreshCalendarLists,
@@ -18,7 +19,9 @@ import {
   syncDueCalendars,
 } from "./calendar-sync";
 import { type DeliveryDeps, deliverDue } from "./delivery";
+import { refreshHorizons } from "./horizon";
 import { type InboxDeps, processUserInbox } from "./inbox";
+import { type ReminderDeps, runReminders } from "./reminders";
 
 /**
  * Bounds per scheduled invocation. Telegram sends are external subrequests, and
@@ -31,6 +34,8 @@ export const TICK_LIMITS = {
   /** Calendars synchronized per tick; each may fetch up to MAX_PAGES_PER_RUN pages. */
   calendars: 4,
   calendarLists: 2,
+  horizons: 2,
+  reminderUsers: 20,
   deliveries: 20,
   purgeRows: 500,
 } as const;
@@ -47,6 +52,7 @@ export interface TickDeps {
   runner: RunnerDeps;
   delivery: DeliveryDeps;
   sync: SyncDeps;
+  reminders: ReminderDeps;
 }
 
 export interface TickSummary {
@@ -55,6 +61,7 @@ export interface TickSummary {
   attemptedOperations: number;
   attemptedDeliveries: number;
   syncedCalendars: number;
+  reminders: number;
 }
 
 /** One scheduled tick. Interactive work comes before maintenance. */
@@ -72,6 +79,10 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
   await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
+
+  // Reminders and agendas come before delivery so they go out in this tick.
+  await refreshHorizons(deps.reminders, TICK_LIMITS.horizons);
+  const reminders = await runReminders(deps.reminders, TICK_LIMITS.reminderUsers);
 
   const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
 
@@ -92,6 +103,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     ),
     ...purgeExpiredAuthStatements(deps.db, later, TICK_LIMITS.purgeRows),
     ...purgeExpiredInteractionsStatements(deps.db, later, TICK_LIMITS.purgeRows),
+    ...purgeOldReminderStatements(deps.db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
   ]);
 
   const summary = {
@@ -100,6 +112,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     attemptedOperations,
     attemptedDeliveries,
     syncedCalendars,
+    reminders,
   };
   logEvent("tick.finished", { ...summary });
   return summary;
