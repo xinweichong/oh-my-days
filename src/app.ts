@@ -5,16 +5,16 @@ import { type ConnectionDeps, connectedCalendar } from "./application/google-con
 import { type RunnerDeps, runDueOperations } from "./application/operation-runner";
 import { type HandlerRegistry, registry } from "./application/operation-types";
 import { setupPrompt } from "./application/setup";
-import type {
-  CalendarDirectory,
-  CalendarDirectoryFactory,
-  CalendarPort,
-  CalendarPortFactory,
-} from "./calendar/port";
+import type { CalendarDirectoryFactory, CalendarPortFactory } from "./calendar/port";
 import { type AppConfig, type Env, readConfig } from "./env";
-import { type AccessTokenSource, createGoogleCalendar } from "./google/calendar-api";
+import {
+  type AccessTokenSource,
+  createGoogleCalendar,
+  type GoogleCalendarApi,
+} from "./google/calendar-api";
 import { createGoogleOAuth, type GoogleOAuth } from "./google/oauth";
 import type { HttpDeps } from "./http/router";
+import { type SyncDeps, syncDueCalendars } from "./jobs/calendar-sync";
 import { type DeliveryDeps, deliverDue } from "./jobs/delivery";
 import { type InboxDeps, processUserInbox } from "./jobs/inbox";
 import type { TickDeps } from "./jobs/tick";
@@ -45,11 +45,16 @@ export interface Services {
 export interface GoogleServices {
   oauth: GoogleOAuth;
   cipher: () => Promise<TokenCipher>;
-  calendarApi: (tokens: AccessTokenSource) => CalendarPort & CalendarDirectory;
+  calendarApi: (tokens: AccessTokenSource) => GoogleCalendarApi;
 }
 
 /** Bounds for the processing started right after a webhook is acknowledged. */
-export const AFTER_ACCEPT_LIMITS = { updates: 3, operations: 2, deliveries: 5 } as const;
+export const AFTER_ACCEPT_LIMITS = {
+  updates: 3,
+  operations: 2,
+  calendars: 2,
+  deliveries: 5,
+} as const;
 
 export function createServices(env: Env): Services {
   const config = readConfig(env);
@@ -117,6 +122,16 @@ export function runnerDeps(s: Services): RunnerDeps {
   };
 }
 
+export function syncDeps(s: Services): SyncDeps {
+  return {
+    db: s.db,
+    clock: s.clock,
+    ids: s.ids,
+    random: s.random,
+    sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+  };
+}
+
 export function deliveryDeps(s: Services): DeliveryDeps {
   return { db: s.db, clock: s.clock, ids: s.ids, telegram: s.telegram, random: s.random };
 }
@@ -128,6 +143,7 @@ export function tickDeps(s: Services): TickDeps {
     inbox: inboxDeps(s),
     runner: runnerDeps(s),
     delivery: deliveryDeps(s),
+    sync: syncDeps(s),
   };
 }
 
@@ -145,6 +161,8 @@ export function httpDeps(services: () => Services): HttpDeps {
           if (!user) return;
           await processUserInbox(inboxDeps(s), user.id, AFTER_ACCEPT_LIMITS.updates);
           await runDueOperations(runnerDeps(s), AFTER_ACCEPT_LIMITS.operations, user.id);
+          // Runs only calendars already due, e.g. after Force poll.
+          await syncDueCalendars(syncDeps(s), AFTER_ACCEPT_LIMITS.calendars, user.id);
           await deliverDue(deliveryDeps(s), AFTER_ACCEPT_LIMITS.deliveries, user.id);
         },
       };

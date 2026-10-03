@@ -1,9 +1,17 @@
 import type { CalendarEvent, ProviderError } from "../calendar/port";
 import { type EventField, type EventFields, pickEventFields } from "../domain/calendar-event";
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
+import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
-import type { ExecutionOutcome, NoticeEvent, OperationHandler } from "./operation-types";
+import type {
+  ExecutionOutcome,
+  NoticeEvent,
+  OperationHandler,
+  SucceededContext,
+} from "./operation-types";
+import { canCheckOverlaps, findOverlaps, type Overlap } from "./overlaps";
+import type { Reaction } from "./reactions";
 
 /**
  * Calendar event operations through the shared pipeline. Each attempt reads
@@ -15,14 +23,22 @@ export const CREATE_EVENT = "calendar.event.create";
 export const PATCH_EVENT = "calendar.event.patch";
 export const DELETE_EVENT = "calendar.event.delete";
 
-export interface CreateEventIntent {
+/** Display and conflict-check details shared by event intents. */
+interface EventContext {
+  /** Calendar name as shown when requested, for messages. */
+  calendarName?: string;
+  /** Calendars to check for overlapping events after the write. */
+  overlapCalendarIds?: string[];
+}
+
+export interface CreateEventIntent extends EventContext {
   calendarId: string;
   /** Client-chosen provider ID: a repeated create finds the first one. */
   eventId: string;
   fields: EventFields;
 }
 
-export interface PatchEventIntent {
+export interface PatchEventIntent extends EventContext {
   calendarId: string;
   eventId: string;
   /** The event title as shown when the change was requested, for messages. */
@@ -42,14 +58,18 @@ export interface DeleteEventIntent {
   undo?: true;
 }
 
-interface CreateResult {
+interface WriteResult {
   fields: EventFields;
+  etag: string;
+  /** Null when overlaps could not be checked; absent when not requested. */
+  overlaps?: Overlap[] | null;
 }
 
-interface PatchResult {
+type CreateResult = WriteResult;
+
+interface PatchResult extends WriteResult {
   before: Partial<EventFields>;
   after: Partial<EventFields>;
-  fields: EventFields;
 }
 
 interface DeleteResult {
@@ -92,16 +112,24 @@ export const createEventHandler: OperationHandler = {
     if (!calendar) return { kind: "auth_required" };
     const intent = op.intent as CreateEventIntent;
     const inserted = await calendar.insertEvent(intent.calendarId, intent.eventId, intent.fields);
-    if (inserted.ok) return succeeded<CreateResult>({ fields: inserted.value.fields });
-    if (inserted.error.kind !== "conflict") return providerFailure(inserted.error);
-
-    // The ID already exists: an earlier attempt of this operation created it.
-    const existing = await calendar.getEvent(intent.calendarId, intent.eventId);
-    if (!existing.ok) return providerFailure(existing.error);
-    if (!isLive(existing.value)) {
-      return { kind: "needs_resolution", reason: "deleted_after_create" };
+    let written: CalendarEvent;
+    if (inserted.ok) {
+      written = inserted.value;
+    } else {
+      if (inserted.error.kind !== "conflict") return providerFailure(inserted.error);
+      // The ID already exists: an earlier attempt of this operation created it.
+      const existing = await calendar.getEvent(intent.calendarId, intent.eventId);
+      if (!existing.ok) return providerFailure(existing.error);
+      if (!isLive(existing.value)) {
+        return { kind: "needs_resolution", reason: "deleted_after_create" };
+      }
+      written = existing.value;
     }
-    return succeeded<CreateResult>({ fields: existing.value.fields });
+    return succeeded<CreateResult>({
+      fields: written.fields,
+      etag: written.etag,
+      ...(await overlapsFor(calendar, intent, written)),
+    });
   },
 
   notice(op, event, user) {
@@ -109,7 +137,7 @@ export const createEventHandler: OperationHandler = {
     const title = intent.fields.summary;
     switch (event.kind) {
       case "succeeded":
-        return `Event added: ${title}\n${formatEventRange(intent.fields, user.timezone)}`;
+        return writtenNotice("Event added", event.result as CreateResult, intent, user);
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that ${title} was added to Google Calendar. I'll check again automatically.`
@@ -118,6 +146,8 @@ export const createEventHandler: OperationHandler = {
         return commonNotice(title, event, "add");
     }
   },
+
+  onSucceeded: cacheWrite,
 
   inverse(op, user) {
     const intent = op.intent as CreateEventIntent;
@@ -160,10 +190,19 @@ export const patchEventHandler: OperationHandler = {
         },
       };
     }
-    const result = (fields: EventFields): ExecutionOutcome =>
-      succeeded<PatchResult>({ before: intent.base, after: intent.patch, fields });
+    const result = async (written: CalendarEvent): Promise<ExecutionOutcome> =>
+      succeeded<PatchResult>({
+        before: intent.base,
+        after: intent.patch,
+        fields: written.fields,
+        etag: written.etag,
+        // Only a time change can create a new overlap.
+        ...(intent.patch.start || intent.patch.end
+          ? await overlapsFor(calendar, intent, written)
+          : {}),
+      });
     // Nothing left to write: an earlier attempt (or someone else) already applied it.
-    if (Object.keys(merge.patch).length === 0) return result(current.value.fields);
+    if (Object.keys(merge.patch).length === 0) return result(current.value);
 
     const patched = await calendar.patchEvent(
       intent.calendarId,
@@ -172,7 +211,7 @@ export const patchEventHandler: OperationHandler = {
       current.value.etag,
     );
     if (!patched.ok) return providerFailure(patched.error);
-    return result(patched.value.fields);
+    return result(patched.value);
   },
 
   notice(op, event, user) {
@@ -181,7 +220,12 @@ export const patchEventHandler: OperationHandler = {
     const title = fields?.summary ?? intent.patch.summary ?? intent.title;
     switch (event.kind) {
       case "succeeded":
-        return `${intent.undo ? "Undone" : "Event updated"}: ${title}\n${formatEventRange(fields as EventFields, user.timezone)}`;
+        return writtenNotice(
+          intent.undo ? "Undone" : "Event updated",
+          event.result as PatchResult,
+          intent,
+          user,
+        );
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that the change to ${title} reached Google Calendar. I'll check again automatically.`
@@ -198,6 +242,8 @@ export const patchEventHandler: OperationHandler = {
         return commonNotice(title, event, "update");
     }
   },
+
+  onSucceeded: cacheWrite,
 
   inverse(op) {
     const intent = op.intent as PatchEventIntent;
@@ -220,6 +266,16 @@ export const patchEventHandler: OperationHandler = {
 
 export const deleteEventHandler: OperationHandler = {
   kind: DELETE_EVENT,
+
+  async onSucceeded({ op, user }) {
+    const intent = op.intent as DeleteEventIntent;
+    return {
+      replies: [],
+      statements: (db, guard) => [
+        deleteEventStatement(db, user.id, intent.calendarId, intent.eventId, guard),
+      ],
+    };
+  },
 
   async execute({ op, calendar, user }) {
     if (!calendar) return { kind: "auth_required" };
@@ -284,6 +340,77 @@ export function deletePreview(
     text: `Delete event: ${intent.base.summary}\n${formatEventRange(intent.base, user.timezone)}\n\nThis removes it from Google Calendar.`,
     confirmLabel: "Delete",
     facts: { calendarId: intent.calendarId, eventId: intent.eventId, base: intent.base },
+  };
+}
+
+async function overlapsFor(
+  calendar: object,
+  intent: EventContext,
+  written: CalendarEvent,
+): Promise<{ overlaps?: Overlap[] | null }> {
+  const ids = intent.overlapCalendarIds;
+  const { start, end } = written.fields;
+  if (
+    !ids?.length ||
+    !canCheckOverlaps(calendar) ||
+    !("dateTime" in start) ||
+    !("dateTime" in end)
+  ) {
+    return {};
+  }
+  return {
+    overlaps: await findOverlaps(
+      calendar,
+      ids,
+      Date.parse(start.dateTime),
+      Date.parse(end.dateTime),
+      written.id,
+    ),
+  };
+}
+
+/** "Event added: Dinner / Fri 9 Oct 2026, 7–8pm · Personal", plus any overlaps. */
+function writtenNotice(
+  heading: string,
+  result: WriteResult,
+  intent: EventContext,
+  user: UserRecord,
+): string {
+  const where = intent.calendarName ? ` · ${intent.calendarName}` : "";
+  const lines = [
+    `${heading}: ${result.fields.summary}`,
+    `${formatEventRange(result.fields, user.timezone)}${where}`,
+  ];
+  if (result.overlaps === null) {
+    lines.push("", "I couldn't check for overlapping events.");
+  } else if (result.overlaps && result.overlaps.length > 0) {
+    lines.push(
+      "",
+      "Overlaps with:",
+      ...result.overlaps.map((o) => `• ${o.summary}, ${formatEventRange(o, user.timezone)}`),
+    );
+  }
+  return lines.join("\n");
+}
+
+/** Keeps the event cache in step with the bot's own successful writes. */
+async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<Reaction> {
+  const intent = op.intent as { calendarId: string; eventId: string };
+  const written = result as WriteResult;
+  return {
+    replies: [],
+    statements: (db, guard) => [
+      cacheOwnWriteStatement(
+        db,
+        user.id,
+        intent.calendarId,
+        intent.eventId,
+        written.etag,
+        written.fields,
+        now,
+        guard,
+      ),
+    ],
   };
 }
 

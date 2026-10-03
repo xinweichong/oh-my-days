@@ -337,7 +337,8 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 1. Foundation | Implemented, tested locally | Webhook secret, allowlist, private-chat filter, durable deduplicated inbox, per-user serialized processing, outbox with unknown-outcome handling, scheduled recovery and retention (`tests/http`, `tests/jobs`) |
 | 2. Safe operations | Implemented, tested locally with fake Calendar | Operation state machine, leases and guarded batches ([ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md)), confirmations bound to preview hash, reconfirmation on changed targets, bounded retries with one pending notice, reconciliation after lost responses and crashes, field-level conflict detection, version-checked Undo (`tests/application`, `tests/domain`) |
 | 3. Google onboarding | Implemented, tested locally with fake Google; not deployed or tried with a real account | OAuth with PKCE and single-use state, encrypted tokens (AES-GCM bound to user and purpose), scope and identity checks, account-replacement confirmation, interrupted-callback handling, token refresh with one auth alert per outage, calendar list and selection, default and task calendar (create or explicit link), timezone, `/settings`, `/health`, connection pages, homepage and privacy policy (`tests/flows`, `tests/google`, `tests/security`) |
-| 4–10 | Not started | — |
+| 4. First event slice | Implemented, tested locally with fake Google; not yet deployed | Guided `/event` create (title, day, time, length or end time, all-day), rename, move keeping length, confirmed delete; exact results with Undo; overlap check read live from selected calendars (free, declined, and task markers excluded); incremental sync with sync tokens, paging, full rebuild on expired tokens, no deletion from failures or lost access; hourly calendar-list refresh; Force poll with cooldown; `/health` sync status (`tests/flows/events.test.ts`, `tests/jobs/calendar-sync.test.ts`, `tests/domain`) |
+| 5–10 | Not started | — |
 
 Stage 2 decisions to review:
 
@@ -365,3 +366,19 @@ Stage 3 decisions and gaps to review:
 - A "Calendar access wasn't granted" page state was added for users who untick
   Calendar permissions on Google's consent screen.
 - Finished operations are purged after 30 days, as the privacy policy states.
+
+Stage 4 decisions and gaps to review:
+
+- Guided input accepts a small fixed set of date, time, and duration forms
+  (day-first numeric dates); anything else is refused and asked again.
+- New events always use the default calendar; naming another calendar arrives
+  with natural-language input (stage 9) or a later structured option.
+- Events with guests, recurring events, and view-only calendars are shown but
+  not changeable from Telegram (stages 7–8).
+- The event cache stores recurring series masters but lists and overlap checks
+  use one-off events and live windowed reads; recurring instances in views
+  arrive with stage 7. All-day events are not treated as time conflicts.
+- Sync health alerts (three failed checks, recovery) are deferred to stage 8;
+  `/health` already reports failed checks.
+- Same-field conflicts stop with a message; choosing which value to keep from
+  Telegram is still to come.

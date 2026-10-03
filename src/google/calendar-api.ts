@@ -4,8 +4,10 @@ import type {
   CalendarEvent,
   CalendarListEntry,
   CalendarPort,
+  CalendarSyncSource,
   ProviderError,
   ProviderResult,
+  SyncedEvent,
 } from "../calendar/port";
 import type { EventFields, EventTime } from "../domain/calendar-event";
 
@@ -23,6 +25,11 @@ export type AccessTokenSource = (forceRefresh: boolean) => Promise<AccessTokenRe
 
 type Write = "read" | "write";
 
+export type GoogleCalendarApi = CalendarPort & CalendarDirectory & CalendarSyncSource;
+
+/** Events per page; small enough to parse well inside the Worker CPU limit. */
+const EVENT_PAGE_SIZE = "250";
+
 /**
  * Google Calendar v3 adapter. Event writes use client-chosen IDs, ETag
  * preconditions, and sendUpdates=none (attendee notifications are a later,
@@ -31,7 +38,7 @@ type Write = "read" | "write";
 export function createGoogleCalendar(
   tokens: AccessTokenSource,
   fetchImpl: typeof fetch = fetch,
-): CalendarPort & CalendarDirectory {
+): GoogleCalendarApi {
   async function request<T>(
     kind: Write,
     method: string,
@@ -128,6 +135,45 @@ export function createGoogleCalendar(
         entries.push(...result.value.items);
         pageToken = result.value.nextPageToken;
         if (!pageToken) return { ok: true, value: entries };
+      }
+      return fail({ kind: "validation_failed" });
+    },
+
+    async listEventPage(calendarId, cursor) {
+      const query: Record<string, string> = { maxResults: EVENT_PAGE_SIZE, singleEvents: "false" };
+      if (cursor.pageToken) query.pageToken = cursor.pageToken;
+      if (cursor.syncToken) query.syncToken = cursor.syncToken;
+      const path = `/calendars/${encodeURIComponent(calendarId)}/events`;
+      const result = await request("read", "GET", path, toEventPage, { query });
+      if (result.ok) return { ok: true, ...result.value };
+      // 410 Gone: the sync token is no longer valid (mapped to not_found above).
+      if (result.error.kind === "not_found" && cursor.syncToken) return { ok: false, reset: true };
+      return { ok: false, error: result.error };
+    },
+
+    async listWindow(calendarId, timeMin, timeMax) {
+      const items: SyncedEvent[] = [];
+      let pageToken: string | null = null;
+      for (let page = 0; page < MAX_LIST_PAGES; page++) {
+        const query: Record<string, string> = {
+          singleEvents: "true",
+          orderBy: "startTime",
+          maxResults: EVENT_PAGE_SIZE,
+          timeMin: new Date(timeMin).toISOString(),
+          timeMax: new Date(timeMax).toISOString(),
+        };
+        if (pageToken) query.pageToken = pageToken;
+        const result = await request(
+          "read",
+          "GET",
+          `/calendars/${encodeURIComponent(calendarId)}/events`,
+          toEventPage,
+          { query },
+        );
+        if (!result.ok) return result;
+        items.push(...result.value.items);
+        pageToken = result.value.nextPageToken;
+        if (!pageToken) return { ok: true, value: items };
       }
       return fail({ kind: "validation_failed" });
     },
@@ -264,5 +310,40 @@ function toCalendarPage(
   return {
     items,
     nextPageToken: typeof body.nextPageToken === "string" ? body.nextPageToken : undefined,
+  };
+}
+
+function toSyncedEvent(item: unknown): SyncedEvent | null {
+  if (!isObject(item) || typeof item.id !== "string" || typeof item.etag !== "string") return null;
+  const event = toEvent("", item);
+  const status = event?.status ?? (item.status === "cancelled" ? "cancelled" : null);
+  if (!status) return null;
+  const attendees = Array.isArray(item.attendees) ? item.attendees.filter(isObject) : [];
+  const self = attendees.find((a) => a.self === true);
+  const organizer = isObject(item.organizer) ? item.organizer : null;
+  return {
+    id: item.id,
+    etag: item.etag,
+    status,
+    fields: status === "cancelled" || !event ? null : event.fields,
+    recurring: Array.isArray(item.recurrence) && item.recurrence.length > 0,
+    recurringEventId: typeof item.recurringEventId === "string" ? item.recurringEventId : null,
+    transparent: item.transparency === "transparent",
+    declined: self?.responseStatus === "declined",
+    hasGuests: attendees.some((a) => a.self !== true && a.resource !== true),
+    organizerSelf: organizer ? organizer.self === true : true,
+  };
+}
+
+function toEventPage(body: unknown): {
+  items: SyncedEvent[];
+  nextPageToken: string | null;
+  nextSyncToken: string | null;
+} | null {
+  if (!isObject(body) || !Array.isArray(body.items)) return null;
+  return {
+    items: body.items.map(toSyncedEvent).filter((e): e is SyncedEvent => e !== null),
+    nextPageToken: typeof body.nextPageToken === "string" ? body.nextPageToken : null,
+    nextSyncToken: typeof body.nextSyncToken === "string" ? body.nextSyncToken : null,
   };
 }

@@ -97,3 +97,21 @@ function meridiem(date: Date, timeZone: string): "am" | "pm" {
     .find((x) => x.type === "dayPeriod")?.value;
   return p?.toLowerCase() === "pm" ? "pm" : "am";
 }
+
+/** A compact start label for buttons, e.g. "Fri 9 Oct, 7pm" or "Fri 9 Oct (all day)". */
+export function formatShortStart(fields: Pick<EventFields, "start">, timeZone: string): string {
+  if ("date" in fields.start) {
+    return `${parts(new Date(`${fields.start.date}T00:00:00Z`), "UTC", { weekday: "short", day: "numeric", month: "short" })} (all day)`;
+  }
+  const start = new Date(instantOf(fields.start));
+  return `${parts(start, timeZone, { weekday: "short", day: "numeric", month: "short" })}, ${clock(start, timeZone, true)}`;
+}
+
+/** A date label for buttons, e.g. "Sat 3 Oct". */
+export function formatDayLabel(date: string): string {
+  return parts(new Date(`${date}T00:00:00Z`), "UTC", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
