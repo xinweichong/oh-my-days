@@ -1,6 +1,6 @@
-import type { CalendarDirectory, CalendarListEntry, CalendarPort } from "../calendar/port";
+import type { CalendarListEntry } from "../calendar/port";
 import type { AppConfig } from "../env";
-import type { AccessTokenSource } from "../google/calendar-api";
+import type { AccessTokenSource, GoogleCalendarApi } from "../google/calendar-api";
 import {
   type GoogleOAuth,
   pkceChallenge,
@@ -47,7 +47,7 @@ export interface ConnectionDeps {
   oauth: GoogleOAuth;
   cipher: () => Promise<TokenCipher>;
   /** Builds the Calendar adapter for a token source; injected for tests. */
-  calendarApi: (tokens: AccessTokenSource) => CalendarPort & CalendarDirectory;
+  calendarApi: (tokens: AccessTokenSource) => GoogleCalendarApi;
 }
 
 export function redirectUri(config: AppConfig): string {
@@ -451,7 +451,7 @@ export async function reportAuthRequired(
 export async function connectedCalendar(
   deps: ConnectionDeps,
   userId: string,
-): Promise<(CalendarPort & CalendarDirectory) | null> {
+): Promise<GoogleCalendarApi | null> {
   const connection = await findConnection(deps.db, userId);
   if (connection?.status !== "active") return null;
   return deps.calendarApi(accessTokenSource(deps, userId));
