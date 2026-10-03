@@ -2,6 +2,7 @@ import type {
   CalendarEvent,
   CalendarPort,
   CalendarSyncSource,
+  EventExtras,
   EventPageResult,
   ProviderError,
   ProviderResult,
@@ -42,6 +43,8 @@ export class WorkerCrash extends Error {
 export class FakeCalendar implements CalendarPort, CalendarSyncSource {
   readonly events = new Map<string, CalendarEvent>();
   readonly meta = new Map<string, EventMeta>();
+  /** Marker properties written with events (transparency, silence, private data). */
+  readonly extras = new Map<string, EventExtras>();
   /** Version at which each event last changed, for incremental sync. */
   private readonly changedAt = new Map<string, number>();
   /** Bumping the epoch invalidates every issued sync token. */
@@ -195,11 +198,17 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     calendarId: string,
     eventId: string,
     fields: EventFields,
+    extras?: EventExtras,
   ): Promise<ProviderResult<CalendarEvent>> {
     return this.run("insert", () => {
       if (this.readOnlyCalendars.has(calendarId)) return err({ kind: "forbidden" });
       if (this.events.has(key(calendarId, eventId))) return err({ kind: "conflict" });
-      return ok(structuredClone(this.seed(calendarId, eventId, fields)));
+      this.extras.set(key(calendarId, eventId), extras ?? {});
+      return ok(
+        structuredClone(
+          this.seed(calendarId, eventId, fields, { transparent: extras?.transparent ?? false }),
+        ),
+      );
     });
   }
 
@@ -208,12 +217,20 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     eventId: string,
     patch: Partial<EventFields>,
     ifMatchEtag: string,
+    extras?: EventExtras,
   ): Promise<ProviderResult<CalendarEvent>> {
     return this.run("patch", () => {
       if (this.readOnlyCalendars.has(calendarId)) return err({ kind: "forbidden" });
       const event = this.events.get(key(calendarId, eventId));
       if (!event) return err({ kind: "not_found" });
       if (event.etag !== ifMatchEtag) return err({ kind: "conflict" });
+      if (extras) {
+        const k = key(calendarId, eventId);
+        this.extras.set(k, { ...this.extras.get(k), ...extras });
+        if (extras.transparent !== undefined) {
+          this.meta.set(k, { ...this.meta.get(k), transparent: extras.transparent });
+        }
+      }
       this.externalEdit(calendarId, eventId, patch);
       return ok(structuredClone(event));
     });

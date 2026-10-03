@@ -338,7 +338,8 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 2. Safe operations | Implemented, tested locally with fake Calendar | Operation state machine, leases and guarded batches ([ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md)), confirmations bound to preview hash, reconfirmation on changed targets, bounded retries with one pending notice, reconciliation after lost responses and crashes, field-level conflict detection, version-checked Undo (`tests/application`, `tests/domain`) |
 | 3. Google onboarding | Implemented, tested locally with fake Google; not deployed or tried with a real account | OAuth with PKCE and single-use state, encrypted tokens (AES-GCM bound to user and purpose), scope and identity checks, account-replacement confirmation, interrupted-callback handling, token refresh with one auth alert per outage, calendar list and selection, default and task calendar (create or explicit link), timezone, `/settings`, `/health`, connection pages, homepage and privacy policy (`tests/flows`, `tests/google`, `tests/security`) |
 | 4. First event slice | Implemented, tested locally with fake Google; not yet deployed | Guided `/event` create (title, day, time, length or end time, all-day), rename, move keeping length, confirmed delete; exact results with Undo; overlap check read live from selected calendars (free, declined, and task markers excluded); incremental sync with sync tokens, paging, full rebuild on expired tokens, no deletion from failures or lost access; hourly calendar-list refresh; Force poll with cooldown; `/health` sync status (`tests/flows/events.test.ts`, `tests/jobs/calendar-sync.test.ts`, `tests/domain`) |
-| 5–10 | Not started | — |
+| 5. Task/list slice | Implemented, tested locally with fake Google; not yet deployed | Inbox and lists (create, move, delete to Inbox); `/task` guided creation with no, date-only, or exact deadlines; `/tasks` view with list filters; complete, reopen, rename, change or remove deadline, confirmed cancel with Restore; version-bound Undo; deadline markers (`[List] Title`, `✓` when done, free, Google notifications off) projected by operation; Calendar edits to title, list annotation, ✓, deadline, and deletion imported on sync; entries created in the task calendar become tasks; removing a deadline never cancels; same-field conflicts reported (`tests/flows/tasks.test.ts`, `tests/domain/tasks.test.ts`) |
+| 6–10 | Not started | — |
 
 Stage 2 decisions to review:
 
@@ -382,3 +383,17 @@ Stage 4 decisions and gaps to review:
   `/health` already reports failed checks.
 - Same-field conflicts stop with a message; choosing which value to keep from
   Telegram is still to come.
+
+Stage 5 decisions and gaps to review:
+
+- Exact-time deadline markers are zero-length entries at the due time; the
+  owner checked date-only and exact-time markers in Google Calendar on
+  2026-10-03 (validation item 3).
+- Each marker creation uses a fresh ID (the operation ID), because Google keeps
+  deleted event IDs; a restored task gets a new marker.
+- An unknown `[annotation]` on an entry created in the task calendar stays in the
+  title and the task goes to Inbox; no list is created automatically.
+- Undo of creating a task asks to confirm the removal (a cancellation), matching
+  the event Undo decision; other task Undos restore prior values directly.
+- Snooze, reminders, agendas, and overdue views are stage 6; recurring tasks are
+  stage 7.

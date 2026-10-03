@@ -5,6 +5,8 @@ import { type ConnectionDeps, connectedCalendar } from "./application/google-con
 import { type RunnerDeps, runDueOperations } from "./application/operation-runner";
 import { type HandlerRegistry, registry } from "./application/operation-types";
 import { setupPrompt } from "./application/setup";
+import { projectTaskHandler } from "./application/task-projection";
+import { reconcileTaskMarkers } from "./application/task-sync";
 import type { CalendarDirectoryFactory, CalendarPortFactory } from "./calendar/port";
 import { type AppConfig, type Env, readConfig } from "./env";
 import {
@@ -65,7 +67,11 @@ export function createServices(env: Env): Services {
     ids: randomIds,
     random: Math.random,
     telegram: createTelegramClient(config.telegramBotToken),
-    handlers: registry(...eventOperationHandlers, createCalendarHandler(config)),
+    handlers: registry(
+      ...eventOperationHandlers,
+      createCalendarHandler(config),
+      projectTaskHandler,
+    ),
     google: {
       oauth: createGoogleOAuth({
         clientId: config.googleClientId,
@@ -129,6 +135,8 @@ export function syncDeps(s: Services): SyncDeps {
     ids: s.ids,
     random: s.random,
     sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+    reconcile: (userId, calendarId, items, now, guard) =>
+      reconcileTaskMarkers({ db: s.db, ids: s.ids }, userId, calendarId, items, now, guard),
   };
 }
 

@@ -170,6 +170,7 @@ export function privacyPage(contactEmail: string | null): string {
 <li><strong>Google account:</strong> your Google account email and a stable account identifier, the permissions you granted, and access tokens. Tokens are encrypted with a key that is not stored in the database.</li>
 <li><strong>Calendars:</strong> the names, identifiers, and access levels of calendars in your account, which calendars you selected, your default calendar, and the task calendar.</li>
 <li><strong>Events:</strong> a copy of the title, time, and a few properties (such as whether it has guests or is marked free) of events in the calendars you selected, refreshed from Google every few minutes. One-off events that ended more than 30 days ago are not kept, and a calendar's copy is deleted when you deselect it. Event descriptions, locations, and guest lists are not stored.</li>
+<li><strong>Tasks:</strong> your tasks' titles, lists, deadlines, and status, and links to their deadline entries in the task calendar. Completed and cancelled tasks are kept so they can be restored.</li>
 <li><strong>Your requests:</strong> changes you ask for (for example, an event's title and time) are recorded until they have been carried out and for up to 30 days afterwards, so they can be retried safely and undone.</li>
 <li><strong>Settings:</strong> your timezone and similar preferences.</li>
 </ul>

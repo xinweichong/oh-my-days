@@ -84,6 +84,7 @@ export async function runDueOperations(
         calendar: await deps.calendarFor(user.id),
         directory: (await deps.directoryFor?.(user.id)) ?? null,
         now: deps.clock.now(),
+        db: deps.db,
       });
     } catch (error) {
       // An exception may follow a provider write, so the outcome is unknown.

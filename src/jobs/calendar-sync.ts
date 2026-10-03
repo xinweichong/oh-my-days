@@ -31,6 +31,14 @@ export interface SyncDeps {
   random: () => number;
   /** The user's Google Calendar, or null without a usable connection. */
   sourceFor: (userId: string) => Promise<(CalendarSyncSource & CalendarDirectory) | null>;
+  /** Applies application-level meaning to synced items (e.g. task markers). */
+  reconcile?: (
+    userId: string,
+    calendarId: string,
+    items: readonly SyncedEvent[],
+    now: number,
+    guard: Guard,
+  ) => Promise<D1PreparedStatement[]>;
 }
 
 /** How often each user's calendar list (names, access, new calendars) is refreshed. */
@@ -191,6 +199,9 @@ async function syncCalendar(deps: SyncDeps, row: SyncRow, lease: string): Promis
 
     const generation = resync ?? row.generation;
     const statements = applyItems(deps.db, row, result.items, generation, now, guard);
+    statements.push(
+      ...((await deps.reconcile?.(row.user_id, row.calendar_id, result.items, now, guard)) ?? []),
+    );
     const last = result.nextPageToken === null;
 
     if (!last) {
