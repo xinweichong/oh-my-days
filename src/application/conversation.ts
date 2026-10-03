@@ -21,6 +21,14 @@ import {
   settingsView,
   setupPrompt,
 } from "./setup";
+import {
+  handleTaskAction,
+  handleTaskInput,
+  isTaskAction,
+  isTaskInput,
+  taskMenu,
+  tasksCommand,
+} from "./task-flow";
 
 export interface ConversationDeps extends SetupDeps {
   handlers: HandlerRegistry;
@@ -45,6 +53,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
         };
       }
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
+      if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
       return handleUiAction(deps, user, callback, action);
     }
     return operationCallbacks(user, callback);
@@ -62,12 +71,17 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       },
       settings: (user) => settingsView(deps, user),
       event: (user) => eventMenu(deps, user),
+      task: (user) => taskMenu(deps, user),
+      tasks: (user) => tasksCommand(deps, user),
       health: (user) => healthView(deps, user),
     },
     onText: async (user, input) => {
       const pending = await findPendingInput(deps.db, user.id, deps.clock.now());
       if (pending && isEventInput(pending.kind)) {
         return handleEventInput(deps, user, input, pending);
+      }
+      if (pending && isTaskInput(pending.kind)) {
+        return handleTaskInput(deps, user, input, pending);
       }
       if (pending) return handlePendingInput(deps, user, input, pending.kind);
       if (user.setupStep !== "done") {

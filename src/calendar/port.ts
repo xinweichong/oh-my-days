@@ -26,6 +26,16 @@ export interface CalendarEvent {
   fields: EventFields;
 }
 
+/** Properties beyond the editable fields, used for task deadline markers. */
+export interface EventExtras {
+  /** Show as free: deadlines never reserve time. */
+  transparent?: boolean;
+  /** Turn off Google's own notifications (the bot sends reminders). */
+  silent?: boolean;
+  /** Private metadata only this app reads, e.g. the linked task ID. */
+  privateProperties?: Record<string, string>;
+}
+
 /** One user's calendar access. Constructed per user from that user's credentials. */
 export interface CalendarPort {
   getEvent(calendarId: string, eventId: string): Promise<ProviderResult<CalendarEvent>>;
@@ -34,6 +44,7 @@ export interface CalendarPort {
     calendarId: string,
     eventId: string,
     fields: EventFields,
+    extras?: EventExtras,
   ): Promise<ProviderResult<CalendarEvent>>;
   /** Writes only the given fields, and only if the event still has `ifMatchEtag`. */
   patchEvent(
@@ -41,6 +52,7 @@ export interface CalendarPort {
     eventId: string,
     patch: Partial<EventFields>,
     ifMatchEtag: string,
+    extras?: EventExtras,
   ): Promise<ProviderResult<CalendarEvent>>;
   deleteEvent(
     calendarId: string,

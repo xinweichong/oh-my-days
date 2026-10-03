@@ -38,6 +38,8 @@ export interface ExecutionContext {
   calendar: CalendarPort | null;
   directory: CalendarDirectory | null;
   now: number;
+  /** Read access for handlers whose input is application state (e.g. tasks). */
+  db: D1Database;
 }
 
 export interface SucceededContext {

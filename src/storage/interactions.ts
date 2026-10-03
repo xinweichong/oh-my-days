@@ -55,6 +55,11 @@ export const PENDING_INPUT_KINDS = [
   "event_time",
   "event_duration",
   "event_rename",
+  "task_title",
+  "task_due_date",
+  "task_due_time",
+  "task_rename",
+  "list_name",
 ] as const;
 
 export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];

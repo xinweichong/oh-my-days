@@ -68,11 +68,12 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   }
 
   const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
-  const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
-
+  // Sync before delivery, so messages it produces (e.g. conflicts) go out now.
   await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
   await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
+
+  const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
 
   // Maintenance: keep Telegram's command menu in step with the deployed code.
   await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
