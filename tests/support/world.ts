@@ -132,3 +132,40 @@ export class World {
 }
 
 export const OWNER_ACCOUNT = { subject: "google-sub-owner", email: "owner@example.com" };
+
+export const PRIMARY = {
+  calendarId: "owner@example.com",
+  summary: "owner@example.com",
+  accessRole: "owner" as const,
+  primary: true,
+};
+
+/** Connects the owner's Google account and completes setup with the given calendars. */
+export async function setUpOwner(
+  world: World,
+  calendars: {
+    calendarId: string;
+    summary: string;
+    accessRole: "owner" | "writer" | "reader";
+    primary: boolean;
+  }[] = [PRIMARY],
+  select: string[] = [],
+): Promise<void> {
+  world.google.account(OWNER_ACCOUNT.subject, OWNER_ACCOUNT.email, calendars);
+  await world.send("/start");
+  const url = await world.press("Connect Google Calendar");
+  if (!url) throw new Error("expected a connect link");
+  await world.authorize(url, OWNER_ACCOUNT);
+  for (const label of select) await world.press(label);
+  await world.press("Done");
+  await world.press(PRIMARY.summary);
+  await world.press("Create calendar");
+  await world.press("Keep Asia/Singapore");
+  await world.tick(); // start tracking and first sync
+}
+
+export function ownerCalendar(world: World) {
+  const account = world.google.accounts.get(OWNER_ACCOUNT.subject);
+  if (!account) throw new Error("owner account missing");
+  return account.events;
+}

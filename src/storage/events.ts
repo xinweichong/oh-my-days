@@ -187,3 +187,48 @@ export async function listCachedEvents(
     .all<CachedRow>();
   return results.map(toCached);
 }
+
+/**
+ * Records the result of the bot's own successful write so views reflect it
+ * before the next sync. Only tracked calendars are cached; attributes the bot
+ * does not change (guests, transparency) are preserved on update.
+ */
+export function cacheOwnWriteStatement(
+  db: D1Database,
+  userId: string,
+  calendarId: string,
+  eventId: string,
+  etag: string,
+  fields: EventFields,
+  now: number,
+  guard: Guard,
+): D1PreparedStatement {
+  const [startsAt, endsAt, startDate, endDate] = timeColumns(fields);
+  return db
+    .prepare(
+      `INSERT INTO event_cache (user_id, calendar_id, event_id, etag, summary, start_json, end_json,
+         starts_at, ends_at, start_date, end_date, generation, updated_at)
+       SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, s.generation, ?12
+       FROM calendar_sync s WHERE s.user_id = ?1 AND s.calendar_id = ?2 AND ${guard.sql}
+       ON CONFLICT (user_id, calendar_id, event_id) DO UPDATE SET
+         etag = excluded.etag, summary = excluded.summary, start_json = excluded.start_json,
+         end_json = excluded.end_json, starts_at = excluded.starts_at, ends_at = excluded.ends_at,
+         start_date = excluded.start_date, end_date = excluded.end_date,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      userId,
+      calendarId,
+      eventId,
+      etag,
+      fields.summary,
+      JSON.stringify(fields.start),
+      JSON.stringify(fields.end),
+      startsAt,
+      endsAt,
+      startDate,
+      endDate,
+      now,
+      ...guard.params,
+    );
+}

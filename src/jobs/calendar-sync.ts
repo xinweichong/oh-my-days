@@ -304,7 +304,7 @@ export async function requestForcePoll(
       running: number;
       calendars: number;
     }>();
-  if (!state || state.connection !== "active" || state.calendars === 0) return "not_connected";
+  if (state?.connection !== "active" || state.calendars === 0) return "not_connected";
   if (state.running > 0) return "running";
   if (state.force_poll_at !== null && now - state.force_poll_at < FORCE_POLL_COOLDOWN_MS) {
     return "cooldown";

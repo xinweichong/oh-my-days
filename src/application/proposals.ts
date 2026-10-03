@@ -39,7 +39,8 @@ export function callbackData(token: string): string {
 }
 
 export function parseCallbackData(data: string | null): string | null {
-  const match = /^o:([0-9a-v]{1,32})$/.exec(data ?? "");
+  // Tokens are opaque; the server-side lookup (owner, expiry, use) is the check.
+  const match = /^o:([0-9a-z]{1,40})$/.exec(data ?? "");
   return match?.[1] ?? null;
 }
 

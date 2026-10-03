@@ -1,5 +1,6 @@
 import { isWritable } from "../calendar/port";
 import type { AppConfig } from "../env";
+import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import {
@@ -21,13 +22,15 @@ import {
   setUserCalendarStatement,
   type UserRecord,
 } from "../storage/users";
-import type { InlineKeyboardButton, InlineKeyboardMarkup, TelegramCall } from "../telegram/api";
+import type { InlineKeyboardButton, InlineKeyboardMarkup } from "../telegram/api";
+import { formatShortStart } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
 import { connectMessage } from "./google-connection";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { answer, keyboardMessage, removeButtons } from "./ui";
 
 export const TASK_CALENDAR_NAME = "Tasks - Oh My Days";
 export const PENDING_INPUT_TTL_MS = 10 * 60_000;
@@ -282,6 +285,7 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     .prepare("SELECT COUNT(*) AS n FROM telegram_outbox WHERE user_id = ? AND status = 'unknown'")
     .bind(user.id)
     .first<{ n: number }>();
+  const sync = await syncSummary(deps.db, user.id);
 
   const status = !connection
     ? "Not connected"
@@ -290,21 +294,54 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
       : `Reconnection needed (${connection.email})`;
   const lines = [
     `Google Calendar: ${status}`,
-    "Last successful sync: calendar sync isn't available yet.",
-    `Pending calendar changes: ${count("ready", "retry_wait", "applying", "auth_required")}`,
+    `Last successful sync: ${describeSync(sync, deps.clock.now(), user.timezone)}`,
   ];
+  if (sync.failingCalendars > 0) {
+    lines.push(
+      `Failed checks: ${sync.maxConsecutiveFailures} in a row (${describeError(sync.lastErrorClass)})`,
+    );
+  }
+  lines.push(
+    `Pending calendar changes: ${count("ready", "retry_wait", "applying", "auth_required")}`,
+  );
   const attention = count("needs_resolution");
   if (attention > 0) lines.push(`Changes needing your attention: ${attention}`);
   if ((unknown?.n ?? 0) > 0) lines.push(`Messages that may not have arrived: ${unknown?.n}`);
 
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const keyboard: InlineKeyboardMarkup = {
-    inline_keyboard: [[buttons.button(connection ? "Reauthorize" : "Connect", "reconnect", {})]],
-  };
+  const row = [buttons.button(connection ? "Reauthorize" : "Connect", "reconnect", {})];
+  if (connection?.status === "active" && sync.calendars > 0) {
+    row.unshift(buttons.button("Force poll", "force_poll", {}));
+  }
   return {
-    replies: [keyboardMessage(user, `Health\n\n${lines.join("\n")}`, keyboard, null)],
+    replies: [
+      keyboardMessage(user, `Health\n\n${lines.join("\n")}`, { inline_keyboard: [row] }, null),
+    ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+function describeSync(sync: SyncSummary, now: number, timeZone: string): string {
+  if (sync.calendars === 0) return "not started (finish setup first)";
+  if (sync.lastSuccessAt === null) return "in progress";
+  const minutes = Math.floor((now - sync.lastSuccessAt) / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  return `${formatShortStart({ start: { dateTime: new Date(sync.lastSuccessAt).toISOString(), timeZone } }, timeZone)}`;
+}
+
+function describeError(errorClass: string | null): string {
+  switch (errorClass) {
+    case "retryable":
+      return "Google Calendar was unavailable";
+    case "forbidden":
+    case "not_found":
+      return "a calendar is no longer accessible";
+    case "auth_required":
+      return "reconnection needed";
+    default:
+      return "an unexpected response";
+  }
 }
 
 // --- Button actions ----------------------------------------------------------
@@ -448,6 +485,17 @@ export async function handleUiAction(
       return combine(ack(), await defaultPicker(deps, user, "settings"));
     case "open_timezone":
       return combine(ack(), timezonePrompt(deps, user, "settings"));
+
+    case "force_poll": {
+      const result = await requestForcePoll(deps.db, user.id, now);
+      const text = {
+        accepted: "Checking Google Calendar now. Send /health in a minute to see the result.",
+        running: "A check is already running.",
+        cooldown: "Google Calendar was checked moments ago. Try again in a minute.",
+        not_connected: "Google Calendar isn't connected.",
+      }[result];
+      return ack(text);
+    }
 
     case "reconnect": {
       const connection = await findConnection(deps.db, user.id);
@@ -597,52 +645,4 @@ export async function calendarCreated(
   const changes =
     purpose === "default" ? { defaultCalendarId: calendarId } : { taskCalendarId: calendarId };
   return combine(update, await advance(deps, user, step, changes));
-}
-
-// --- Helpers -----------------------------------------------------------------
-
-function keyboardMessage(
-  user: UserRecord,
-  text: string,
-  keyboard: InlineKeyboardMarkup,
-  editMessageId: number | null,
-): TelegramCall {
-  if (editMessageId !== null) {
-    return {
-      method: "editMessageText",
-      params: {
-        chat_id: user.privateChatId,
-        message_id: editMessageId,
-        text,
-        reply_markup: keyboard,
-      },
-    };
-  }
-  return {
-    method: "sendMessage",
-    params: { chat_id: user.privateChatId, text, reply_markup: keyboard },
-  };
-}
-
-function answer(callback: InboundCallback, text?: string): Reaction {
-  return {
-    replies: [
-      {
-        method: "answerCallbackQuery",
-        params: { callback_query_id: callback.callbackQueryId, ...(text ? { text } : {}) },
-      },
-    ],
-  };
-}
-
-function removeButtons(user: UserRecord, callback: InboundCallback): Reaction {
-  if (callback.messageId === null) return { replies: [] };
-  return {
-    replies: [
-      {
-        method: "editMessageReplyMarkup",
-        params: { chat_id: user.privateChatId, message_id: callback.messageId },
-      },
-    ],
-  };
 }
