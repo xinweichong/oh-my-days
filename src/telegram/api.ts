@@ -50,3 +50,17 @@ export type TelegramMethod = TelegramCall["method"];
 export function isReplaySafe(method: TelegramMethod): boolean {
   return method !== "sendMessage";
 }
+
+/**
+ * Bot-level configuration calls, made directly by the scheduled job rather than
+ * through the per-user outbox.
+ */
+export type TelegramAdminCall =
+  | {
+      method: "setMyCommands";
+      params: {
+        commands: { command: string; description: string }[];
+        scope: { type: "all_private_chats" };
+      };
+    }
+  | { method: "setChatMenuButton"; params: { menu_button: { type: "commands" } } };
