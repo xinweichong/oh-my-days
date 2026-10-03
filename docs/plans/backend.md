@@ -386,8 +386,9 @@ Stage 4 decisions and gaps to review:
 
 Stage 5 decisions and gaps to review:
 
-- Exact-time deadline markers are zero-length entries at the due time; to be
-  confirmed on the owner's calendar (validation item 3).
+- Exact-time deadline markers are zero-length entries at the due time; the
+  owner checked date-only and exact-time markers in Google Calendar on
+  2026-10-03 (validation item 3).
 - Each marker creation uses a fresh ID (the operation ID), because Google keeps
   deleted event IDs; a restored task gets a new marker.
 - An unknown `[annotation]` on an entry created in the task calendar stays in the
