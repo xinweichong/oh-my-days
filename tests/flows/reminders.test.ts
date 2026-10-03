@@ -40,8 +40,9 @@ async function addTask(world: World, title: string, day: string | null, time: st
   await world.send(title);
   if (day === null) return world.press("No deadline");
   await world.press(day);
-  if (time === null) return world.press("Any time that day");
-  return world.send(time);
+  if (time === null) await world.press("Any time that day");
+  else await world.send(time);
+  return world.noRepeat();
 }
 
 function agendas(world: World): string[] {
@@ -263,6 +264,7 @@ describe("reminders", () => {
     await world.press("Today · Fri 25 Sep");
     await world.send("10am");
     await world.press("30 min");
+    await world.noRepeat();
     await addTask(world, "Reply to Sam", "Today · Fri 25 Sep", "10:15");
     await until(world, sgt(25, 9, 45));
     await until(world, sgt(25, 9, 55));

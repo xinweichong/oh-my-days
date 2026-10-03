@@ -252,6 +252,7 @@ function toGoogleExtras(extras: EventExtras | undefined): Record<string, unknown
     out.transparency = extras.transparent ? "transparent" : "opaque";
   if (extras.silent) out.reminders = { useDefault: false, overrides: [] };
   if (extras.privateProperties) out.extendedProperties = { private: extras.privateProperties };
+  if (extras.recurrence) out.recurrence = extras.recurrence;
   return out;
 }
 
@@ -283,11 +284,15 @@ export function toEvent(calendarId: string, body: unknown): CalendarEvent | null
   // Cancelled instances can omit times; they are only checked for liveness.
   if ((!start || !end) && status !== "cancelled") return null;
   const fallback: EventTime = { date: "1970-01-01" };
+  const attendees = Array.isArray(body.attendees) ? body.attendees.filter(isObject) : [];
   return {
     calendarId,
     id: body.id,
     etag: body.etag,
     status,
+    recurringEventId: typeof body.recurringEventId === "string" ? body.recurringEventId : null,
+    recurring: Array.isArray(body.recurrence) && body.recurrence.length > 0,
+    hasGuests: attendees.some((a) => a.self !== true && a.resource !== true),
     fields: {
       summary: typeof body.summary === "string" ? body.summary : "",
       start: start ?? fallback,

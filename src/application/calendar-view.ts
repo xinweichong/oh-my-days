@@ -1,4 +1,4 @@
-import type { CalendarSyncSource } from "../calendar/port";
+import type { CalendarPort, CalendarSyncSource } from "../calendar/port";
 import type { EventFields } from "../domain/calendar-event";
 import { isDueOn, isOverdue } from "../domain/schedule";
 import { addDays, type LocalDate, localDateAt, zonedInstant } from "../domain/time";
@@ -27,7 +27,9 @@ export interface RangeEvents {
   live: boolean;
 }
 
-export type SourceFor = (userId: string) => Promise<CalendarSyncSource | null>;
+export type SourceFor = (
+  userId: string,
+) => Promise<(CalendarSyncSource & Pick<CalendarPort, "getEvent">) | null>;
 
 export interface ViewDeps {
   db: D1Database;
@@ -200,6 +202,35 @@ export function taskLine(task: TaskRecord, timeZone: string, withDate: boolean):
   return `• ${name}`;
 }
 
+/**
+ * Overdue lines, with several overdue occurrences of one recurring task grouped
+ * into a single line (spec §6). Occurrence-specific actions remain in /overdue.
+ */
+export function overdueLines(tasks: TaskRecord[], timeZone: string): string[] {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  for (const task of tasks) {
+    if (!task.seriesId) {
+      lines.push(taskLine(task, timeZone, true));
+      continue;
+    }
+    if (seen.has(task.seriesId)) continue;
+    seen.add(task.seriesId);
+    const group = tasks.filter((t) => t.seriesId === task.seriesId);
+    if (group.length === 1) {
+      lines.push(taskLine(task, timeZone, true));
+      continue;
+    }
+    const dates = group.map((t) =>
+      formatDayLabel(t.deadline.kind === "date" ? t.deadline.date : (t.occurrenceDate ?? "")),
+    );
+    lines.push(
+      `• [${task.listName}] ${task.title} · ${group.length} overdue (due ${dates.join(", ")})`,
+    );
+  }
+  return lines;
+}
+
 function calendarNames(calendars: StoredCalendar[]): (id: string) => string | null {
   if (calendars.length <= 1) return () => null;
   return (id) => calendars.find((c) => c.calendarId === id)?.summary ?? null;
@@ -238,7 +269,7 @@ export async function renderDay(
       tasks.overdue.length === 1
         ? "1 task is overdue"
         : `${tasks.overdue.length} tasks are overdue`,
-      ...capped(tasks.overdue.map((t) => taskLine(t, user.timezone, true))),
+      ...capped(overdueLines(tasks.overdue, user.timezone)),
     );
   }
   if (tasks.openEnded > 0) {
