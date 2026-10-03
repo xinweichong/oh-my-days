@@ -7,7 +7,7 @@ import {
   finishUpdateStatement,
   inboxLeaseGuard,
 } from "../storage/inbox";
-import { enqueueStatement } from "../storage/outbox";
+import { enqueueStatement, rememberItemStatement } from "../storage/outbox";
 import { findUserById, type UserRecord } from "../storage/users";
 import type { TelegramCall } from "../telegram/api";
 import { PROCESSING_FAILED } from "../telegram/messages";
@@ -83,11 +83,16 @@ async function commit(
         deps.db,
         deps.ids,
         user.id,
-        { logicalKey: `inbox:${claim.updateId}:${index}`, call },
+        {
+          logicalKey: `inbox:${claim.updateId}:${index}`,
+          call,
+          ...(result.about && call.method === "sendMessage" ? { about: result.about } : {}),
+        },
         now,
         guard,
       ),
     ),
+    ...(result.about ? [rememberItemStatement(deps.db, user.id, result.about, now, guard)] : []),
     finishUpdateStatement(deps.db, claim, status, now),
   ];
   const results = await deps.db.batch(statements);

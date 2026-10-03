@@ -23,6 +23,7 @@ import { type DeliveryDeps, deliverDue } from "./delivery";
 import { refreshHorizons } from "./horizon";
 import { type InboxDeps, processUserInbox } from "./inbox";
 import { type ReminderDeps, runReminders } from "./reminders";
+import { evaluateSyncHealth } from "./sync-health";
 
 /**
  * Bounds per scheduled invocation. Telegram sends are external subrequests, and
@@ -84,6 +85,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
   await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
+  await evaluateSyncHealth(deps.reminders);
 
   // Reminders and agendas come before delivery so they go out in this tick.
   await refreshHorizons(deps.reminders, TICK_LIMITS.horizons);

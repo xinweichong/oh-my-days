@@ -13,6 +13,8 @@ export interface CachedEvent {
   declined: boolean;
   hasGuests: boolean;
   organizerSelf: boolean;
+  /** Guest addresses, when read live from Google (not kept in the cache). */
+  attendees?: string[];
 }
 
 interface CachedRow {

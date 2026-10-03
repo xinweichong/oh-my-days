@@ -307,6 +307,17 @@ async function sendReminders(deps: ReminderDeps, user: UserRecord): Promise<numb
       user.id,
       {
         logicalKey: `reminder:${keep.map((k) => k.key).join("|")}`.slice(0, 500),
+        ...(single?.event
+          ? {
+              about: {
+                kind: "event" as const,
+                calendarId: single.event.calendarId,
+                eventId: single.event.eventId,
+              },
+            }
+          : single?.task
+            ? { about: { kind: "task" as const, taskId: single.task.id } }
+            : {}),
         call: {
           method: "sendMessage",
           params: {

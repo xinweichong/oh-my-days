@@ -24,6 +24,7 @@ import {
   updateTaskStatement,
 } from "../storage/tasks";
 import { findUserById, type UserRecord } from "../storage/users";
+import { ActionButtons } from "./reactions";
 import { projectTaskStatement } from "./task-projection";
 
 export interface TaskSyncDeps {
@@ -250,7 +251,9 @@ function markerEdited(
     );
   }
   const link = task.projection;
-  if (link) {
+  // While a conflict waits for the user, the last projected values stay the
+  // base, so the pending Telegram change cannot overwrite the Calendar edit.
+  if (link && conflicts.length === 0) {
     statements.push(
       setProjectionStatement(
         deps.db,
@@ -275,18 +278,39 @@ function markerEdited(
     );
   }
   if (conflicts.length > 0) {
+    const buttons = new ActionButtons(deps.ids, user.id, now);
+    const marker = { etag: item.etag, fields };
+    const keyboard = {
+      inline_keyboard: [
+        [
+          buttons.button("Keep Calendar version", "conflict_task_theirs", {
+            taskId: task.id,
+            version: task.version,
+            marker,
+          }),
+          buttons.button("Use my change", "conflict_task_mine", {
+            taskId: task.id,
+            version: task.version,
+            marker,
+          }),
+        ],
+      ],
+    };
     statements.push(
+      ...buttons.statements(deps.db, guard),
       enqueueStatement(
         deps.db,
         deps.ids,
         user.id,
         {
           logicalKey: `task-conflict:${task.id}:${item.etag}`,
+          about: { kind: "task", taskId: task.id },
           call: {
             method: "sendMessage",
             params: {
               chat_id: user.privateChatId,
-              text: `${task.title} changed in Calendar while your change was pending. Nothing was overwritten.`,
+              text: `${task.title} changed in Calendar to "${fields.summary}" while your change was pending. Nothing was overwritten. Which should I keep?`,
+              reply_markup: keyboard,
             },
           },
         },

@@ -113,14 +113,14 @@ export function createGoogleCalendar(
         {
           body: { ...toGoogleFields(patch), ...toGoogleExtras(extras) },
           ifMatch: ifMatchEtag,
-          query: { sendUpdates: "none" },
+          query: { sendUpdates: extras?.notifyGuests ? "all" : "none" },
         },
       );
     },
-    deleteEvent(calendarId, eventId, ifMatchEtag) {
+    deleteEvent(calendarId, eventId, ifMatchEtag, extras) {
       return request("write", "DELETE", eventPath(calendarId, eventId), () => null as null, {
         ifMatch: ifMatchEtag,
-        query: { sendUpdates: "none" },
+        query: { sendUpdates: extras?.notifyGuests ? "all" : "none" },
       }).then((r) => (r.ok ? { ok: true as const, value: null } : r));
     },
 
@@ -253,6 +253,7 @@ function toGoogleExtras(extras: EventExtras | undefined): Record<string, unknown
   if (extras.silent) out.reminders = { useDefault: false, overrides: [] };
   if (extras.privateProperties) out.extendedProperties = { private: extras.privateProperties };
   if (extras.recurrence) out.recurrence = extras.recurrence;
+  if (extras.attendees) out.attendees = extras.attendees.map((email) => ({ email }));
   return out;
 }
 
@@ -293,6 +294,10 @@ export function toEvent(calendarId: string, body: unknown): CalendarEvent | null
     recurringEventId: typeof body.recurringEventId === "string" ? body.recurringEventId : null,
     recurring: Array.isArray(body.recurrence) && body.recurrence.length > 0,
     hasGuests: attendees.some((a) => a.self !== true && a.resource !== true),
+    attendees: attendees
+      .filter((a) => a.self !== true && a.resource !== true && typeof a.email === "string")
+      .map((a) => a.email as string),
+    organizerSelf: isObject(body.organizer) ? body.organizer.self === true : true,
     fields: {
       summary: typeof body.summary === "string" ? body.summary : "",
       start: start ?? fallback,

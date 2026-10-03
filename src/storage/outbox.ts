@@ -2,10 +2,16 @@ import type { IdGenerator } from "../shared/ids";
 import { isReplaySafe, type TelegramCall, type TelegramMethod } from "../telegram/api";
 import type { Guard } from "./guard";
 
+/** The item a message is about; a reply to that message targets it. */
+export type ItemRef =
+  | { kind: "event"; calendarId: string; eventId: string }
+  | { kind: "task"; taskId: string };
+
 export interface OutboundMessage {
   /** Unique per user. Re-enqueueing the same key is a no-op. */
   logicalKey: string;
   call: TelegramCall;
+  about?: ItemRef;
 }
 
 export interface ClaimedDelivery {
@@ -27,8 +33,8 @@ export function enqueueStatement(
   return db
     .prepare(
       `INSERT INTO telegram_outbox
-         (id, user_id, logical_key, method, payload, status, due_at, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, 'pending', ?, ?, ? WHERE ${guard.sql}
+         (id, user_id, logical_key, method, payload, status, due_at, target, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ? WHERE ${guard.sql}
        ON CONFLICT (user_id, logical_key) DO NOTHING`,
     )
     .bind(
@@ -38,10 +44,40 @@ export function enqueueStatement(
       message.call.method,
       JSON.stringify(message.call.params),
       now,
+      message.about ? JSON.stringify(message.about) : null,
       now,
       now,
       ...guard.params,
     );
+}
+
+/** The item a sent message (by Telegram message ID) is about, for this user only. */
+export async function itemForReply(
+  db: D1Database,
+  userId: string,
+  providerMessageId: number,
+): Promise<ItemRef | null> {
+  const row = await db
+    .prepare(
+      `SELECT target FROM telegram_outbox
+       WHERE user_id = ? AND provider_message_id = ? AND target IS NOT NULL LIMIT 1`,
+    )
+    .bind(userId, providerMessageId)
+    .first<{ target: string }>();
+  return row ? (JSON.parse(row.target) as ItemRef) : null;
+}
+
+/** Remembers the item most recently discussed with the user. */
+export function rememberItemStatement(
+  db: D1Database,
+  userId: string,
+  item: ItemRef,
+  now: number,
+  guard: Guard,
+): D1PreparedStatement {
+  return db
+    .prepare(`UPDATE users SET last_item = ?, last_item_at = ? WHERE id = ? AND ${guard.sql}`)
+    .bind(JSON.stringify(item), now, userId, ...guard.params);
 }
 
 /**

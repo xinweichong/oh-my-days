@@ -62,6 +62,8 @@ export const PENDING_INPUT_KINDS = [
   "list_name",
   "task_snooze",
   "series_rename",
+  "event_invite",
+  "event_contact_email",
 ] as const;
 
 export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];

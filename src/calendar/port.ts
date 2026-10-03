@@ -30,6 +30,10 @@ export interface CalendarEvent {
   recurring?: boolean;
   /** Has attendees besides the user; changing it could notify them. */
   hasGuests?: boolean;
+  /** Guest email addresses (excluding the user and resources). */
+  attendees?: string[];
+  /** The user organizes it; only the organizer can send updates to guests. */
+  organizerSelf?: boolean;
 }
 
 /** Properties beyond the editable fields, used for task deadline markers. */
@@ -42,6 +46,10 @@ export interface EventExtras {
   privateProperties?: Record<string, string>;
   /** RFC 5545 rules for a recurring event, e.g. ["RRULE:FREQ=WEEKLY"]. */
   recurrence?: string[];
+  /** Replace the guest list with these addresses (callers merge with existing guests). */
+  attendees?: string[];
+  /** Have Google email guests about this change (only after user confirmation). */
+  notifyGuests?: boolean;
 }
 
 /** One user's calendar access. Constructed per user from that user's credentials. */
@@ -66,6 +74,7 @@ export interface CalendarPort {
     calendarId: string,
     eventId: string,
     ifMatchEtag: string,
+    extras?: Pick<EventExtras, "notifyGuests">,
   ): Promise<ProviderResult<null>>;
 }
 
