@@ -24,6 +24,12 @@ export interface CalendarEvent {
   etag: string;
   status: "confirmed" | "tentative" | "cancelled";
   fields: EventFields;
+  /** Set on an occurrence of a recurring series: the series (master) ID. */
+  recurringEventId?: string | null;
+  /** A series master (has recurrence rules). */
+  recurring?: boolean;
+  /** Has attendees besides the user; changing it could notify them. */
+  hasGuests?: boolean;
 }
 
 /** Properties beyond the editable fields, used for task deadline markers. */
@@ -34,6 +40,8 @@ export interface EventExtras {
   silent?: boolean;
   /** Private metadata only this app reads, e.g. the linked task ID. */
   privateProperties?: Record<string, string>;
+  /** RFC 5545 rules for a recurring event, e.g. ["RRULE:FREQ=WEEKLY"]. */
+  recurrence?: string[];
 }
 
 /** One user's calendar access. Constructed per user from that user's credentials. */

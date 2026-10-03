@@ -38,9 +38,14 @@ export interface CreateEventIntent extends EventContext {
   /** Client-chosen provider ID: a repeated create finds the first one. */
   eventId: string;
   fields: EventFields;
+  /** For a recurring event: its rules and the interpreted schedule shown to the user. */
+  recurrence?: string[];
+  repeatLabel?: string;
 }
 
 export interface PatchEventIntent extends EventContext {
+  /** "series" when the change applies to every occurrence (confirmed first). */
+  scope?: "series";
   calendarId: string;
   eventId: string;
   /** The event title as shown when the change was requested, for messages. */
@@ -53,6 +58,8 @@ export interface PatchEventIntent extends EventContext {
 }
 
 export interface DeleteEventIntent {
+  /** "series" when deleting every occurrence of a recurring event. */
+  scope?: "series";
   calendarId: string;
   eventId: string;
   /** The event as previewed; a different current event requires a new confirmation. */
@@ -113,7 +120,12 @@ export const createEventHandler: OperationHandler = {
   async execute({ op, calendar }) {
     if (!calendar) return { kind: "auth_required" };
     const intent = op.intent as CreateEventIntent;
-    const inserted = await calendar.insertEvent(intent.calendarId, intent.eventId, intent.fields);
+    const inserted = await calendar.insertEvent(
+      intent.calendarId,
+      intent.eventId,
+      intent.fields,
+      intent.recurrence ? { recurrence: intent.recurrence } : undefined,
+    );
     let written: CalendarEvent;
     if (inserted.ok) {
       written = inserted.value;
@@ -139,7 +151,10 @@ export const createEventHandler: OperationHandler = {
     const title = intent.fields.summary;
     switch (event.kind) {
       case "succeeded":
-        return writtenNotice("Event added", event.result as CreateResult, intent, user);
+        return withRepeat(
+          writtenNotice("Event added", event.result as CreateResult, intent, user),
+          intent,
+        );
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that ${title} was added to Google Calendar. I'll check again automatically.`
@@ -223,7 +238,7 @@ export const patchEventHandler: OperationHandler = {
     switch (event.kind) {
       case "succeeded":
         return writtenNotice(
-          intent.undo ? "Undone" : "Event updated",
+          intent.undo ? "Undone" : intent.scope === "series" ? "Series updated" : "Event updated",
           event.result as PatchResult,
           intent,
           user,
@@ -313,9 +328,9 @@ export const deleteEventHandler: OperationHandler = {
     const title = intent.base.summary;
     switch (event.kind) {
       case "succeeded":
-        return intent.undo
-          ? `Undone: ${title} was removed from Google Calendar.`
-          : `Event deleted: ${title}\n${formatEventRange(intent.base, user.timezone)}`;
+        if (intent.undo) return `Undone: ${title} was removed from Google Calendar.`;
+        if (intent.scope === "series") return `Deleted every occurrence of ${title}.`;
+        return `Event deleted: ${title}\n${formatEventRange(intent.base, user.timezone)}`;
       case "needs_reconfirmation":
         return `${title} changed since you asked to delete it.\n\n${event.preview.text}`;
       case "pending":
@@ -338,6 +353,18 @@ export function deletePreview(
   intent: DeleteEventIntent,
   user: UserRecord,
 ): { text: string; confirmLabel: string; facts: unknown } {
+  if (intent.scope === "series") {
+    return {
+      text: `Delete every occurrence of ${intent.base.summary}?\n\nThis removes the whole recurring series from Google Calendar.`,
+      confirmLabel: "Delete series",
+      facts: {
+        calendarId: intent.calendarId,
+        eventId: intent.eventId,
+        base: intent.base,
+        scope: "series",
+      },
+    };
+  }
   return {
     text: `Delete event: ${intent.base.summary}\n${formatEventRange(intent.base, user.timezone)}\n\nThis removes it from Google Calendar.`,
     confirmLabel: "Delete",
@@ -393,6 +420,12 @@ function writtenNotice(
     );
   }
   return lines.join("\n");
+}
+
+function withRepeat(text: string, intent: CreateEventIntent): string {
+  if (!intent.repeatLabel) return text;
+  const [first, second, ...rest] = text.split("\n");
+  return [first, second, `Repeats: ${intent.repeatLabel}`, ...rest].join("\n");
 }
 
 /** Keeps the event cache in step with the bot's own successful writes. */

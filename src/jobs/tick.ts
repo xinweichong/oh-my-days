@@ -1,4 +1,5 @@
 import { type RunnerDeps, runDueOperations } from "../application/operation-runner";
+import { materializeSeries } from "../application/series";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
@@ -35,6 +36,7 @@ export const TICK_LIMITS = {
   calendars: 4,
   calendarLists: 2,
   horizons: 2,
+  series: 5,
   reminderUsers: 20,
   deliveries: 20,
   purgeRows: 500,
@@ -75,6 +77,9 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   }
 
   const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
+  // New occurrences are created before reminders and agendas look at tasks.
+  await materializeSeries(deps.reminders, TICK_LIMITS.series);
+
   // Sync before delivery, so messages it produces (e.g. conflicts) go out now.
   await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);

@@ -1,7 +1,15 @@
 import { parseLocalDate, parseWallTime } from "../domain/parse-input";
+import { describeRecurrence, type Frequency } from "../domain/recurrence";
 import { DEFAULT_TASK_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
-import { addDays, type LocalDate, localDateAt, rfc3339, zonedInstant } from "../domain/time";
+import {
+  addDays,
+  type LocalDate,
+  localDateAt,
+  rfc3339,
+  wallPartsAt,
+  zonedInstant,
+} from "../domain/time";
 import type { Guard } from "../storage/guard";
 import {
   clearPendingInputStatement,
@@ -11,6 +19,12 @@ import {
   type UiAction,
 } from "../storage/interactions";
 import { claimReminderStatement } from "../storage/reminders";
+import {
+  findSeries,
+  insertSeriesStatement,
+  type SeriesRecord,
+  updateSeriesStatement,
+} from "../storage/series";
 import {
   deleteListStatements,
   ensureInboxStatement,
@@ -29,6 +43,7 @@ import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatShortStart } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { recurrenceOf } from "./series";
 import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
 import { projectTaskStatement } from "./task-projection";
 import { answer, keyboardMessage, removeButtons } from "./ui";
@@ -194,7 +209,11 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
   if (!task) return message(user.privateChatId, "I can't find that task anymore.");
   const status =
     task.status === "completed" ? "\nCompleted" : task.status === "cancelled" ? "\nCancelled" : "";
-  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${status}`;
+  const series = task.seriesId ? await findSeries(deps.db, user.id, task.seriesId) : null;
+  const repeats = series
+    ? `\nRepeats: ${describeRecurrence(recurrenceOf(series))}${series.status === "stopped" ? " (stopped)" : ""}`
+    : "";
+  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${repeats}${status}`;
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const ref = { taskId: task.id, version: task.version };
   const rows: InlineKeyboardButton[][] =
@@ -219,6 +238,9 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
           ],
         ]
       : [[buttons.button(task.status === "completed" ? "Reopen" : "Restore", "task_reopen", ref)]];
+  if (series?.status === "active") {
+    rows.push([buttons.button("Series", "series_menu", { seriesId: series.id })]);
+  }
   return {
     replies: [keyboardMessage(user, text, { inline_keyboard: rows }, null)],
     statements: (db, guard) => buttons.statements(db, guard),
@@ -470,7 +492,11 @@ async function setDeadline(
   draft: TaskDraft,
   deadline: Deadline,
 ): Promise<Reaction> {
-  if (!draft.taskId) return createTask(deps, user, draft, deadline);
+  if (!draft.taskId) {
+    return deadline.kind === "none"
+      ? createTask(deps, user, draft, deadline)
+      : askRepeat(deps, user, draft, deadline);
+  }
   const task = await findTask(deps.db, user.id, draft.taskId);
   if (task?.status !== "open")
     return message(user.privateChatId, "That task can't be changed anymore.");
@@ -535,7 +561,7 @@ function confirmPrompt(
 // --- Buttons -------------------------------------------------------------------
 
 export function isTaskAction(action: string): boolean {
-  return action.startsWith("task_") || action.startsWith("list_");
+  return action.startsWith("task_") || action.startsWith("list_") || action.startsWith("series_");
 }
 
 export async function handleTaskAction(
@@ -792,6 +818,92 @@ export async function handleTaskAction(
       );
     }
 
+    case "task_repeat": {
+      const draft = readDraft(payload);
+      const deadline = payload.deadline as Deadline | undefined;
+      if (!draft || !deadline) return ack("This button is no longer valid.");
+      const freq = typeof payload.freq === "string" ? (payload.freq as Frequency) : null;
+      return combine(
+        ack(),
+        done,
+        freq
+          ? await createSeries(deps, user, draft, deadline, freq)
+          : await createTask(deps, user, draft, deadline),
+      );
+    }
+    case "series_menu": {
+      const series = await findSeries(deps.db, user.id, String(payload.seriesId ?? ""));
+      if (series?.status !== "active") return ack("This series has stopped.");
+      const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+      const ref = { seriesId: series.id, version: series.version };
+      return combine(ack(), {
+        replies: [
+          keyboardMessage(
+            user,
+            `${series.title}\n${describeRecurrence(recurrenceOf(series))}`,
+            {
+              inline_keyboard: [
+                [
+                  buttons.button("Rename series", "series_rename", ref),
+                  buttons.button("Stop series", "series_stop", ref),
+                ],
+              ],
+            },
+            null,
+          ),
+        ],
+        statements: (db, guard) => buttons.statements(db, guard),
+      });
+    }
+    case "series_rename": {
+      const series = await currentSeries(deps, user, payload);
+      if (!series) return ack("This series has changed since.");
+      return combine(
+        ack(),
+        done,
+        ask(
+          deps,
+          user,
+          "series_rename",
+          { seriesId: series.id, version: series.version },
+          `Send the new name for every open occurrence of ${series.title}.`,
+        ),
+      );
+    }
+    case "series_rename_confirm": {
+      const series = await currentSeries(deps, user, payload);
+      if (!series || typeof payload.title !== "string")
+        return ack("This series has changed since.");
+      return combine(ack(), done, await renameSeries(deps, user, series, payload.title));
+    }
+    case "series_stop": {
+      const series = await currentSeries(deps, user, payload);
+      if (!series) return ack("This series has changed since.");
+      const today = localDateAt(deps.clock.now(), user.timezone);
+      const open = await openOccurrences(deps, user, series.id);
+      const overdue = open.filter((t) => (t.occurrenceDate ?? "") < today).length;
+      const keep = overdue
+        ? ` ${overdue} earlier occurrence${overdue === 1 ? " stays" : "s stay"} open.`
+        : "";
+      return combine(
+        ack(),
+        done,
+        confirmPrompt(
+          deps,
+          user,
+          `Stop repeating ${series.title}? Open occurrences from today on are cancelled.${keep}`,
+          "Stop series",
+          "series_stop_confirm",
+          { seriesId: series.id, version: series.version },
+        ),
+      );
+    }
+    case "series_stop_confirm": {
+      const series = await currentSeries(deps, user, payload);
+      if (!series) return ack("This series has changed since.");
+      return combine(ack(), done, await stopSeries(deps, user, series));
+    }
+
     case "list_new":
       return combine(
         ack(),
@@ -869,7 +981,7 @@ async function deleteList(deps: SetupDeps, user: UserRecord, listId: string): Pr
 // --- Typed answers -------------------------------------------------------------
 
 export function isTaskInput(kind: PendingInputKind): boolean {
-  return kind.startsWith("task_") || kind === "list_name";
+  return kind.startsWith("task_") || kind === "list_name" || kind === "series_rename";
 }
 
 export async function handleTaskInput(
@@ -928,6 +1040,25 @@ export async function handleTaskInput(
         change(deps, user, task, { title: text }, { title: task.title }, `Renamed: ${text}.`),
       );
     }
+    case "series_rename": {
+      if (text.length === 0 || text.length > MAX_TASK_TITLE) {
+        return message(user.privateChatId, `Send a name of up to ${MAX_TASK_TITLE} characters.`);
+      }
+      const series = await currentSeries(deps, user, pending.payload);
+      if (!series) return expired();
+      // Whole-series changes are confirmed first (spec §4).
+      return combine(
+        { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
+        confirmPrompt(
+          deps,
+          user,
+          `Rename every open occurrence of ${series.title} to ${text}?`,
+          "Rename series",
+          "series_rename_confirm",
+          { seriesId: series.id, version: series.version, title: text },
+        ),
+      );
+    }
     case "list_name": {
       const lists = await listTaskLists(deps.db, user.id);
       if (text.length === 0 || text.length > MAX_LIST_NAME || /[[\]]/.test(text)) {
@@ -959,6 +1090,197 @@ export async function handleTaskInput(
     default:
       return expired();
   }
+}
+
+// --- Recurring tasks ---------------------------------------------------------------
+
+function askRepeat(
+  deps: SetupDeps,
+  user: UserRecord,
+  draft: TaskDraft,
+  deadline: Deadline,
+): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const option = (label: string, freq: Frequency | null) =>
+    buttons.button(label, "task_repeat", { draft, deadline, freq });
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Does ${draft.title} repeat?`,
+        {
+          inline_keyboard: [
+            [option("Doesn't repeat", null)],
+            [option("Daily", "daily"), option("Weekly", "weekly")],
+            [option("Monthly", "monthly"), option("Yearly", "yearly")],
+          ],
+        },
+        null,
+      ),
+    ],
+    statements: (db, guard) => [
+      clearPendingInputStatement(db, user.id),
+      ...buttons.statements(db, guard),
+    ],
+  };
+}
+
+async function createSeries(
+  deps: SetupDeps,
+  user: UserRecord,
+  draft: TaskDraft,
+  deadline: Deadline,
+  freq: Frequency,
+): Promise<Reaction> {
+  if (deadline.kind === "none") return createTask(deps, user, draft, deadline);
+  const lists = await listTaskLists(deps.db, user.id);
+  const list = lists.find((l) => l.id === draft.listId) ?? lists.find((l) => l.isInbox);
+  if (!list)
+    return message(user.privateChatId, "Your lists aren't ready yet. Send /task to try again.");
+  const now = deps.clock.now();
+  const anchor = deadline.kind === "date" ? deadline.date : localDateAt(deadline.at, user.timezone);
+  const dueTime =
+    deadline.kind === "datetime"
+      ? (() => {
+          const w = wallPartsAt(deadline.at, user.timezone);
+          return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
+        })()
+      : null;
+  const seriesId = deps.ids.next();
+  const taskId = deps.ids.next();
+  const rule = { freq, interval: 1, anchor };
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(deadline, user.timezone).replace(/^Due /, "due ")}.`,
+        { inline_keyboard: [[buttons.button("Undo", "series_stop", { seriesId, version: 1 })]] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => [
+      insertSeriesStatement(
+        db,
+        {
+          id: seriesId,
+          userId: user.id,
+          listId: list.id,
+          title: draft.title,
+          freq,
+          interval: 1,
+          anchorDate: anchor,
+          dueTime,
+          timezone: user.timezone,
+          materializedThrough: anchor,
+        },
+        now,
+        guard,
+      ),
+      insertTaskStatement(
+        db,
+        {
+          id: taskId,
+          userId: user.id,
+          listId: list.id,
+          title: draft.title,
+          deadline,
+          status: "open",
+          origin: "telegram",
+          occurrence: { seriesId, date: anchor },
+        },
+        now,
+        guard,
+      ),
+      projectTaskStatement(
+        db,
+        deps.ids,
+        { id: taskId, userId: user.id, title: draft.title },
+        1,
+        now,
+        guard,
+      ),
+      ...buttons.statements(db, guard),
+    ],
+  };
+}
+
+async function currentSeries(deps: SetupDeps, user: UserRecord, payload: Record<string, unknown>) {
+  const series = await findSeries(deps.db, user.id, String(payload.seriesId ?? ""));
+  return series && series.version === Number(payload.version) && series.status === "active"
+    ? series
+    : null;
+}
+
+async function openOccurrences(
+  deps: SetupDeps,
+  user: UserRecord,
+  seriesId: string,
+): Promise<TaskRecord[]> {
+  return (await listOpenTasks(deps.db, user.id, null)).filter((t) => t.seriesId === seriesId);
+}
+
+/** Renames the series and every open occurrence (each version-checked), updating markers. */
+async function renameSeries(
+  deps: SetupDeps,
+  user: UserRecord,
+  series: SeriesRecord,
+  title: string,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  const open = await openOccurrences(deps, user, series.id);
+  return {
+    replies: [
+      {
+        method: "sendMessage",
+        params: {
+          chat_id: user.privateChatId,
+          text: `Renamed the series to ${title}, including ${open.length} open occurrence${open.length === 1 ? "" : "s"}.`,
+        },
+      },
+    ],
+    statements: (db, guard) => [
+      updateSeriesStatement(db, series, { title }, now),
+      ...open.flatMap((t) => [
+        updateTaskStatement(db, user.id, t.id, t.version, { title }, now, guard),
+        projectTaskStatement(db, deps.ids, { ...t, title }, t.version + 1, now, guard),
+      ]),
+    ],
+  };
+}
+
+/**
+ * Stops the series: occurrences from today on are cancelled (and their markers
+ * removed); earlier unfinished occurrences stay open.
+ */
+async function stopSeries(
+  deps: SetupDeps,
+  user: UserRecord,
+  series: SeriesRecord,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  const today = localDateAt(now, user.timezone);
+  const cancel = (await openOccurrences(deps, user, series.id)).filter(
+    (t) => (t.occurrenceDate ?? "") >= today,
+  );
+  return {
+    replies: [
+      {
+        method: "sendMessage",
+        params: {
+          chat_id: user.privateChatId,
+          text: `Stopped repeating ${series.title}. Cancelled ${cancel.length} upcoming occurrence${cancel.length === 1 ? "" : "s"}.`,
+        },
+      },
+    ],
+    statements: (db, guard) => [
+      updateSeriesStatement(db, series, { status: "stopped" }, now),
+      ...cancel.flatMap((t) => [
+        updateTaskStatement(db, user.id, t.id, t.version, { status: "cancelled" }, now, guard),
+        projectTaskStatement(db, deps.ids, t, t.version + 1, now, guard),
+      ]),
+    ],
+  };
 }
 
 function truncate(text: string, max: number): string {

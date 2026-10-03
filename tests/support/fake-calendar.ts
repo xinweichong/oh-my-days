@@ -133,7 +133,9 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     if (this.inaccessible.has(calendarId)) return { ok: false, error: { kind: "not_found" } };
     const instant = (t: EventFields["start"]) =>
       "dateTime" in t ? Date.parse(t.dateTime) : Date.parse(`${t.date}T00:00:00Z`);
+    // Like singleEvents=true: occurrences only, never series masters.
     const items = [...this.events.entries()]
+      .filter(([k]) => !this.meta.get(k)?.recurring)
       .filter(([, e]) => e.calendarId === calendarId && e.status !== "cancelled")
       .filter(([, e]) => instant(e.fields.start) < timeMax && instant(e.fields.end) > timeMin)
       .map(([k, e]) => this.synced(k, e));
@@ -189,8 +191,16 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
 
   async getEvent(calendarId: string, eventId: string): Promise<ProviderResult<CalendarEvent>> {
     return this.run("get", () => {
-      const event = this.events.get(key(calendarId, eventId));
-      return event ? ok(structuredClone(event)) : err({ kind: "not_found" });
+      const k = key(calendarId, eventId);
+      const event = this.events.get(k);
+      if (!event) return err({ kind: "not_found" });
+      const meta = this.meta.get(k) ?? {};
+      return ok({
+        ...structuredClone(event),
+        recurringEventId: meta.recurringEventId ?? null,
+        recurring: meta.recurring ?? false,
+        hasGuests: meta.hasGuests ?? false,
+      });
     });
   }
 
@@ -206,7 +216,10 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       this.extras.set(key(calendarId, eventId), extras ?? {});
       return ok(
         structuredClone(
-          this.seed(calendarId, eventId, fields, { transparent: extras?.transparent ?? false }),
+          this.seed(calendarId, eventId, fields, {
+            transparent: extras?.transparent ?? false,
+            recurring: (extras?.recurrence?.length ?? 0) > 0,
+          }),
         ),
       );
     });

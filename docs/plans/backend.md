@@ -340,7 +340,8 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 4. First event slice | Implemented, tested locally with fake Google; not yet deployed | Guided `/event` create (title, day, time, length or end time, all-day), rename, move keeping length, confirmed delete; exact results with Undo; overlap check read live from selected calendars (free, declined, and task markers excluded); incremental sync with sync tokens, paging, full rebuild on expired tokens, no deletion from failures or lost access; hourly calendar-list refresh; Force poll with cooldown; `/health` sync status (`tests/flows/events.test.ts`, `tests/jobs/calendar-sync.test.ts`, `tests/domain`) |
 | 5. Task/list slice | Implemented, tested locally with fake Google; not yet deployed | Inbox and lists (create, move, delete to Inbox); `/task` guided creation with no, date-only, or exact deadlines; `/tasks` view with list filters; complete, reopen, rename, change or remove deadline, confirmed cancel with Restore; version-bound Undo; deadline markers (`[List] Title`, `✓` when done, free, Google notifications off) projected by operation; Calendar edits to title, list annotation, ✓, deadline, and deletion imported on sync; entries created in the task calendar become tasks; removing a deadline never cancels; same-field conflicts reported (`tests/flows/tasks.test.ts`, `tests/domain/tasks.test.ts`) |
 | 6. Time and delivery | Implemented, tested locally with fake Google and clocks; not yet deployed | 8am agenda per local date (catch-up later that day, no duplicate across timezone changes or overlapping runs); event reminders 1 hour before (declined skipped, started skipped, moved revalidated); exact-deadline reminders with Done/Snooze; snooze (1 hour, tomorrow 8am, typed) that never moves the deadline and folds into the agenda; per-event and per-task reminder overrides; one catch-up summary after downtime; creation inside the window counts as the notice; `/daily`, `/weekly`, `/monthly`, `/calendars`, `/overdue`, `/reminders` read Google live with a labelled fallback (`tests/flows/reminders.test.ts`, `tests/domain/schedule.test.ts`) |
-| 7–10 | Not started | — |
+| 7. Recurrence | Implemented, tested locally with fake Google; not yet deployed | Recurring tasks as series with independent, materialized occurrences on a 60-day horizon (ADR 0003): month-end and leap-day rules stated and followed, bounded outage backfill, per-occurrence completion/cancellation/markers, confirmed series rename and stop, grouped overdue lines; recurring events created natively with a stated schedule; one occurrence vs. whole-series rename, time change, and delete (series confirmed); event pickers list recurring occurrences (`tests/flows/recurrence.test.ts`, `tests/domain/recurrence.test.ts`) |
+| 8–10 | Not started | — |
 
 Stage 2 decisions to review:
 
@@ -410,3 +411,17 @@ Stage 6 decisions and gaps to review:
   message.
 - Overdue occurrences of recurring tasks are grouped in stage 7; sync health
   alerts remain stage 8.
+
+Stage 7 decisions and gaps to review:
+
+- Recurring task markers are individual entries per occurrence up to 60 days
+  ahead, not a native series ([ADR 0003](../adr/0003-recurring-task-occurrences.md)).
+- Recurring tasks repeat with an interval of 1 from the structured flow; other
+  intervals and changing a series' schedule (stop it and create a new one) are
+  not offered yet.
+- A recurring task's due time skipped by a DST change uses the next valid
+  hour (RFC 5545); the occurrence keeps its date.
+- Moving a whole event series changes its time of day only; all-day series and
+  "this and following" scope are edited in Google Calendar for now.
+- Recurring events created directly in the task calendar are not imported as
+  recurring tasks.

@@ -112,6 +112,11 @@ export class World {
     return { page, callbackPath };
   }
 
+  /** Answers "Does … repeat?" with "Doesn't repeat", if that was just asked. */
+  async noRepeat(): Promise<void> {
+    if (this.lastText()?.startsWith("Does ")) await this.press("Doesn't repeat");
+  }
+
   /** Runs one scheduled tick. */
   async tick(): Promise<void> {
     await runTick(tickDeps(this.services));

@@ -54,8 +54,9 @@ async function addTask(
   if (world.lastText()?.startsWith("Which list")) await world.press(list);
   if (due === null) return world.press("No deadline");
   await world.press(due);
-  if (time === null) return world.press("Any time that day");
-  return world.send(time);
+  if (time === null) await world.press("Any time that day");
+  else await world.send(time);
+  return world.noRepeat();
 }
 
 async function syncLater(world: World) {
@@ -337,6 +338,8 @@ describe("task ordering", () => {
       projection: null,
       projected: null,
       snoozedUntil: null,
+      seriesId: null,
+      occurrenceDate: null,
     };
     const sorted = sortByDeadline(
       [
