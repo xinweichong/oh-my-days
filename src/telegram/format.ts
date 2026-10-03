@@ -115,3 +115,8 @@ export function formatDayLabel(date: string): string {
     month: "short",
   });
 }
+
+/** A time of day in the user's zone, e.g. "7pm" or "7:30am". */
+export function formatTime(instant: number, timeZone: string): string {
+  return clock(new Date(instant), timeZone, true);
+}

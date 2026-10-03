@@ -60,6 +60,7 @@ export const PENDING_INPUT_KINDS = [
   "task_due_time",
   "task_rename",
   "list_name",
+  "task_snooze",
 ] as const;
 
 export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];

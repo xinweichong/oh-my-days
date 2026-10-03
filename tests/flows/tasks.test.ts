@@ -336,6 +336,7 @@ describe("task ordering", () => {
       version: 1,
       projection: null,
       projected: null,
+      snoozedUntil: null,
     };
     const sorted = sortByDeadline(
       [

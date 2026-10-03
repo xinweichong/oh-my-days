@@ -12,6 +12,7 @@ import {
 } from "../storage/events";
 import { replaceCalendarListStatements } from "../storage/google";
 import type { Guard } from "../storage/guard";
+import { invalidateHorizonStatement } from "../storage/reminders";
 
 /** Provisional polling interval per calendar (backend plan §5); tune after measuring. */
 export const SYNC_INTERVAL_MS = 5 * 60_000;
@@ -202,6 +203,8 @@ async function syncCalendar(deps: SyncDeps, row: SyncRow, lease: string): Promis
     statements.push(
       ...((await deps.reconcile?.(row.user_id, row.calendar_id, result.items, now, guard)) ?? []),
     );
+    // Changed events: rebuild the reminder horizon on the next tick.
+    if (result.items.length > 0) statements.push(invalidateHorizonStatement(deps.db, row.user_id));
     const last = result.nextPageToken === null;
 
     if (!last) {

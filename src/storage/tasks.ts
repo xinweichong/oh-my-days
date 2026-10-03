@@ -22,6 +22,8 @@ export interface TaskRecord {
   projection: { calendarId: string; eventId: string; etag: string | null } | null;
   /** The marker last written to (or read from) the task calendar. */
   projected: EventFields | null;
+  /** The next reminder is moved to this instant; the deadline is unchanged. */
+  snoozedUntil: number | null;
 }
 
 interface TaskRow {
@@ -40,11 +42,12 @@ interface TaskRow {
   projection_event_id: string | null;
   projection_etag: string | null;
   projected_json: string | null;
+  snoozed_until: number | null;
 }
 
 const TASK_COLUMNS = `t.id, t.user_id, t.list_id, l.name AS list_name, t.title, t.due_kind,
   t.due_date, t.due_at, t.due_tz, t.status, t.version, t.projection_calendar_id,
-  t.projection_event_id, t.projection_etag, t.projected_json`;
+  t.projection_event_id, t.projection_etag, t.projected_json, t.snoozed_until`;
 
 const FROM = "FROM tasks t JOIN task_lists l ON l.id = t.list_id AND l.user_id = t.user_id";
 
@@ -73,6 +76,7 @@ function toTask(row: TaskRow): TaskRecord {
           }
         : null,
     projected: row.projected_json ? (JSON.parse(row.projected_json) as EventFields) : null,
+    snoozedUntil: row.snoozed_until,
   };
 }
 
@@ -340,4 +344,22 @@ export async function listOpenTasks(
     .bind(...params)
     .all<TaskRow>();
   return results.map(toTask);
+}
+
+/** Moves the next reminder; never changes the deadline or the task's version. */
+export function setSnoozeStatement(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  until: number | null,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare("UPDATE tasks SET snoozed_until = ?, updated_at = ? WHERE id = ? AND user_id = ?")
+    .bind(until, now, taskId, userId);
+}
+
+/** Whether a task is currently snoozed (and so left out of automatic summaries). */
+export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): boolean {
+  return task.snoozedUntil !== null && task.snoozedUntil > now;
 }

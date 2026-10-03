@@ -365,23 +365,30 @@ async function eventCard(
   );
   const text = `${event.fields.summary}\n${formatEventRange(event.fields, user.timezone)} · ${calendar?.summary ?? "Unknown calendar"}`;
   const blocked = restriction(event, calendar);
-  if (blocked) return message(user.privateChatId, `${text}\n\n${blocked}`);
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const target = { calendarId, eventId };
+  // Reminders can be set even for events that can't be changed here.
+  const reminder = buttons.button("Reminder", "reminder_menu", {
+    kind: "event",
+    targetKey: `${calendarId}/${eventId}`,
+    title: event.fields.summary,
+  });
+  const rows = blocked
+    ? [[reminder]]
+    : [
+        [
+          buttons.button("Rename", "event_rename", target),
+          buttons.button("Change time", "event_move", target),
+          buttons.button("Delete", "event_delete", target),
+        ],
+        [reminder],
+      ];
   return {
     replies: [
       keyboardMessage(
         user,
-        text,
-        {
-          inline_keyboard: [
-            [
-              buttons.button("Rename", "event_rename", target),
-              buttons.button("Change time", "event_move", target),
-              buttons.button("Delete", "event_delete", target),
-            ],
-          ],
-        },
+        blocked ? `${text}\n\n${blocked}` : text,
+        { inline_keyboard: rows },
         null,
       ),
     ],
