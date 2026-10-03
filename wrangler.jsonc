@@ -18,9 +18,9 @@
     {
       "binding": "DB",
       "database_name": "oh-my-days",
-      // Placeholder for local development. Replace only when a remote database is
-      // explicitly provisioned; no remote resource exists yet.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Remote database created 2026-10-02 (APAC). Local development and tests
+      // use a local copy keyed by this ID; they never touch the remote database.
+      "database_id": "2c1bd8db-c3bb-4928-9eb4-5af25c8d02c0",
       "migrations_dir": "migrations"
     }
   ],
