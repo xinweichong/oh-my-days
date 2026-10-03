@@ -20,6 +20,7 @@ async function newEvent(world: World, title: string, day: string, time: string, 
   await world.send(time);
   if (/^\d+ (min|hour|hours)$/.test(length)) await world.press(length);
   else await world.send(length);
+  await world.noRepeat();
 }
 
 describe("/event: creating events", () => {
@@ -48,6 +49,7 @@ describe("/event: creating events", () => {
     await world.send("9 Oct");
     await world.send("22:00");
     await world.send("until 2am");
+    await world.noRepeat();
     expect(world.lastText()).toBe(
       "Event added: Night shift\nFri 9 Oct 2026, 10pm – Sat 10 Oct, 2am · owner@example.com",
     );
@@ -61,6 +63,7 @@ describe("/event: creating events", () => {
     await world.send("Holiday");
     await world.press("Mon 28 Sep");
     await world.press("All day");
+    await world.noRepeat();
     expect(world.lastText()).toBe(
       "Event added: Holiday\nMon 28 Sep 2026 (all day) · owner@example.com",
     );

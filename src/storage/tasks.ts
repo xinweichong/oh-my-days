@@ -24,6 +24,9 @@ export interface TaskRecord {
   projected: EventFields | null;
   /** The next reminder is moved to this instant; the deadline is unchanged. */
   snoozedUntil: number | null;
+  /** For occurrences of a recurring task: the series and the occurrence's identity. */
+  seriesId: string | null;
+  occurrenceDate: string | null;
 }
 
 interface TaskRow {
@@ -43,11 +46,13 @@ interface TaskRow {
   projection_etag: string | null;
   projected_json: string | null;
   snoozed_until: number | null;
+  series_id: string | null;
+  occurrence_date: string | null;
 }
 
 const TASK_COLUMNS = `t.id, t.user_id, t.list_id, l.name AS list_name, t.title, t.due_kind,
   t.due_date, t.due_at, t.due_tz, t.status, t.version, t.projection_calendar_id,
-  t.projection_event_id, t.projection_etag, t.projected_json, t.snoozed_until`;
+  t.projection_event_id, t.projection_etag, t.projected_json, t.snoozed_until, t.series_id, t.occurrence_date`;
 
 const FROM = "FROM tasks t JOIN task_lists l ON l.id = t.list_id AND l.user_id = t.user_id";
 
@@ -77,6 +82,8 @@ function toTask(row: TaskRow): TaskRecord {
         : null,
     projected: row.projected_json ? (JSON.parse(row.projected_json) as EventFields) : null,
     snoozedUntil: row.snoozed_until,
+    seriesId: row.series_id,
+    occurrenceDate: row.occurrence_date,
   };
 }
 
@@ -145,7 +152,10 @@ export function insertListStatement(
     .bind(id, userId, name.trim().replace(/\s+/g, " "), normalizeListName(name), now, now);
 }
 
-/** Moves the list's tasks to the Inbox (bumping their versions), then deletes the list. */
+/**
+ * Moves the list's tasks and recurring series to the Inbox (bumping task
+ * versions), then deletes the list.
+ */
 export function deleteListStatements(
   db: D1Database,
   userId: string,
@@ -158,6 +168,11 @@ export function deleteListStatements(
       .prepare(
         `UPDATE tasks SET list_id = ?, version = version + 1, updated_at = ?
          WHERE user_id = ? AND list_id = ?`,
+      )
+      .bind(inboxId, now, userId, listId),
+    db
+      .prepare(
+        "UPDATE task_series SET list_id = ?, updated_at = ? WHERE user_id = ? AND list_id = ?",
       )
       .bind(inboxId, now, userId, listId),
     db
@@ -177,6 +192,7 @@ export interface NewTask {
   status: TaskStatus;
   origin: "telegram" | "calendar";
   projection?: { calendarId: string; eventId: string; etag: string; fields: EventFields };
+  occurrence?: { seriesId: string; date: string };
 }
 
 export function insertTaskStatement(
@@ -190,8 +206,9 @@ export function insertTaskStatement(
     .prepare(
       `INSERT INTO tasks (id, user_id, list_id, title, due_kind, due_date, due_at, due_tz, status,
          completed_at, cancelled_at, origin, projection_calendar_id, projection_event_id,
-         projection_etag, projected_json, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
+         projection_etag, projected_json, series_id, occurrence_date, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}
+       ON CONFLICT DO NOTHING`,
     )
     .bind(
       task.id,
@@ -210,6 +227,8 @@ export function insertTaskStatement(
       task.projection?.eventId ?? null,
       task.projection?.etag ?? null,
       task.projection ? JSON.stringify(task.projection.fields) : null,
+      task.occurrence?.seriesId ?? null,
+      task.occurrence?.date ?? null,
       now,
       now,
       ...guard.params,
