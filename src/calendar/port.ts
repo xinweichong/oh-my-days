@@ -51,3 +51,25 @@ export interface CalendarPort {
 
 /** Returns the user's calendar port, or null when no usable Google connection exists. */
 export type CalendarPortFactory = (userId: string) => Promise<CalendarPort | null>;
+
+export type AccessRole = "owner" | "writer" | "reader" | "freeBusyReader";
+
+export interface CalendarListEntry {
+  calendarId: string;
+  summary: string;
+  accessRole: AccessRole;
+  primary: boolean;
+}
+
+export function isWritable(role: AccessRole): boolean {
+  return role === "owner" || role === "writer";
+}
+
+/** Calendar-level access: the user's calendar list and calendars the app creates. */
+export interface CalendarDirectory {
+  /** The complete calendar list; fails rather than returning a partial list. */
+  listCalendars(): Promise<ProviderResult<CalendarListEntry[]>>;
+  createCalendar(summary: string, timeZone: string): Promise<ProviderResult<CalendarListEntry>>;
+}
+
+export type CalendarDirectoryFactory = (userId: string) => Promise<CalendarDirectory | null>;

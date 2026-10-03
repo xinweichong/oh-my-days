@@ -2,6 +2,8 @@ import type { Services } from "../../src/app";
 import { eventOperationHandlers } from "../../src/application/event-operations";
 import { registry } from "../../src/application/operation-types";
 import type { AppConfig } from "../../src/env";
+import type { GoogleOAuth } from "../../src/google/oauth";
+import { createTokenCipher } from "../../src/security/token-cipher";
 import type { Clock } from "../../src/shared/clock";
 import type { IdGenerator } from "../../src/shared/ids";
 import type { TelegramCall } from "../../src/telegram/api";
@@ -57,6 +59,12 @@ export const testConfig: AppConfig = {
   telegramBotToken: "test-bot-token",
   telegramWebhookSecret: "test-webhook-secret",
   allowedTelegramUserIds: new Set([OWNER, OTHER_USER]),
+  telegramBotUsername: "oh_my_days_bot",
+  publicBaseUrl: "https://ohmydays.test",
+  googleClientId: "test-client.apps.googleusercontent.com",
+  googleClientSecret: "test-client-secret",
+  tokenEncryptionKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+  contactEmail: null,
 };
 
 export function testServices(db: D1Database, overrides: Partial<Services> = {}): Services {
@@ -68,7 +76,23 @@ export function testServices(db: D1Database, overrides: Partial<Services> = {}):
     random: () => 0.5,
     telegram: new FakeTelegram(),
     handlers: registry(...eventOperationHandlers),
+    google: {
+      oauth: unusedOAuth,
+      cipher: () => createTokenCipher(testConfig.tokenEncryptionKey),
+      calendarApi: () => {
+        throw new Error("Google Calendar is not available in this test");
+      },
+    },
     calendarFor: async () => null,
+    directoryFor: async () => null,
     ...overrides,
   };
 }
+
+const unusedOAuth: GoogleOAuth = {
+  authorizationUrl: () => {
+    throw new Error("OAuth is not available in this test");
+  },
+  exchangeCode: async () => ({ ok: false, reason: "provider" }),
+  refresh: async () => ({ ok: false, reason: "retryable" }),
+};

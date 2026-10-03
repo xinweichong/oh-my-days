@@ -1,6 +1,8 @@
-import type { CalendarPort } from "../calendar/port";
+import type { CalendarDirectory, CalendarPort } from "../calendar/port";
+import type { IdGenerator } from "../shared/ids";
 import type { ClaimedOperation, OperationRecord } from "../storage/operations";
 import type { UserRecord } from "../storage/users";
+import type { Reaction } from "./reactions";
 
 /** What the user sees and confirms. `facts` binds the confirmation to exact values. */
 export interface Preview {
@@ -34,7 +36,17 @@ export interface ExecutionContext {
   user: UserRecord;
   /** Null when the user has no usable Google connection. */
   calendar: CalendarPort | null;
+  directory: CalendarDirectory | null;
   now: number;
+}
+
+export interface SucceededContext {
+  op: OperationRecord;
+  user: UserRecord;
+  result: unknown;
+  now: number;
+  ids: IdGenerator;
+  db: D1Database;
 }
 
 /** A proposed change entering the shared command pipeline. */
@@ -56,6 +68,11 @@ export interface OperationHandler {
   execute(ctx: ExecutionContext): Promise<ExecutionOutcome>;
   /** User-facing text for an outcome, or null to stay quiet. */
   notice(op: OperationRecord, event: NoticeEvent, user: UserRecord): string | null;
+  /**
+   * Local state and follow-up messages committed atomically with success, after
+   * the result notice (e.g. recording a created calendar and the next setup step).
+   */
+  onSucceeded?(ctx: SucceededContext): Promise<Reaction>;
   /**
    * The inverse change offered as Undo after success, if any. Undo follows the
    * normal confirmation rules: an inverse that deletes still asks first.

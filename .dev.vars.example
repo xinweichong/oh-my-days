@@ -7,3 +7,16 @@ TELEGRAM_BOT_TOKEN=000000000:replace-me
 TELEGRAM_WEBHOOK_SECRET=replace-with-a-long-random-value
 # Comma-separated numeric Telegram user IDs permitted to use the bot.
 TELEGRAM_ALLOWED_USER_IDS=123456789
+
+# Origin used for Google redirects and page links. Overrides the deployed value
+# in wrangler.jsonc so local development uses localhost.
+PUBLIC_BASE_URL=http://localhost:8787
+
+# OAuth client (Web application) from Google Cloud > Google Auth Platform > Clients.
+GOOGLE_CLIENT_ID=replace-me.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=replace-me
+# 32 random bytes, base64 (openssl rand -base64 32). Encrypts stored Google tokens.
+TOKEN_ENCRYPTION_KEY=replace-with-32-random-bytes-base64
+
+# Optional: contact address shown in the privacy policy at /privacy.
+# CONTACT_EMAIL=you@example.com
