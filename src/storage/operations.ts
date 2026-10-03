@@ -230,3 +230,23 @@ export function expireConfirmationsStatement(
     )
     .bind(now, limit);
 }
+
+/**
+ * Removes finished operations (and their button tokens) past the retention
+ * period, in bounded batches. Unfinished operations are never purged.
+ */
+export function purgeFinishedOperationsStatements(
+  db: D1Database,
+  olderThan: number,
+  limit: number,
+): D1PreparedStatement[] {
+  const finished = `SELECT id FROM operations
+    WHERE status IN ('succeeded', 'failed', 'cancelled') AND updated_at < ?1
+    ORDER BY id LIMIT ?2`;
+  return [
+    db
+      .prepare(`DELETE FROM callback_refs WHERE operation_id IN (${finished})`)
+      .bind(olderThan, limit),
+    db.prepare(`DELETE FROM operations WHERE id IN (${finished})`).bind(olderThan, limit),
+  ];
+}

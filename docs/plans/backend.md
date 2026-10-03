@@ -263,7 +263,8 @@ input. Never use an external model as the privacy filter. Validate outbound payl
 with adversarial synthetic fixtures. Recheck [Gemini service terms](https://ai.google.dev/gemini-api/terms),
 model free eligibility, and project quota before enabling real requests.
 
-Preserve the spec's internal half-account budgets: 50,000 Worker requests/day,
+Preserve the spec's operating targets (half of each account allowance; no other
+application uses Workers or D1 in the account): 50,000 Worker requests/day,
 2.5 million D1 rows read/day, 50,000 rows written/day, and 2.5 GB aggregate storage.
 Start with one database and observe its separate size limit. Current documentation
 lists 10ms Free Worker CPU and 500 MB per Free D1 database; these are implementation
@@ -335,7 +336,8 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 0. Feasibility | Partial: local D1 semantics only | [Stage 0 status](../feasibility/stage-0.md); account-dependent checks pending |
 | 1. Foundation | Implemented, tested locally | Webhook secret, allowlist, private-chat filter, durable deduplicated inbox, per-user serialized processing, outbox with unknown-outcome handling, scheduled recovery and retention (`tests/http`, `tests/jobs`) |
 | 2. Safe operations | Implemented, tested locally with fake Calendar | Operation state machine, leases and guarded batches ([ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md)), confirmations bound to preview hash, reconfirmation on changed targets, bounded retries with one pending notice, reconciliation after lost responses and crashes, field-level conflict detection, version-checked Undo (`tests/application`, `tests/domain`) |
-| 3–10 | Not started | — |
+| 3. Google onboarding | Implemented, tested locally with fake Google; not deployed or tried with a real account | OAuth with PKCE and single-use state, encrypted tokens (AES-GCM bound to user and purpose), scope and identity checks, account-replacement confirmation, interrupted-callback handling, token refresh with one auth alert per outage, calendar list and selection, default and task calendar (create or explicit link), timezone, `/settings`, `/health`, connection pages, homepage and privacy policy (`tests/flows`, `tests/google`, `tests/security`) |
+| 4–10 | Not started | — |
 
 Stage 2 decisions to review:
 
@@ -348,6 +350,18 @@ Stage 2 decisions to review:
 - Callback effects (confirm/cancel/undo) commit in their own batch, keyed by the
   Telegram callback query ID, rather than inside the inbox lease; a redelivered
   press reports the original result.
-- Calendar event handlers (create/patch/delete) exist against the provider port
-  only. No Google adapter exists, so production wiring reports that Calendar
-  must be connected.
+- Calendar event handlers (create/patch/delete) now run against the Google
+  adapter, but no command creates events yet (stage 4).
+
+Stage 3 decisions and gaps to review:
+
+- Served at `ohmydays.xinweichong.com` with a homepage and privacy policy for
+  OAuth verification ([ADR 0002](../adr/0002-custom-domain-and-oauth-verification.md)).
+- The OAuth app stays in Testing until verified, so access expires every 7 days
+  and the bot asks for reauthorization.
+- Setup ends with a summary instead of the brief's **Add event · Add task · View
+  today** buttons, because those features do not exist yet (stages 4–6).
+- `/health` has no **Force poll** button and no sync time until stage 4 adds sync.
+- A "Calendar access wasn't granted" page state was added for users who untick
+  Calendar permissions on Google's consent screen.
+- Finished operations are purged after 30 days, as the privacy policy states.

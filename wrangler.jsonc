@@ -5,13 +5,22 @@
   // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
   "compatibility_date": "2026-08-15",
   "observability": { "enabled": true },
+  // Served only from the custom domain (ADR 0002); no workers.dev hostname.
+  "workers_dev": false,
+  "routes": [{ "pattern": "ohmydays.xinweichong.com", "custom_domain": true }],
+  // Non-secret settings. .dev.vars overrides PUBLIC_BASE_URL for local development.
+  "vars": {
+    "PUBLIC_BASE_URL": "https://ohmydays.xinweichong.com",
+    "TELEGRAM_BOT_USERNAME": "oh_my_days_bot",
+    "CONTACT_EMAIL": "xwchong@gmail.com"
+  },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "oh-my-days",
-      // Placeholder for local development. Replace only when a remote database is
-      // explicitly provisioned; no remote resource exists yet.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      // Remote database created 2026-10-02 (APAC). Local development and tests
+      // use a local copy keyed by this ID; they never touch the remote database.
+      "database_id": "2c1bd8db-c3bb-4928-9eb4-5af25c8d02c0",
       "migrations_dir": "migrations"
     }
   ],

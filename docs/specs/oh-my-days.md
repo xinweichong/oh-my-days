@@ -301,7 +301,7 @@ Daily agendas, reminders, task actions, views, health controls, and synchronizat
 
 | Component | Proposed service | Responsibility |
 |---|---|---|
-| Telegram bot backend | Cloudflare Workers Free | Webhooks, commands, validation, authorization callbacks, provider calls |
+| Telegram bot backend | Cloudflare Workers Free, served at `ohmydays.xinweichong.com` | Webhooks, commands, validation, authorization callbacks, provider calls |
 | Durable application state | Cloudflare D1 Free | Users, tasks, lists, contacts, sync state, pending operations, reminder state |
 | Scheduled work | Cloudflare Cron Triggers | Due reminders, agendas, retries, synchronization maintenance |
 | Language interpretation | Gemini API Free | Sanitized text-to-intent interpretation only |
@@ -309,11 +309,11 @@ Daily agendas, reminders, task actions, views, health controls, and synchronizat
 
 This is a deployment proposal. No infrastructure has been provisioned and no model accuracy or Worker CPU measurements have been completed.
 
-### Sharing Cloudflare with the existing application
+### Cloudflare account capacity
 
-The Cloudflare account already hosts another application. Split shared free-tier budgets evenly between the two applications:
+The Cloudflare account also holds DNS for `xinweichong.com`. The owner confirmed on 2026-10-02 that the other application runs on Oracle Cloud and uses no Workers, D1, or Cron Triggers in this account, so the earlier even split is unnecessary. Keep the half-allowance figures as **operating targets** to leave headroom for retries, recovery, and later features:
 
-| Resource | Documented account allowance | Budget per application |
+| Resource | Documented account allowance | Operating target |
 |---|---:|---:|
 | Worker requests | 100,000/day | 50,000/day |
 | D1 rows read | 5 million/day | 2.5 million/day |
@@ -322,13 +322,10 @@ The Cloudflare account already hosts another application. Split shared free-tier
 
 Additional constraints:
 
-- D1 Free has a **500 MB limit per database**. The aggregate storage budget does not increase this limit.
-- Workers Free has a **10ms CPU limit per invocation**; this is not a shared pool to halve. Benchmark parsing, validation, recurrence processing, and scheduled batches against it.
-- The documented account Cron Trigger limit is five. Proposed allocation: at most two per application, leaving one spare; aim to use one scheduled handler for this application.
-- These are internal budgets, not Cloudflare-enforced per-application reservations. An overrun by either application can affect the other.
-- Operate below the ceilings and account for retries, synchronization, reminder processing, indexes, and operational telemetry.
-- Rejected incoming requests can still consume platform resources. Application-level throttling cannot guarantee complete isolation of the other application.
-- Inspect the existing application's services and usage before finalizing deployment. Its configuration and actual consumption have not been inspected during this interview.
+- D1 Free has a **500 MB limit per database**. The aggregate storage figure does not increase this limit.
+- Workers Free has a **10ms CPU limit per invocation**. Benchmark parsing, validation, recurrence processing, and scheduled batches against it.
+- The documented account Cron Trigger limit is five; this application uses one scheduled handler.
+- Operate below the targets and account for retries, synchronization, reminder processing, indexes, and operational telemetry. Recheck account usage if another application is added to the account.
 - Gemini replaces Workers AI in the proposed design, so this application's language interpretation does not consume the Cloudflare Workers AI allowance.
 - Stay on free plans; do not enable automatic paid overflow. If a dependency no longer offers a suitable free option, suspend the affected capability and explain the limitation.
 

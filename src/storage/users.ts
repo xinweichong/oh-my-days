@@ -1,4 +1,16 @@
 import type { IdGenerator } from "../shared/ids";
+import { type Guard, unguarded } from "./guard";
+
+export const SETUP_STEPS = [
+  "connect",
+  "calendars",
+  "default",
+  "task_calendar",
+  "timezone",
+  "done",
+] as const;
+
+export type SetupStep = (typeof SETUP_STEPS)[number];
 
 export interface UserRecord {
   id: string;
@@ -6,6 +18,9 @@ export interface UserRecord {
   privateChatId: number;
   timezone: string;
   status: "active" | "disabled";
+  setupStep: SetupStep;
+  defaultCalendarId: string | null;
+  taskCalendarId: string | null;
 }
 
 interface UserRow {
@@ -14,6 +29,9 @@ interface UserRow {
   private_chat_id: number;
   timezone: string;
   status: "active" | "disabled";
+  setup_step: SetupStep;
+  default_calendar_id: string | null;
+  task_calendar_id: string | null;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -23,10 +41,14 @@ function toRecord(row: UserRow): UserRecord {
     privateChatId: row.private_chat_id,
     timezone: row.timezone,
     status: row.status,
+    setupStep: row.setup_step,
+    defaultCalendarId: row.default_calendar_id,
+    taskCalendarId: row.task_calendar_id,
   };
 }
 
-const COLUMNS = "id, telegram_user_id, private_chat_id, timezone, status";
+const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
+  default_calendar_id, task_calendar_id`;
 
 /** Creates the user on first contact, or refreshes the private chat ID. */
 export function upsertUserStatement(
@@ -65,4 +87,53 @@ export async function findUserByTelegramId(
     .bind(telegramUserId)
     .first<UserRow>();
   return row ? toRecord(row) : null;
+}
+
+/** Moves setup forward only from the expected step, so replays cannot rewind it. */
+export function advanceSetupStatement(
+  db: D1Database,
+  userId: string,
+  from: SetupStep,
+  to: SetupStep,
+  now: number,
+  guard: Guard = unguarded,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE users SET setup_step = ?, updated_at = ?
+       WHERE id = ? AND setup_step = ? AND ${guard.sql}`,
+    )
+    .bind(to, now, userId, from, ...guard.params);
+}
+
+export function setUserCalendarStatement(
+  db: D1Database,
+  userId: string,
+  role: "default" | "task",
+  calendarId: string,
+  now: number,
+  guard: Guard = unguarded,
+): D1PreparedStatement {
+  const column = role === "default" ? "default_calendar_id" : "task_calendar_id";
+  return db
+    .prepare(`UPDATE users SET ${column} = ?, updated_at = ? WHERE id = ? AND ${guard.sql}`)
+    .bind(calendarId, now, userId, ...guard.params);
+}
+
+/**
+ * Changes the timezone used for future interpretation and local schedules.
+ * Existing event instants and series keep their own stored timezones.
+ */
+export function setTimezoneStatement(
+  db: D1Database,
+  userId: string,
+  timezone: string,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE users SET timezone = ?, settings_version = settings_version + 1, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(timezone, now, userId);
 }

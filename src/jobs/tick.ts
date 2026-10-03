@@ -2,8 +2,13 @@ import { type RunnerDeps, runDueOperations } from "../application/operation-runn
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
+import { purgeExpiredAuthStatements } from "../storage/google";
 import { purgeFinishedInboxStatement, usersWithInboxWork } from "../storage/inbox";
-import { expireConfirmationsStatement } from "../storage/operations";
+import { purgeExpiredInteractionsStatements } from "../storage/interactions";
+import {
+  expireConfirmationsStatement,
+  purgeFinishedOperationsStatements,
+} from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
 import { type DeliveryDeps, deliverDue } from "./delivery";
 import { type InboxDeps, processUserInbox } from "./inbox";
@@ -22,6 +27,8 @@ export const TICK_LIMITS = {
 
 /** Finished inbox and outbox records are kept this long for deduplication and diagnosis. */
 export const FINISHED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/** Finished operations (request snapshots) are kept this long (privacy policy). */
+export const OPERATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface TickDeps {
   db: D1Database;
@@ -58,6 +65,13 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     purgeFinishedInboxStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
     purgeFinishedDeliveriesStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
     purgeExpiredCallbackRefsStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
+    ...purgeFinishedOperationsStatements(
+      deps.db,
+      later - OPERATION_RETENTION_MS,
+      TICK_LIMITS.purgeRows,
+    ),
+    ...purgeExpiredAuthStatements(deps.db, later, TICK_LIMITS.purgeRows),
+    ...purgeExpiredInteractionsStatements(deps.db, later, TICK_LIMITS.purgeRows),
   ]);
 
   const summary = {
