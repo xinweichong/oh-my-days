@@ -56,3 +56,23 @@ describe("scheduled tick", () => {
     expect(await count(env.DB, "telegram_outbox")).toBe(0);
   });
 });
+
+describe("tick cadence", () => {
+  it("runs frequent maintenance at most every 5 minutes, and resumes after a gap", async () => {
+    const { FakeClock: Clock, FakeTelegram: Telegram } = await import("../support/fakes");
+    const { FREQUENT_MAINTENANCE_MS } = await import("../../src/jobs/tick");
+    const clock = new Clock();
+    const telegram = new Telegram();
+    const services = testServices(env.DB, { clock, telegram });
+    await runTick(tickDeps(services));
+    await env.DB.prepare("DELETE FROM app_state WHERE key = 'telegram_commands'").run();
+
+    clock.advance(60_000);
+    await runTick(tickDeps(services)); // within 5 minutes: menu not re-checked
+    expect(telegram.adminCalls.filter((c) => c.method === "setMyCommands")).toHaveLength(1);
+
+    clock.advance(FREQUENT_MAINTENANCE_MS);
+    await runTick(tickDeps(services));
+    expect(telegram.adminCalls.filter((c) => c.method === "setMyCommands")).toHaveLength(2);
+  });
+});

@@ -84,6 +84,22 @@ export function invalidateHorizonStatement(db: D1Database, userId: string): D1Pr
 
 export type TargetKind = "event" | "task";
 
+/** Both kinds of overrides in one read: per kind, minutes by target key. */
+export async function allReminderOverrides(
+  db: D1Database,
+  userId: string,
+): Promise<Record<TargetKind, Map<string, number | null>>> {
+  const { results } = await db
+    .prepare(
+      "SELECT target_kind, target_key, minutes_before FROM reminder_overrides WHERE user_id = ?",
+    )
+    .bind(userId)
+    .all<{ target_kind: TargetKind; target_key: string; minutes_before: number | null }>();
+  const out: Record<TargetKind, Map<string, number | null>> = { event: new Map(), task: new Map() };
+  for (const r of results) out[r.target_kind].set(r.target_key, r.minutes_before);
+  return out;
+}
+
 /** Override minutes per target key; null means "no reminder". Absent keys use the default. */
 export async function reminderOverrides(
   db: D1Database,

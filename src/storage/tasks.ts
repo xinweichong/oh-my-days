@@ -382,3 +382,26 @@ export function setSnoozeStatement(
 export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): boolean {
   return task.snoozedUntil !== null && task.snoozedUntil > now;
 }
+
+/**
+ * Open tasks that could need a reminder now: exact deadlines within the next
+ * 25 hours (longest built-in offer is one day), and snoozes that just ended.
+ */
+export async function reminderCandidateTasks(
+  db: D1Database,
+  userId: string,
+  now: number,
+  snoozeWindowMs: number,
+): Promise<TaskRecord[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${TASK_COLUMNS} ${FROM}
+       WHERE t.user_id = ?1 AND t.status = 'open' AND (
+         (t.due_kind = 'datetime' AND t.due_at > ?2 AND t.due_at <= ?2 + 90000000)
+         OR (t.snoozed_until IS NOT NULL AND t.snoozed_until <= ?2 AND t.snoozed_until > ?2 - ?3))
+       LIMIT 200`,
+    )
+    .bind(userId, now, snoozeWindowMs)
+    .all<TaskRow>();
+  return results.map(toTask);
+}
