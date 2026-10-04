@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { tickDeps } from "../../src/app";
 import { OCCURRENCES_PER_RUN } from "../../src/application/series";
 import { SYNC_INTERVAL_MS } from "../../src/jobs/calendar-sync";
+import { runTick } from "../../src/jobs/tick";
 import { rows } from "../support/db";
 import { ownerCalendar, PRIMARY, setUpOwner, World } from "../support/world";
 
@@ -97,7 +99,7 @@ describe("recurring tasks", () => {
 
     // The bot is down for 90 days, then resumes.
     world.clock.current = sgt(12, 24, 9);
-    await world.tick();
+    await runTick(tickDeps(world.services)); // a single run
     const firstRun = (await occurrences("Stretch")).length;
     expect(firstRun - before).toBeLessThanOrEqual(OCCURRENCES_PER_RUN);
     for (let i = 0; i < 6; i++) await world.tick();

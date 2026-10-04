@@ -117,9 +117,16 @@ export class World {
     if (this.lastText()?.startsWith("Does ")) await this.press("Doesn't repeat");
   }
 
-  /** Runs one scheduled tick. */
+  /** Runs scheduled ticks until calendar syncing settles (see below). */
   async tick(): Promise<void> {
-    await runTick(tickDeps(this.services));
+    // Each run syncs at most one calendar and defers maintenance while syncing,
+    // so a "tick" here is the following few runs, until syncing settles.
+    // Two quiet runs in a row: the first may only have scheduled new calendars.
+    let quiet = 0;
+    for (let run = 0; run < 10 && quiet < 2; run++) {
+      const summary = await runTick(tickDeps(this.services));
+      quiet = summary.syncedCalendars === 0 ? quiet + 1 : 0;
+    }
   }
 
   texts(): string[] {

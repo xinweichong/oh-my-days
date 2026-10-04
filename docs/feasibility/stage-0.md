@@ -5,8 +5,8 @@ accounts or explicit authorization. Nothing has been provisioned or deployed.
 
 | Item (backend plan stage 0) | Status | Evidence / next step |
 |---|---|---|
-| Worker + D1 execution model | Local evidence | Batch atomicity, in-batch visibility, guarded no-ops, and foreign keys verified in Miniflare (`tests/storage/d1-semantics.test.ts`). See [ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md). Recheck on remote D1. |
-| Worker CPU (10 ms Free limit) | Not measured | Local timings are not representative. Needs a deployed preview Worker and authorization to deploy. |
+| Worker + D1 execution model | Local and live evidence | Batch atomicity, in-batch visibility, guarded no-ops, and foreign keys verified in Miniflare (`tests/storage/d1-semantics.test.ts`). See [ADR 0001](../adr/0001-leases-and-guarded-d1-batches.md). Recheck on remote D1. |
+| Worker CPU (10 ms Free limit) | Measured 2026-10-04 | Tuned to a median of 8 ms per minute run; see [capacity](../capacity.md). |
 | Shared-account capacity | Resolved 2026-10-02 | Owner confirmed the other application runs on Oracle Cloud; the Cloudflare account holds only DNS for `xinweichong.com`. No shared Workers/D1/Cron usage. |
 | OAuth scopes and ongoing access | Scopes chosen; verification pending | Chosen: `calendar.events`, `calendar.calendarlist.readonly`, `calendar.app.created`, `openid email`. The console refused to publish without verification for these sensitive scopes. Decision ([ADR 0002](../adr/0002-custom-domain-and-oauth-verification.md)): Testing mode now (7-day refresh tokens); verify via `ohmydays.xinweichong.com`. On 2026-10-02 the owner deferred the demo video and verification submission; the bot stays in Testing with weekly reauthorization until then. |
 | Deadline marker display | Pending | Needs a dedicated test calendar: all-day and exact-time markers, transparency (free/busy), display in Google Calendar clients. |
