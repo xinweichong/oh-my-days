@@ -3,9 +3,10 @@
 A little less to keep in your head.
 
 A private Telegram scheduling and task assistant, with Google Calendar as the
-calendar interface. Under construction: the Telegram foundation, safe-operation
-core, and Google Calendar connection and setup exist and are tested locally.
-Events, tasks, and reminders are not implemented yet, and nothing is deployed.
+calendar interface. Deployed for private use at `ohmydays.xinweichong.com`:
+events, tasks and lists, recurring items, reminders and the daily agenda,
+invitations, and two-way Google Calendar sync, all through commands and
+buttons. Natural-language input (Gemini) is deferred.
 
 - [Product specification](docs/specs/oh-my-days.md)
 - [Backend architecture and build order](docs/plans/backend.md)
@@ -14,6 +15,8 @@ Events, tasks, and reminders are not implemented yet, and nothing is deployed.
 - [Telegram and connection-page experience](docs/design/experience.md)
 - [Product context](PRODUCT.md)
 - [Contributor and agent instructions](AGENTS.md)
+- [Acceptance matrix](docs/acceptance.md) and [capacity measurements](docs/capacity.md)
+- Runbooks: [deploy](docs/runbooks/deploy.md), [operations](docs/runbooks/operations.md)
 
 Work happens in `feature/<purpose>` or `bugfix/<purpose>` branches from
 `develop`, with incremental commits.

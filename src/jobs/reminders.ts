@@ -17,13 +17,13 @@ import {
   agendaClaimGuard,
   agendaSent,
   allClaimedGuard,
+  allReminderOverrides,
   claimAgendaStatement,
   claimReminderStatement,
   horizonEvents,
   loggedReminderKeys,
-  reminderOverrides,
 } from "../storage/reminders";
-import { isSnoozed, listOpenTasks, type TaskRecord } from "../storage/tasks";
+import { isSnoozed, reminderCandidateTasks, type TaskRecord } from "../storage/tasks";
 import { findUserById, type UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import { formatEventRange } from "../telegram/format";
@@ -139,7 +139,8 @@ function minutesLabel(minutes: number): string {
 
 async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Promise<Due[]> {
   const due: Due[] = [];
-  const eventOverrides = await reminderOverrides(deps.db, user.id, "event");
+  const overrides = await allReminderOverrides(deps.db, user.id);
+  const eventOverrides = overrides.event;
   for (const e of await horizonEvents(deps.db, user.id, now, now + 7 * 86_400_000)) {
     if (e.declined) continue;
     const targetKey = `${e.calendarId}/${e.eventId}`;
@@ -171,8 +172,8 @@ async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Pr
     });
   }
 
-  const taskOverrides = await reminderOverrides(deps.db, user.id, "task");
-  for (const task of await listOpenTasks(deps.db, user.id, null)) {
+  const taskOverrides = overrides.task;
+  for (const task of await reminderCandidateTasks(deps.db, user.id, now, SNOOZE_STALE_MS)) {
     const label = `[${task.listName}] ${task.title}`;
     if (
       task.snoozedUntil !== null &&

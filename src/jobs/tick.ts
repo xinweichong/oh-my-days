@@ -33,8 +33,8 @@ export const TICK_LIMITS = {
   inboxUsers: 10,
   inboxUpdatesPerUser: 5,
   operations: 10,
-  /** Calendars synchronized per tick; each may fetch up to MAX_PAGES_PER_RUN pages. */
-  calendars: 4,
+  /** Calendars synchronized per tick; parsing event pages is the heaviest CPU work. */
+  calendars: 1,
   calendarLists: 2,
   horizons: 2,
   series: 5,
@@ -81,11 +81,18 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   // New occurrences are created before reminders and agendas look at tasks.
   await materializeSeries(deps.reminders, TICK_LIMITS.series);
 
-  // Sync before delivery, so messages it produces (e.g. conflicts) go out now.
-  await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
+  // At most one heavy job per tick (one calendar's sync, frequent maintenance,
+  // or cleanup), so each invocation stays inside the Workers Free CPU limit
+  // (measured in docs/capacity.md). Deferred jobs run on following ticks.
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
-  await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
-  await evaluateSyncHealth(deps.reminders);
+  // After a sync, maintenance runs only if it has been starved for too long.
+  const due = await claimMaintenance(deps.db, now, syncedCalendars > 0 ? 2 : 1);
+
+  if (due.frequent) {
+    await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
+    await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
+    await evaluateSyncHealth(deps.reminders);
+  }
 
   // Reminders and agendas come before delivery so they go out in this tick.
   await refreshHorizons(deps.reminders, TICK_LIMITS.horizons);
@@ -94,24 +101,13 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
 
   // Maintenance: keep Telegram's command menu in step with the deployed code.
-  await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
+  if (due.frequent) {
+    await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
+  }
 
   const later = deps.clock.now();
-  const cutoff = later - FINISHED_RETENTION_MS;
-  await deps.db.batch([
-    expireConfirmationsStatement(deps.db, later, TICK_LIMITS.purgeRows),
-    purgeFinishedInboxStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
-    purgeFinishedDeliveriesStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
-    purgeExpiredCallbackRefsStatement(deps.db, cutoff, TICK_LIMITS.purgeRows),
-    ...purgeFinishedOperationsStatements(
-      deps.db,
-      later - OPERATION_RETENTION_MS,
-      TICK_LIMITS.purgeRows,
-    ),
-    ...purgeExpiredAuthStatements(deps.db, later, TICK_LIMITS.purgeRows),
-    ...purgeExpiredInteractionsStatements(deps.db, later, TICK_LIMITS.purgeRows),
-    ...purgeOldReminderStatements(deps.db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
-  ]);
+  if (due.frequent) await expireConfirmationsStatement(deps.db, later, TICK_LIMITS.purgeRows).run();
+  if (due.cleanup) await purge(deps.db, later);
 
   const summary = {
     recoveredDeliveries,
@@ -121,6 +117,58 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     syncedCalendars,
     reminders,
   };
-  logEvent("tick.finished", { ...summary });
+  logEvent("tick.finished", { ...summary, frequent: due.frequent, cleanup: due.cleanup });
   return summary;
+}
+
+/** Interval of frequent maintenance (calendar lists, sync health, menu, expiry). */
+export const FREQUENT_MAINTENANCE_MS = 5 * 60_000;
+/** Interval of retention cleanup. */
+export const CLEANUP_MS = 30 * 60_000;
+
+/**
+ * Decides which periodic groups are due, and records them as run. Overlapping
+ * ticks may both run a group; every group is idempotent.
+ */
+export async function claimMaintenance(
+  db: D1Database,
+  now: number,
+  /** Multiplier on the intervals: 2 after a sync, so maintenance is deferred but never starved. */
+  patience: number,
+): Promise<{ frequent: boolean; cleanup: boolean }> {
+  const { results } = await db
+    .prepare(
+      "SELECT key, value FROM app_state WHERE key IN ('maintenance:frequent', 'maintenance:cleanup')",
+    )
+    .all<{ key: string; value: string }>();
+  const last = (key: string) => Number(results.find((r) => r.key === key)?.value ?? 0);
+  const frequent = now - last("maintenance:frequent") >= FREQUENT_MAINTENANCE_MS * patience;
+  // Cleanup waits for a tick without frequent maintenance.
+  const cleanup = !frequent && now - last("maintenance:cleanup") >= CLEANUP_MS * patience;
+  const record = (key: string) =>
+    db
+      .prepare(
+        `INSERT INTO app_state (key, value, updated_at) VALUES (?1, ?2, ?2)
+         ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+      )
+      .bind(key, String(now));
+  const writes = [
+    ...(frequent ? [record("maintenance:frequent")] : []),
+    ...(cleanup ? [record("maintenance:cleanup")] : []),
+  ];
+  if (writes.length) await db.batch(writes);
+  return { frequent, cleanup };
+}
+
+async function purge(db: D1Database, later: number): Promise<void> {
+  const cutoff = later - FINISHED_RETENTION_MS;
+  await db.batch([
+    purgeFinishedInboxStatement(db, cutoff, TICK_LIMITS.purgeRows),
+    purgeFinishedDeliveriesStatement(db, cutoff, TICK_LIMITS.purgeRows),
+    purgeExpiredCallbackRefsStatement(db, cutoff, TICK_LIMITS.purgeRows),
+    ...purgeFinishedOperationsStatements(db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
+    ...purgeExpiredAuthStatements(db, later, TICK_LIMITS.purgeRows),
+    ...purgeExpiredInteractionsStatements(db, later, TICK_LIMITS.purgeRows),
+    ...purgeOldReminderStatements(db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
+  ]);
 }
