@@ -20,6 +20,7 @@ export interface EventMeta {
   declined?: boolean;
   hasGuests?: boolean;
   organizerSelf?: boolean;
+  attendees?: string[];
 }
 
 /**
@@ -43,6 +44,8 @@ export class WorkerCrash extends Error {
 export class FakeCalendar implements CalendarPort, CalendarSyncSource {
   readonly events = new Map<string, CalendarEvent>();
   readonly meta = new Map<string, EventMeta>();
+  /** Writes that asked Google to email guests, in order. */
+  readonly notified: { eventId: string; method: "patch" | "delete" }[] = [];
   /** Marker properties written with events (transparency, silence, private data). */
   readonly extras = new Map<string, EventExtras>();
   /** Version at which each event last changed, for incremental sync. */
@@ -154,7 +157,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       recurringEventId: meta.recurringEventId ?? null,
       transparent: meta.transparent ?? false,
       declined: meta.declined ?? false,
-      hasGuests: meta.hasGuests ?? false,
+      hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
       organizerSelf: meta.organizerSelf ?? true,
     };
   }
@@ -199,7 +202,9 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
         ...structuredClone(event),
         recurringEventId: meta.recurringEventId ?? null,
         recurring: meta.recurring ?? false,
-        hasGuests: meta.hasGuests ?? false,
+        hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
+        attendees: meta.attendees ?? [],
+        organizerSelf: meta.organizerSelf ?? true,
       });
     });
   }
@@ -240,6 +245,14 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       if (extras) {
         const k = key(calendarId, eventId);
         this.extras.set(k, { ...this.extras.get(k), ...extras });
+        if (extras.notifyGuests) this.notified.push({ eventId, method: "patch" });
+        if (extras.attendees) {
+          this.meta.set(k, {
+            ...this.meta.get(k),
+            attendees: extras.attendees,
+            hasGuests: extras.attendees.length > 0,
+          });
+        }
         if (extras.transparent !== undefined) {
           this.meta.set(k, { ...this.meta.get(k), transparent: extras.transparent });
         }
@@ -253,8 +266,10 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     calendarId: string,
     eventId: string,
     ifMatchEtag: string,
+    extras?: { notifyGuests?: boolean },
   ): Promise<ProviderResult<null>> {
     return this.run("delete", () => {
+      if (extras?.notifyGuests) this.notified.push({ eventId, method: "delete" });
       if (this.readOnlyCalendars.has(calendarId)) return err({ kind: "forbidden" });
       const event = this.events.get(key(calendarId, eventId));
       if (!event || event.status === "cancelled") return err({ kind: "not_found" });

@@ -1,6 +1,7 @@
 import type { CalendarDirectory, CalendarPort } from "../calendar/port";
 import type { IdGenerator } from "../shared/ids";
 import type { ClaimedOperation, OperationRecord } from "../storage/operations";
+import type { ItemRef } from "../storage/outbox";
 import type { UserRecord } from "../storage/users";
 import type { Reaction } from "./reactions";
 
@@ -68,6 +69,8 @@ export interface OperationHandler {
    * treat `op.outcomeUnknown` as "a previous attempt may already have applied".
    */
   execute(ctx: ExecutionContext): Promise<ExecutionOutcome>;
+  /** The item an operation's messages are about, for reply targeting. */
+  about?(op: OperationRecord): ItemRef | null;
   /** User-facing text for an outcome, or null to stay quiet. */
   notice(op: OperationRecord, event: NoticeEvent, user: UserRecord): string | null;
   /**

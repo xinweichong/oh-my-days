@@ -161,7 +161,7 @@ export function privacyPage(contactEmail: string | null): string {
   return page(
     "Privacy policy · Oh My Days",
     `<h1>Privacy policy</h1>
-<p>Effective 3 October 2026.</p>
+<p>Effective 4 October 2026.</p>
 <p>Oh My Days is a private Telegram assistant run by an individual for invited users. This policy explains what it stores and why.</p>
 
 <h2>What Oh My Days stores</h2>
@@ -171,6 +171,7 @@ export function privacyPage(contactEmail: string | null): string {
 <li><strong>Calendars:</strong> the names, identifiers, and access levels of calendars in your account, which calendars you selected, your default calendar, and the task calendar.</li>
 <li><strong>Events:</strong> a copy of the title, time, and a few properties (such as whether it has guests or is marked free) of events in the calendars you selected, refreshed from Google every few minutes. One-off events that ended more than 30 days ago are not kept, and a calendar's copy is deleted when you deselect it. Event descriptions, locations, and guest lists are not stored.</li>
 <li><strong>Tasks:</strong> your tasks' titles, lists, deadlines, and status, and links to their deadline entries in the task calendar. Completed and cancelled tasks are kept so they can be restored.</li>
+<li><strong>Contacts:</strong> names and email addresses you choose to save as shortcuts for invitations. Contacts are never imported from Google.</li>
 <li><strong>Your requests:</strong> changes you ask for (for example, an event's title and time) are recorded until they have been carried out and for up to 30 days afterwards, so they can be retried safely and undone.</li>
 <li><strong>Settings:</strong> your timezone and similar preferences.</li>
 </ul>

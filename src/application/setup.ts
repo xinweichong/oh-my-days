@@ -3,6 +3,7 @@ import type { AppConfig } from "../env";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
+import { deleteContactStatement, listContacts } from "../storage/contacts";
 import {
   findConnection,
   listStoredCalendars,
@@ -261,6 +262,7 @@ export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<R
         buttons.button("Timezone", "open_timezone", {}),
         buttons.button("Reconnect Google", "reconnect", {}),
       ],
+      [buttons.button("Contacts", "open_contacts", {})],
     ],
   };
   return {
@@ -495,6 +497,42 @@ export async function handleUiAction(
         not_connected: "Google Calendar isn't connected.",
       }[result];
       return ack(text);
+    }
+
+    case "open_contacts": {
+      const contacts = await listContacts(deps.db, user.id);
+      if (contacts.length === 0) {
+        return combine(
+          ack(),
+          message(
+            user.privateChatId,
+            "No saved contacts. When you invite someone by name, I'll offer to save their address.",
+          ),
+        );
+      }
+      const buttons = new ActionButtons(deps.ids, user.id, now);
+      const rows = contacts
+        .slice(0, 30)
+        .map((c) => [buttons.button(`Delete ${c.name}`, "contact_delete", { name: c.name })]);
+      return combine(ack(), {
+        replies: [
+          keyboardMessage(
+            user,
+            `Contacts\n\n${contacts.map((c) => `• ${c.name}: ${c.email}`).join("\n")}`,
+            { inline_keyboard: rows },
+            null,
+          ),
+        ],
+        statements: (db, guard) => buttons.statements(db, guard),
+      });
+    }
+
+    case "contact_delete": {
+      const name = String(payload.name ?? "");
+      return combine(ack(`Deleted ${name}.`), {
+        replies: [],
+        statements: (db) => [deleteContactStatement(db, user.id, name)],
+      });
     }
 
     case "reconnect": {

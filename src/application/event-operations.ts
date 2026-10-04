@@ -3,6 +3,7 @@ import { type EventField, type EventFields, pickEventFields } from "../domain/ca
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
 import { DEFAULT_EVENT_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
+import type { ItemRef } from "../storage/outbox";
 import { claimReminderStatement } from "../storage/reminders";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
@@ -43,9 +44,21 @@ export interface CreateEventIntent extends EventContext {
   repeatLabel?: string;
 }
 
+/**
+ * Present when Google should email guests about the change. The recipients are
+ * the guests the user confirmed; if the guest list differs when the change is
+ * applied, the user is asked again (spec §8).
+ */
+export interface GuestNotice {
+  recipients: string[];
+}
+
 export interface PatchEventIntent extends EventContext {
   /** "series" when the change applies to every occurrence (confirmed first). */
   scope?: "series";
+  notify?: GuestNotice;
+  /** New guests to invite (merged with existing guests; invitations are emailed). */
+  addAttendees?: string[];
   calendarId: string;
   eventId: string;
   /** The event title as shown when the change was requested, for messages. */
@@ -60,6 +73,7 @@ export interface PatchEventIntent extends EventContext {
 export interface DeleteEventIntent {
   /** "series" when deleting every occurrence of a recurring event. */
   scope?: "series";
+  notify?: GuestNotice;
   calendarId: string;
   eventId: string;
   /** The event as previewed; a different current event requires a new confirmation. */
@@ -114,8 +128,15 @@ function isLive(event: CalendarEvent): boolean {
   return event.status !== "cancelled";
 }
 
+/** Event operations' messages are about the event they change. */
+function aboutEvent(op: { intent: unknown }): ItemRef {
+  const intent = op.intent as { calendarId: string; eventId: string };
+  return { kind: "event", calendarId: intent.calendarId, eventId: intent.eventId };
+}
+
 export const createEventHandler: OperationHandler = {
   kind: CREATE_EVENT,
+  about: aboutEvent,
 
   async execute({ op, calendar }) {
     if (!calendar) return { kind: "auth_required" };
@@ -183,6 +204,7 @@ export const createEventHandler: OperationHandler = {
 
 export const patchEventHandler: OperationHandler = {
   kind: PATCH_EVENT,
+  about: aboutEvent,
 
   async execute({ op, calendar }) {
     if (!calendar) return { kind: "auth_required" };
@@ -193,6 +215,21 @@ export const patchEventHandler: OperationHandler = {
       return intent.undo
         ? { kind: "failed", errorClass: "undo_stale" }
         : { kind: "needs_resolution", reason: "target_missing" };
+    }
+
+    const guests = current.value.attendees ?? [];
+    const invited = intent.addAttendees ?? [];
+    if (intent.notify) {
+      // The confirmed recipients must still be the event's guests (plus invitees).
+      const expected = intent.notify.recipients.filter((r) => !invited.includes(r));
+      const existing = guests.filter((g) => !invited.includes(g));
+      if (!sameAddresses(existing, expected)) {
+        const next: PatchEventIntent = {
+          ...intent,
+          notify: { recipients: unique([...existing, ...invited]) },
+        };
+        return { kind: "needs_reconfirmation", intent: next, preview: guestChangePreview(next) };
+      }
     }
 
     const merge = mergeIntended(intent.base, current.value.fields, intent.patch);
@@ -218,14 +255,24 @@ export const patchEventHandler: OperationHandler = {
           ? await overlapsFor(calendar, intent, written)
           : {}),
       });
+    const missingGuests = invited.filter((g) => !guests.includes(g));
     // Nothing left to write: an earlier attempt (or someone else) already applied it.
-    if (Object.keys(merge.patch).length === 0) return result(current.value);
+    // A notifying write is never repeated once applied, so no second email is sent.
+    if (Object.keys(merge.patch).length === 0 && missingGuests.length === 0) {
+      return result(current.value);
+    }
 
     const patched = await calendar.patchEvent(
       intent.calendarId,
       intent.eventId,
       merge.patch as Partial<EventFields>,
       current.value.etag,
+      intent.notify
+        ? {
+            notifyGuests: true,
+            ...(missingGuests.length ? { attendees: unique([...guests, ...invited]) } : {}),
+          }
+        : undefined,
     );
     if (!patched.ok) return providerFailure(patched.error);
     return result(patched.value);
@@ -236,20 +283,27 @@ export const patchEventHandler: OperationHandler = {
     const fields = event.kind === "succeeded" ? (event.result as PatchResult).fields : null;
     const title = fields?.summary ?? intent.patch.summary ?? intent.title;
     switch (event.kind) {
-      case "succeeded":
-        return writtenNotice(
+      case "succeeded": {
+        if (intent.addAttendees?.length) {
+          return `Invitations sent for ${title}:\n${intent.addAttendees.map((a) => `• ${a}`).join("\n")}`;
+        }
+        const text = writtenNotice(
           intent.undo ? "Undone" : intent.scope === "series" ? "Series updated" : "Event updated",
           event.result as PatchResult,
           intent,
           user,
         );
+        return intent.notify ? `${text}\n\n${guestsEmailed(intent.notify)}` : text;
+      }
+      case "needs_reconfirmation":
+        return `The guests of ${title} changed since you confirmed.\n\n${event.preview.text}`;
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that the change to ${title} reached Google Calendar. I'll check again automatically.`
           : `Pending: the change to ${title} has not reached Google Calendar. I'll retry automatically.`;
       case "needs_resolution":
         if (event.reason === "field_conflict") {
-          return `${title} changed in Calendar while your change was pending. Nothing was overwritten.`;
+          return conflictNotice(title, intent, event.details, user);
         }
         if (event.reason === "target_missing") {
           return `I couldn't find ${title} in Google Calendar anymore. Nothing was changed.`;
@@ -264,8 +318,21 @@ export const patchEventHandler: OperationHandler = {
 
   inverse(op) {
     const intent = op.intent as PatchEventIntent;
-    if (intent.undo) return null;
+    if (intent.undo || intent.addAttendees?.length) return null;
     const result = op.result as PatchResult;
+    const inverse: PatchEventIntent = {
+      calendarId: intent.calendarId,
+      eventId: intent.eventId,
+      title: result.fields.summary,
+      base: result.after,
+      patch: result.before,
+      undo: true,
+      ...(intent.notify ? { notify: intent.notify } : {}),
+    };
+    // Undoing a change guests were told about tells them again, so it is confirmed.
+    if (intent.notify) {
+      return { kind: PATCH_EVENT, intent: inverse, confirmation: guestChangePreview(inverse) };
+    }
     return {
       kind: PATCH_EVENT,
       intent: {
@@ -314,10 +381,18 @@ export const deleteEventHandler: OperationHandler = {
       };
     }
 
+    if (intent.notify && !sameAddresses(current.value.attendees ?? [], intent.notify.recipients)) {
+      const next: DeleteEventIntent = {
+        ...intent,
+        notify: { recipients: current.value.attendees ?? [] },
+      };
+      return { kind: "needs_reconfirmation", intent: next, preview: deletePreview(next, user) };
+    }
     const deleted = await calendar.deleteEvent(
       intent.calendarId,
       intent.eventId,
       current.value.etag,
+      intent.notify ? { notifyGuests: true } : undefined,
     );
     if (!deleted.ok && deleted.error.kind !== "not_found") return providerFailure(deleted.error);
     return succeeded<DeleteResult>({ fields: intent.base });
@@ -329,8 +404,10 @@ export const deleteEventHandler: OperationHandler = {
     switch (event.kind) {
       case "succeeded":
         if (intent.undo) return `Undone: ${title} was removed from Google Calendar.`;
-        if (intent.scope === "series") return `Deleted every occurrence of ${title}.`;
-        return `Event deleted: ${title}\n${formatEventRange(intent.base, user.timezone)}`;
+        if (intent.scope === "series") {
+          return `Deleted every occurrence of ${title}.${intent.notify ? `\n\n${guestsEmailed(intent.notify, "cancellation")}` : ""}`;
+        }
+        return `Event deleted: ${title}\n${formatEventRange(intent.base, user.timezone)}${intent.notify ? `\n\n${guestsEmailed(intent.notify, "cancellation")}` : ""}`;
       case "needs_reconfirmation":
         return `${title} changed since you asked to delete it.\n\n${event.preview.text}`;
       case "pending":
@@ -353,16 +430,29 @@ export function deletePreview(
   intent: DeleteEventIntent,
   user: UserRecord,
 ): { text: string; confirmLabel: string; facts: unknown } {
+  // Guests are listed so the user sees exactly who Google will email.
+  const guests = intent.notify
+    ? `\n\nGoogle will email a cancellation to:\n${intent.notify.recipients.map((r) => `• ${r}`).join("\n")}`
+    : "";
+  const facts = {
+    calendarId: intent.calendarId,
+    eventId: intent.eventId,
+    base: intent.base,
+    scope: intent.scope ?? null,
+    recipients: intent.notify?.recipients ?? null,
+  };
   if (intent.scope === "series") {
     return {
-      text: `Delete every occurrence of ${intent.base.summary}?\n\nThis removes the whole recurring series from Google Calendar.`,
-      confirmLabel: "Delete series",
-      facts: {
-        calendarId: intent.calendarId,
-        eventId: intent.eventId,
-        base: intent.base,
-        scope: "series",
-      },
+      text: `Delete every occurrence of ${intent.base.summary}?\n\nThis removes the whole recurring series from Google Calendar.${guests}`,
+      confirmLabel: intent.notify ? "Delete and notify" : "Delete series",
+      facts,
+    };
+  }
+  if (intent.notify) {
+    return {
+      text: `Delete event: ${intent.base.summary}\n${formatEventRange(intent.base, user.timezone)}${guests}`,
+      confirmLabel: "Delete and notify",
+      facts,
     };
   }
   return {
@@ -473,6 +563,89 @@ async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<
       ),
     ],
   };
+}
+
+function unique(values: readonly string[]): string[] {
+  return [...new Set(values.map((v) => v.toLowerCase()))];
+}
+
+function sameAddresses(a: readonly string[], b: readonly string[]): boolean {
+  const left = unique(a).sort();
+  const right = unique(b).sort();
+  return left.length === right.length && left.every((v, i) => v === right[i]);
+}
+
+/** Adding guests also emails an update to the guests already invited. */
+function existingGuestsNote(intent: PatchEventIntent): string {
+  const others = (intent.notify?.recipients ?? []).filter((r) => !intent.addAttendees?.includes(r));
+  if (others.length === 0) return "";
+  return `\nThe existing guests also get an update:\n${others.map((o) => `• ${o}`).join("\n")}`;
+}
+
+function guestsEmailed(notice: GuestNotice, what = "update"): string {
+  const n = notice.recipients.length;
+  return `Google emailed the ${what} to ${n} guest${n === 1 ? "" : "s"}.`;
+}
+
+/**
+ * The confirmation shown before Google emails guests: the exact change and
+ * every recipient. Bound to the operation by its preview hash.
+ */
+export function guestChangePreview(intent: PatchEventIntent): {
+  text: string;
+  confirmLabel: string;
+  facts: unknown;
+} {
+  const recipients = (intent.notify?.recipients ?? []).map((r) => `• ${r}`).join("\n");
+  if (intent.addAttendees?.length) {
+    return {
+      text: `Invite to ${intent.title}:\n${intent.addAttendees.map((a) => `• ${a}`).join("\n")}\n\nGoogle will email ${intent.addAttendees.length === 1 ? "them an invitation" : "each of them an invitation"}.${existingGuestsNote(intent)}`,
+      confirmLabel: "Send invitations",
+      facts: {
+        eventId: intent.eventId,
+        add: intent.addAttendees,
+        recipients: intent.notify?.recipients ?? [],
+      },
+    };
+  }
+  const what: string[] = [];
+  if (intent.patch.summary) what.push(`Rename to ${intent.patch.summary}`);
+  if (intent.patch.start && intent.patch.end) {
+    what.push(
+      `Move to ${formatEventRange({ start: intent.patch.start, end: intent.patch.end }, "timeZone" in intent.patch.start ? intent.patch.start.timeZone : "UTC")}`,
+    );
+  }
+  const scope = intent.scope === "series" ? " (every occurrence)" : "";
+  return {
+    text: `Change ${intent.title}${scope}:\n${what.join("\n")}\n\nGoogle will email the update to:\n${recipients}`,
+    confirmLabel: "Send update",
+    facts: {
+      eventId: intent.eventId,
+      patch: intent.patch,
+      recipients: intent.notify?.recipients ?? [],
+      scope: intent.scope ?? null,
+    },
+  };
+}
+
+/** "Dinner moved to 5–6pm in Calendar while your change to 4–5pm was pending. Which should I keep?" */
+function conflictNotice(
+  title: string,
+  intent: PatchEventIntent,
+  details: unknown,
+  user: UserRecord,
+): string {
+  const current = ((details as { current?: Partial<EventFields> } | undefined)?.current ??
+    {}) as Partial<EventFields>;
+  const describe = (fields: Partial<EventFields>) => {
+    if (fields.summary !== undefined) return `"${fields.summary}"`;
+    if (fields.start && fields.end) {
+      const range = formatEventRange({ start: fields.start, end: fields.end }, user.timezone);
+      return range;
+    }
+    return "a different value";
+  };
+  return `${title} changed in Calendar to ${describe(current)} while your change to ${describe(intent.patch)} was pending. Nothing was overwritten. Which should I keep?`;
 }
 
 function succeeded<T>(result: T): ExecutionOutcome {

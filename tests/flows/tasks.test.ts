@@ -308,7 +308,7 @@ describe("tasks", () => {
     await syncLater(world);
 
     expect(world.texts()).toContain(
-      "Buy oat milk changed in Calendar while your change was pending. Nothing was overwritten.",
+      'Buy oat milk changed in Calendar to "[Inbox] Buy soy milk" while your change was pending. Nothing was overwritten. Which should I keep?',
     );
     expect((await task("Buy oat milk"))?.title).toBe("Buy oat milk");
     expect(ownerCalendar(world).live(marker.calendarId, marker.id)?.fields.summary).toBe(

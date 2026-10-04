@@ -1,6 +1,7 @@
 import type { IdGenerator } from "../shared/ids";
 import type { Guard } from "../storage/guard";
 import { insertUiActionStatement } from "../storage/interactions";
+import type { ItemRef } from "../storage/outbox";
 import type { InlineKeyboardButton, TelegramCall } from "../telegram/api";
 
 /**
@@ -10,13 +11,22 @@ import type { InlineKeyboardButton, TelegramCall } from "../telegram/api";
 export interface Reaction {
   replies: TelegramCall[];
   statements?: (db: D1Database, guard: Guard) => D1PreparedStatement[];
+  /** The item these replies are about: replies to them target it (spec §4 follow-ups). */
+  about?: ItemRef;
 }
 
 export function combine(...reactions: Reaction[]): Reaction {
+  const about = reactions.findLast((r) => r.about)?.about;
   return {
     replies: reactions.flatMap((r) => r.replies),
     statements: (db, guard) => reactions.flatMap((r) => r.statements?.(db, guard) ?? []),
+    ...(about ? { about } : {}),
   };
+}
+
+/** Marks a reaction as being about an item. */
+export function about(item: ItemRef, reaction: Reaction): Reaction {
+  return { ...reaction, about: item };
 }
 
 export function message(chatId: number, text: string): Reaction {
