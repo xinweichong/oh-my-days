@@ -5,6 +5,7 @@ import { createUpdateHandler, type UpdateHandler } from "../telegram/router";
 import type { InboundCallback } from "../telegram/update";
 import type { SourceFor } from "./calendar-view";
 import { createCallbackHandler } from "./callbacks";
+import { handleConflictAction, isConflictAction } from "./conflict-flow";
 import {
   eventMenu,
   handleEventAction,
@@ -12,6 +13,13 @@ import {
   isEventAction,
   isEventInput,
 } from "./event-flow";
+import { handleFollowUp } from "./follow-ups";
+import {
+  handleInviteAction,
+  handleInviteInput,
+  isInviteAction,
+  isInviteInput,
+} from "./invite-flow";
 import type { HandlerRegistry } from "./operation-types";
 import { message, type Reaction, UI_PREFIX } from "./reactions";
 import {
@@ -65,6 +73,9 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
           ],
         };
       }
+      if (isInviteAction(action.action)) return handleInviteAction(deps, user, callback, action);
+      if (isConflictAction(action.action))
+        return handleConflictAction(deps, user, callback, action);
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
       if (isViewAction(action.action)) return handleViewAction(deps, user, callback, action);
@@ -97,6 +108,9 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
     },
     onText: async (user, input) => {
       const pending = await findPendingInput(deps.db, user.id, deps.clock.now());
+      if (pending && isInviteInput(pending.kind)) {
+        return handleInviteInput(deps, user, input, pending);
+      }
       if (pending && isEventInput(pending.kind)) {
         return handleEventInput(deps, user, input, pending);
       }
@@ -108,6 +122,9 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (user.setupStep !== "done") {
         return message(user.privateChatId, "Finish setup first: send /start to continue.");
       }
+      // "Move it to 4pm" and similar follow-ups about one item.
+      const followUp = await handleFollowUp(deps, user, input);
+      if (followUp) return followUp;
       return null;
     },
   });

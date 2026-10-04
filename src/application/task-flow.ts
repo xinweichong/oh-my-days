@@ -242,6 +242,7 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
     rows.push([buttons.button("Series", "series_menu", { seriesId: series.id })]);
   }
   return {
+    about: { kind: "task", taskId: task.id },
     replies: [keyboardMessage(user, text, { inline_keyboard: rows }, null)],
     statements: (db, guard) => buttons.statements(db, guard),
   };
@@ -378,7 +379,7 @@ function needsProjection(task: TaskRecord, changes: TaskChanges): boolean {
  * Applies a version-checked change, queues the marker update, and replies with
  * the result and an Undo bound to the resulting version.
  */
-function change(
+export function change(
   deps: SetupDeps,
   user: UserRecord,
   task: TaskRecord,
@@ -398,6 +399,7 @@ function change(
       }
     : null;
   return {
+    about: { kind: "task", taskId: task.id },
     replies: [
       keyboard
         ? keyboardMessage(user, text, keyboard, null)
@@ -449,6 +451,7 @@ async function createTask(
   const buttons = new ActionButtons(deps.ids, user.id, now);
   const text = `Task added to ${list.name}: ${draft.title}.\n${dueLabel(deadline, user.timezone)}.`;
   return {
+    about: { kind: "task", taskId: id },
     replies: [
       keyboardMessage(
         user,
@@ -529,7 +532,7 @@ function timedDeadline(
 }
 
 /** A confirmation bound to the task version: the action applies only if nothing changed. */
-function confirmPrompt(
+export function confirmPrompt(
   deps: SetupDeps,
   user: UserRecord,
   text: string,
@@ -1151,6 +1154,7 @@ async function createSeries(
   const rule = { freq, interval: 1, anchor };
   const buttons = new ActionButtons(deps.ids, user.id, now);
   return {
+    about: { kind: "task", taskId },
     replies: [
       keyboardMessage(
         user,

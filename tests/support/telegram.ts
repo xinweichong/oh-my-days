@@ -10,7 +10,7 @@ export function freshUpdateId(): number {
 export function textUpdate(
   fromId: number,
   text: string,
-  options: { updateId?: number; chatType?: string; chatId?: number } = {},
+  options: { updateId?: number; chatType?: string; chatId?: number; replyTo?: number } = {},
 ): Record<string, unknown> {
   const chatId = options.chatId ?? fromId;
   return {
@@ -21,6 +21,9 @@ export function textUpdate(
       from: { id: fromId, is_bot: false, first_name: "Test" },
       chat: { id: chatId, type: options.chatType ?? "private" },
       text,
+      ...(options.replyTo !== undefined
+        ? { reply_to_message: { message_id: options.replyTo } }
+        : {}),
     },
   };
 }

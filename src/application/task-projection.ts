@@ -39,6 +39,8 @@ export function projectTaskStatement(
   version: number,
   now: number,
   guard: Guard,
+  /** Distinguishes a deliberate re-projection (e.g. after resolving a conflict). */
+  reason = "",
 ): D1PreparedStatement {
   return insertOperationStatement(
     db,
@@ -46,7 +48,7 @@ export function projectTaskStatement(
       id: ids.next(),
       userId: task.userId,
       kind: PROJECT_TASK,
-      idempotencyKey: `project:${task.id}:${version}`,
+      idempotencyKey: `project:${task.id}:${version}${reason ? `:${reason}` : ""}`,
       intent: { taskId: task.id, title: task.title } satisfies ProjectTaskIntent,
       status: "ready",
       preview: null,

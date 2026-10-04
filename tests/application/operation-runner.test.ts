@@ -180,9 +180,11 @@ describe("operation runner", () => {
       status: "needs_resolution",
       error_class: "field_conflict",
     });
-    expect((await messages(env.DB, owner.id))[0]?.text).toBe(
-      "Dinner changed in Calendar while your change was pending. Nothing was overwritten.",
+    const notice = (await messages(env.DB, owner.id))[0];
+    expect(notice?.text).toBe(
+      "Dinner changed in Calendar to Fri 25 Sep 2026, 5–6pm while your change to Fri 25 Sep 2026, 4–5pm was pending. Nothing was overwritten. Which should I keep?",
     );
+    expect(notice?.buttons.map((b) => b.text)).toEqual(["Keep Calendar version", "Use my change"]);
   });
 
   it("applies an edit without overwriting unrelated external changes", async () => {

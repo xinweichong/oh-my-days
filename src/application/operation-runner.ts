@@ -11,7 +11,7 @@ import {
   finishAttemptStatement,
   operationLeaseGuard,
 } from "../storage/operations";
-import { enqueueStatement } from "../storage/outbox";
+import { enqueueStatement, rememberItemStatement } from "../storage/outbox";
 import { findUserById, type UserRecord } from "../storage/users";
 import type { InlineKeyboardMarkup } from "../telegram/api";
 import type {
@@ -21,6 +21,7 @@ import type {
   OperationHandler,
 } from "./operation-types";
 import { CONFIRMATION_TTL_MS, callbackData, confirmationKeyboard, previewHash } from "./proposals";
+import { ActionButtons } from "./reactions";
 
 /** Longer than any single provider call, including its timeout. */
 export const OPERATION_LEASE_MS = 60_000;
@@ -109,9 +110,11 @@ async function commitAttempt(
   const now = deps.clock.now();
   const guard = operationLeaseGuard(op);
   const statements: D1PreparedStatement[] = [];
+  const item = handler.about?.(op) ?? null;
   const notify = (key: string, event: NoticeEvent, keyboard?: InlineKeyboardMarkup) => {
     const text = handler.notice(op, event, user);
     if (text === null) return;
+    if (item) statements.push(rememberItemStatement(deps.db, user.id, item, now, guard));
     statements.push(
       enqueueStatement(
         deps.db,
@@ -119,6 +122,7 @@ async function commitAttempt(
         user.id,
         {
           logicalKey: `op:${op.id}:${key}`,
+          ...(item ? { about: item } : {}),
           call: {
             method: "sendMessage",
             params: {
@@ -232,14 +236,34 @@ async function commitAttempt(
       notify(`reconfirm:${op.attempts}`, outcome, keyboard);
       break;
     }
-    case "needs_resolution":
+    case "needs_resolution": {
       attempt = {
         status: "needs_resolution",
         errorClass: outcome.reason,
         result: outcome.details ?? null,
       };
-      notify(`resolution:${op.attempts}`, outcome);
+      // A same-field conflict is the user's choice (spec §8).
+      const choices =
+        outcome.reason === "field_conflict" ? new ActionButtons(deps.ids, user.id, now) : null;
+      notify(
+        `resolution:${op.attempts}`,
+        outcome,
+        choices
+          ? {
+              inline_keyboard: [
+                [
+                  choices.button("Keep Calendar version", "conflict_theirs", {
+                    operationId: op.id,
+                  }),
+                  choices.button("Use my change", "conflict_mine", { operationId: op.id }),
+                ],
+              ],
+            }
+          : undefined,
+      );
+      if (choices) statements.push(...choices.statements(deps.db, guard));
       break;
+    }
     case "auth_required":
       attempt = { status: "auth_required", errorClass: "auth_required" };
       notify(`auth:${op.attempts}`, outcome);

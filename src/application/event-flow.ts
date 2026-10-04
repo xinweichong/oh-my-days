@@ -30,6 +30,7 @@ import {
   DELETE_EVENT,
   type DeleteEventIntent,
   deletePreview,
+  guestChangePreview,
   PATCH_EVENT,
   type PatchEventIntent,
 } from "./event-operations";
@@ -56,7 +57,7 @@ export interface EventFlowDeps extends SetupDeps {
 }
 
 /** A creation in progress, or a move of an existing event. */
-interface Draft {
+export interface Draft {
   title: string;
   date?: LocalDate;
   time?: WallTime;
@@ -70,7 +71,7 @@ interface Draft {
  * The event as Google has it now (occurrences of recurring events included),
  * falling back to the synced copy when Google cannot be reached.
  */
-async function loadEvent(
+export async function loadEvent(
   deps: EventFlowDeps,
   user: UserRecord,
   calendarId: string,
@@ -91,7 +92,8 @@ async function loadEvent(
         transparent: false,
         declined: false,
         hasGuests: live.value.hasGuests ?? false,
-        organizerSelf: true,
+        organizerSelf: live.value.organizerSelf ?? true,
+        attendees: live.value.attendees ?? [],
       };
     }
     if (live.error.kind === "not_found") return null;
@@ -398,12 +400,18 @@ function eventEndsAfter(fields: EventFields, now: number, timeZone: string): boo
 }
 
 /** Why an event can't be changed from Telegram yet, if it can't. */
-function restriction(event: CachedEvent, calendar: StoredCalendar | undefined): string | null {
+export function restriction(
+  event: CachedEvent,
+  calendar: StoredCalendar | undefined,
+): string | null {
   if (!calendar?.listed || !isWritable(calendar.accessRole)) {
     return "This calendar is view-only, so the event can't be changed here.";
   }
-  if (event.hasGuests) {
-    return "This event has guests. Changing it from Telegram isn't available yet, because it could notify them.";
+  if (event.hasGuests && !event.organizerSelf) {
+    return "Someone else organizes this event, so changes here can't reach the other guests. Change your response in Google Calendar.";
+  }
+  if (event.hasGuests && !event.attendees) {
+    return "Google Calendar couldn't be reached to read the guest list. Try again shortly.";
   }
   return null;
 }
@@ -449,12 +457,16 @@ async function eventCard(
               ],
             ]
           : []),
-        [reminder],
+        [
+          reminder,
+          ...(event.organizerSelf ? [buttons.button("Invite", "event_invite", target)] : []),
+        ],
       ];
   const note = recurring
     ? "\nPart of a recurring series: change this occurrence, or the whole series."
     : "";
   return {
+    about: { kind: "event", calendarId, eventId },
     replies: [
       keyboardMessage(
         user,
@@ -467,7 +479,7 @@ async function eventCard(
   };
 }
 
-async function proposePatch(
+export async function proposePatch(
   deps: EventFlowDeps,
   user: UserRecord,
   event: CachedEvent,
@@ -492,24 +504,28 @@ async function proposePatch(
     ...(series
       ? { scope: "series" as const }
       : { overlapCalendarIds: overlapCalendarIds(user, calendars) }),
+    // Guests are emailed about the change, so it is previewed with every recipient.
+    ...(event.hasGuests ? { notify: { recipients: event.attendees ?? [] } } : {}),
   };
   const prepared = await prepareProposal(deps, user, {
     kind: PATCH_EVENT,
     idempotencyKey,
     intent,
-    confirmation: series
-      ? {
-          text: series.text,
-          confirmLabel: "Change series",
-          facts: { base, patch, scope: "series" },
-        }
-      : null,
+    confirmation: intent.notify
+      ? guestChangePreview(intent)
+      : series
+        ? {
+            text: series.text,
+            confirmLabel: "Change series",
+            facts: { base, patch, scope: "series" },
+          }
+        : null,
   });
   return combine(clearInput(user), { replies: prepared.replies, statements: prepared.statements });
 }
 
 /** Applies a move: the same length at the new date (and time, for timed events). */
-async function move(
+export async function move(
   deps: EventFlowDeps,
   user: UserRecord,
   draft: Draft,
@@ -611,7 +627,12 @@ export async function handleEventAction(
       const { calendarId, eventId } = target();
       const event = await loadEvent(deps, user, calendarId, eventId);
       if (!event) return answer(callback, "I can't find that event anymore.");
-      const intent: DeleteEventIntent = { calendarId, eventId, base: event.fields };
+      const intent: DeleteEventIntent = {
+        calendarId,
+        eventId,
+        base: event.fields,
+        ...(event.hasGuests ? { notify: { recipients: event.attendees ?? [] } } : {}),
+      };
       const prepared = await prepareProposal(deps, user, {
         kind: DELETE_EVENT,
         idempotencyKey: key,
@@ -673,6 +694,7 @@ export async function handleEventAction(
         eventId,
         base: master.fields,
         scope: "series",
+        ...(master.hasGuests ? { notify: { recipients: master.attendees ?? [] } } : {}),
       };
       const prepared = await prepareProposal(deps, user, {
         kind: DELETE_EVENT,
@@ -843,4 +865,26 @@ export async function handleEventInput(
 
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+/** Proposes deleting an event, confirmed first (with guest recipients when it has guests). */
+export async function proposeEventDelete(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  event: CachedEvent,
+  idempotencyKey: string,
+): Promise<Reaction> {
+  const intent: DeleteEventIntent = {
+    calendarId: event.calendarId,
+    eventId: event.eventId,
+    base: event.fields,
+    ...(event.hasGuests ? { notify: { recipients: event.attendees ?? [] } } : {}),
+  };
+  const prepared = await prepareProposal(deps, user, {
+    kind: DELETE_EVENT,
+    idempotencyKey,
+    intent,
+    confirmation: deletePreview(intent, user),
+  });
+  return { replies: prepared.replies, statements: prepared.statements };
 }

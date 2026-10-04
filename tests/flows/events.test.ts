@@ -189,11 +189,11 @@ describe("/event: changing events", () => {
     expect(() => world.findButton(/Dinner \(moved\)$/)).not.toThrow();
   });
 
-  it("does not offer changes that could notify guests", async () => {
+  it("does not offer changes to events someone else organizes", async () => {
     const world = new World(env.DB);
     await setUpOwner(world);
-    await withDinner(world, { hasGuests: true });
-    expect(world.lastText()).toContain("This event has guests");
+    await withDinner(world, { attendees: ["host@example.com"], organizerSelf: false });
+    expect(world.lastText()).toContain("Someone else organizes this event");
     expect(() => world.findButton("Rename")).toThrow();
   });
 
