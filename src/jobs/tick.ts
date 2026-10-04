@@ -33,8 +33,8 @@ export const TICK_LIMITS = {
   inboxUsers: 10,
   inboxUpdatesPerUser: 5,
   operations: 10,
-  /** Calendars synchronized per tick; each may fetch up to MAX_PAGES_PER_RUN pages. */
-  calendars: 4,
+  /** Calendars synchronized per tick; parsing event pages is the heaviest CPU work. */
+  calendars: 1,
   calendarLists: 2,
   horizons: 2,
   series: 5,
@@ -81,14 +81,17 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   // New occurrences are created before reminders and agendas look at tasks.
   await materializeSeries(deps.reminders, TICK_LIMITS.series);
 
-  // Periodic work runs once its interval has passed, keeping each invocation
-  // well inside the Workers Free CPU limit (measured in docs/capacity.md).
-  const due = await claimMaintenance(deps.db, now);
-
-  // Sync before delivery, so messages it produces (e.g. conflicts) go out now.
-  if (due.frequent) await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
+  // At most one heavy job per tick (one calendar's sync, frequent maintenance,
+  // or cleanup), so each invocation stays inside the Workers Free CPU limit
+  // (measured in docs/capacity.md). Deferred jobs run on following ticks.
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
+  const due =
+    syncedCalendars > 0
+      ? { frequent: false, cleanup: false }
+      : await claimMaintenance(deps.db, now);
+
   if (due.frequent) {
+    await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
     await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
     await evaluateSyncHealth(deps.reminders);
   }
@@ -140,7 +143,8 @@ async function claimMaintenance(
     .all<{ key: string; value: string }>();
   const last = (key: string) => Number(results.find((r) => r.key === key)?.value ?? 0);
   const frequent = now - last("maintenance:frequent") >= FREQUENT_MAINTENANCE_MS;
-  const cleanup = now - last("maintenance:cleanup") >= CLEANUP_MS;
+  // Cleanup waits for a tick without frequent maintenance.
+  const cleanup = !frequent && now - last("maintenance:cleanup") >= CLEANUP_MS;
   const record = (key: string) =>
     db
       .prepare(

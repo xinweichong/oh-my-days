@@ -51,7 +51,8 @@ describe("scheduled tick", () => {
     expect(await count(env.DB, "telegram_inbox")).toBe(1);
 
     clock.advance(FINISHED_RETENTION_MS + 1);
-    await runTick(tickDeps(services));
+    await runTick(tickDeps(services)); // frequent maintenance first
+    await runTick(tickDeps(services)); // then cleanup
     expect(await count(env.DB, "telegram_inbox")).toBe(0);
     expect(await count(env.DB, "telegram_outbox")).toBe(0);
   });
