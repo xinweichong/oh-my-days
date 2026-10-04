@@ -85,10 +85,8 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
   // or cleanup), so each invocation stays inside the Workers Free CPU limit
   // (measured in docs/capacity.md). Deferred jobs run on following ticks.
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
-  const due =
-    syncedCalendars > 0
-      ? { frequent: false, cleanup: false }
-      : await claimMaintenance(deps.db, now);
+  // After a sync, maintenance runs only if it has been starved for too long.
+  const due = await claimMaintenance(deps.db, now, syncedCalendars > 0 ? 2 : 1);
 
   if (due.frequent) {
     await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
@@ -132,9 +130,11 @@ export const CLEANUP_MS = 30 * 60_000;
  * Decides which periodic groups are due, and records them as run. Overlapping
  * ticks may both run a group; every group is idempotent.
  */
-async function claimMaintenance(
+export async function claimMaintenance(
   db: D1Database,
   now: number,
+  /** Multiplier on the intervals: 2 after a sync, so maintenance is deferred but never starved. */
+  patience: number,
 ): Promise<{ frequent: boolean; cleanup: boolean }> {
   const { results } = await db
     .prepare(
@@ -142,9 +142,9 @@ async function claimMaintenance(
     )
     .all<{ key: string; value: string }>();
   const last = (key: string) => Number(results.find((r) => r.key === key)?.value ?? 0);
-  const frequent = now - last("maintenance:frequent") >= FREQUENT_MAINTENANCE_MS;
+  const frequent = now - last("maintenance:frequent") >= FREQUENT_MAINTENANCE_MS * patience;
   // Cleanup waits for a tick without frequent maintenance.
-  const cleanup = !frequent && now - last("maintenance:cleanup") >= CLEANUP_MS;
+  const cleanup = !frequent && now - last("maintenance:cleanup") >= CLEANUP_MS * patience;
   const record = (key: string) =>
     db
       .prepare(

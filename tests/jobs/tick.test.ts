@@ -77,3 +77,20 @@ describe("tick cadence", () => {
     expect(telegram.adminCalls.filter((c) => c.method === "setMyCommands")).toHaveLength(2);
   });
 });
+
+describe("maintenance starvation", () => {
+  it("defers maintenance after a sync, but not beyond twice its interval", async () => {
+    const { claimMaintenance, FREQUENT_MAINTENANCE_MS } = await import("../../src/jobs/tick");
+    const start = Date.UTC(2026, 8, 25, 1);
+    await claimMaintenance(env.DB, start, 1); // records a run at `start`
+
+    // A tick that synced a calendar: due after one interval, but deferred.
+    expect((await claimMaintenance(env.DB, start + FREQUENT_MAINTENANCE_MS, 2)).frequent).toBe(
+      false,
+    );
+    // Starved for twice the interval: runs even though the tick is busy.
+    expect((await claimMaintenance(env.DB, start + 2 * FREQUENT_MAINTENANCE_MS, 2)).frequent).toBe(
+      true,
+    );
+  });
+});
