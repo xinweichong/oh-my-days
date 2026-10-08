@@ -1,7 +1,7 @@
 # Oh My Days — post-release improvement plan
 
 Status: Proposed 2026-10-08. D7 (Telegram Mini App) approved by the owner on
-2026-10-08; every other item awaits approval. Nothing here is implemented.
+2026-10-08 and its layout on 2026-10-09; every other item awaits approval. Nothing here is implemented.
 Source of truth: [product specification](../specs/oh-my-days.md). Builds on the
 [backend plan](backend.md), whose stages 0–8 and 10 are implemented and deployed.
 
@@ -269,10 +269,10 @@ settings (a later decision).
   UI refreshes instead of overwriting. Confirmation-required actions (cancel,
   series stop, bulk cancel) use a two-step preview/confirm bound to a preview
   hash, as chat does. Pending Google projections are shown as pending.
-- **Entry points.** A `web_app` button on `/tasks`, the agenda, and `/daily`
-  (inline `web_app` buttons are allowed in private chats). Replacing the chat
-  Menu button with the app is optional: it would hide the command list behind
-  `/`, so it is a design-phase decision. Full-screen and add-to-home-screen
+- **Entry points.** The chat Menu button stays the command list. The app opens
+  from a persistent keyboard button, the bot's main Mini App (BotFather), and
+  inline `web_app` buttons on `/tasks`, the agenda, and `/daily` (decided
+  2026-10-09). Full-screen and add-to-home-screen
   support is used where the client supports it; versions are checked first.
 - **Theme.** Telegram theme parameters drive colours, so light/dark follow the
   client; identity rules (no decorative emoji, explicit labels, status never by
@@ -287,7 +287,7 @@ settings (a later decision).
 
 | Step | Content | Exit evidence |
 |---|---|---|
-| 4.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | Owner-approved screen description |
+| 4.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
 | 4a Foundation | `initData` verification, `/app` shell, read API, Today and Week | Auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs); views match `/daily` and `/weekly` output for the same fixtures |
 | 4b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | Every action matches the chat operation's result, Undo, and projection; 409 on stale version; redelivered POST idempotent |
 | 4c Bulk and history | Multi-select actions, Recent | Bulk operations atomic per item with one summary; confirmation bound to the exact set |

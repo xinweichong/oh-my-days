@@ -136,5 +136,84 @@ Telegram styling remains intact. Logo design is deferred.
 The user requested a written implementation plan instead of a prototype. Follow
 the [connection-page plan](../plans/connection-pages.md) for layout, states, build
 order, and acceptance checks. Exact visual tokens remain implementation details
-within the approved minimal direction. No logo or separate calendar/task web app
-is included. No image-first/code-first workflow preference was selected.
+within the approved minimal direction. No logo or separate calendar web app is
+included; the approved Telegram Mini App is described below. No image-first/code-first workflow preference was selected.
+
+## Telegram Mini App
+
+Status: Layout and behavior approved by the owner on 2026-10-09 (improvement
+plan [Phase 4.0](../plans/improvements.md#6-phase-4--telegram-mini-app-d7-approved)).
+Not implemented. Three structures were compared (smart lists home, day split by
+time of day, bottom tabs); the owner chose **smart lists home**.
+
+### Job and outcome
+
+The main moment is the morning check: what is next, and what is slipping. The
+second is quick task work during the day. This is an Operate surface: scanability
+and native phone controls outrank expression. Within a second of opening, the
+user can see what is next and how many items are due or overdue, and can complete
+or snooze anything in one or two taps, with the same results as chat (Undo, the
+✓ marker in Calendar, pending status).
+
+### Home
+
+Top to bottom:
+
+1. Local date and a **Next up** line: the next event (`09:00 Standup · in 25 min`)
+   or the next timed deadline (`Due 3pm: Send invoice`). With no events today:
+   “Your calendar is clear today.”, which refers only to events.
+2. **Quick add**, using the same quick-capture rules as typing in chat.
+3. Four smart-list tiles with counts: **Today** (sub-line such as
+   `3 events · 2 tasks`), **Overdue**, **Week**, **No deadline**.
+4. **My lists** (Inbox and user lists, with open counts), then **Recent**.
+5. One-line sync status at the foot.
+
+The Next up line and the Today count are the focal point: the day is readable
+without a tap. Today's count includes events and tasks, split on the sub-line.
+
+### Screens
+
+| Screen | Content |
+|---|---|
+| Today | All-day events, timed events in order, overdue then due tasks; events read-only, tapping opens Google Calendar |
+| Week | Monday–Sunday sections, previous/next week, today highlighted, empty days folded into one line |
+| Overdue | Grouped per task; recurring occurrences grouped (`Rent · 2 overdue`) with per-occurrence actions; **Snooze all**, never moving deadlines |
+| No deadline, List | Open tasks in that set |
+| Task detail | Title, deadline, list, reminder, repeat rule, history; rename, change or remove deadline, move, cancel or restore, series actions |
+| Recent | Completed and cancelled in the last 30 days; Reopen, Restore |
+
+Out of scope: event editing, time or month grids, settings, offline use, widgets.
+
+### Interaction
+
+- Telegram's Back button navigates; no custom back control.
+- Task rows: check circle, title, list label on smart lists, deadline, snooze
+  badge (`Snoozed until Mon 8am`).
+- Completing shows ✓ and a short Undo toast, then the row leaves the list.
+- Swipe left for **Snooze · More**; long-press starts multi-select, and
+  Telegram's main button carries the action (`Complete 3`). Cancelling requires
+  confirmation, as in chat.
+- Pending projections show `Saving to Calendar…`; a task changed elsewhere
+  refreshes in place with a short notice instead of overwriting.
+
+### States and ranges
+
+Today 0–20 items, Overdue 0–50, 1–20 lists, a few hundred tasks in total.
+States: loading; Google unreachable (`Showing saved copy`); reconnect required
+(banner with **Reconnect**); setup incomplete (`Finish setup in the chat`);
+empty tiles show `None`; pending; changed elsewhere.
+
+### Entry points
+
+The chat Menu button stays the command list. The app opens from a persistent
+keyboard button under the message box, the bot's main Mini App (**Open App** on
+its profile and in the chat list, configured in BotFather), and **Open app**
+buttons on the 8am agenda, `/daily`, and `/tasks`. Verify each on iOS, Android,
+and desktop clients during the build.
+
+### Presentation
+
+Telegram theme parameters supply every colour, so light and dark follow the
+client; system type; safe-area insets respected; tap targets at least 44px;
+reduced motion respected. No decorative emoji (✓ is functional); status is
+never shown by colour alone; copy follows the [identity](../identity/oh-my-days.md).
