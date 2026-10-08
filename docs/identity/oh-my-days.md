@@ -77,15 +77,17 @@ buttons on connection pages. No illustrations, gradients, or decorative animatio
 Use readable type, clear hierarchy, and explicit action labels. Telegram retains
 its native fonts, colors, and message/button appearance.
 
-Logo and design system proposed on 2026-10-09, pending owner approval: an open
-ring (the day) with a marigold dot leaving its gap (one thing handed off), in
-tide teal `#0b6b62`; the wordmark is Figtree 620 (SIL Open Font License),
-outlined. Files are in [`logo/`](logo/); the full system (palette for light
-and dark, type, spacing, Telegram theme mapping, Mini App components) is the
+Logo and design system approved by the owner on 2026-10-09. The mark is the
+**eight o'clock sunrise**: a marigold half-sun clearing a tide horizon line, for
+the agenda that arrives with the morning. Palette: **Tide and marigold** (tide
+`#0b6b62` as the one brand colour; marigold `#f2a32c` only in the logo). The
+wordmark is Figtree 620 (SIL Open Font License), outlined. Files are in
+[`logo/`](logo/); the full system (palette for light and dark, type, spacing,
+Telegram theme mapping, Mini App components) is the
 [Oh My Days design system](https://claude.ai/artifact/EH362aUFHoyzMkpJJ2GqQ6).
 It keeps the rules above: system type in the product, one brand colour,
-functional symbols only, status never by colour alone. The earlier calendar/sun
-concept remains unadopted.
+functional symbols only, status never by colour alone. Superseded concepts
+(the open ring) are archived in [`logo/archive/`](logo/archive/) for reference.
 
 ## Related decisions
 
