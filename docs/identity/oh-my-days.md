@@ -77,10 +77,15 @@ buttons on connection pages. No illustrations, gradients, or decorative animatio
 Use readable type, clear hierarchy, and explicit action labels. Telegram retains
 its native fonts, colors, and message/button appearance.
 
-Logo design is on hold. No symbol, mascot, or logo concept is approved. The earlier
-calendar/sun concept and palette were exploratory and are not binding. Exact colors,
-typefaces, spacing tokens, and dark-mode behavior remain undecided. Validate contrast
-and keyboard/focus behavior when building web pages; never use color alone for status.
+Logo and design system proposed on 2026-10-09, pending owner approval: an open
+ring (the day) with a marigold dot leaving its gap (one thing handed off), in
+tide teal `#0b6b62`; the wordmark is Figtree 620 (SIL Open Font License),
+outlined. Files are in [`logo/`](logo/); the full system (palette for light
+and dark, type, spacing, Telegram theme mapping, Mini App components) is the
+[Oh My Days design system](https://claude.ai/artifact/EH362aUFHoyzMkpJJ2GqQ6).
+It keeps the rules above: system type in the product, one brand colour,
+functional symbols only, status never by colour alone. The earlier calendar/sun
+concept remains unadopted.
 
 ## Related decisions
 
