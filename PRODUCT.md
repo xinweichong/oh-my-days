@@ -9,7 +9,8 @@ web
 The custom interface consists of minimal browser-based Google authorization pages.
 The main experience is a Telegram bot, using Telegram's native presentation.
 Google Calendar provides the visual calendar interface. There is no separate
-calendar or task-management web application in the agreed scope.
+calendar web application; a Telegram Mini App for tasks and a read-only
+day/week overview is approved (see Open Decisions).
 
 ## Stack
 
@@ -75,4 +76,6 @@ logo, approved visual mockup, or measured user outcomes exist. Examples are synt
 Exact visual tokens and logo remain open. A narrow single-column connection layout
 and explicit Continue in Telegram action are approved; no automatic return. See
 [the connection-page plan](docs/plans/connection-pages.md) for implementation details.
-Do not infer a separate web app from this platform record.
+Do not infer a separate web app from this platform record. The one approved
+exception is a Telegram Mini App for tasks and a read-only day/week overview
+(owner, 2026-10-08; [improvement plan](docs/plans/improvements.md)).

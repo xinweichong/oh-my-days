@@ -11,6 +11,7 @@ buttons. Natural-language input (Gemini) is deferred.
 - [Product specification](docs/specs/oh-my-days.md)
 - [Backend architecture and build order](docs/plans/backend.md)
 - [Connection-page implementation plan](docs/plans/connection-pages.md)
+- [Post-release improvement plan](docs/plans/improvements.md)
 - [Application identity](docs/identity/oh-my-days.md)
 - [Telegram and connection-page experience](docs/design/experience.md)
 - [Product context](PRODUCT.md)
