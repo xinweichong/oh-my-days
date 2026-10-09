@@ -30,7 +30,13 @@ describe("token cipher", () => {
   it("refuses tampered data and other keys", async () => {
     const cipher = await createTokenCipher(KEY);
     const sealed = await cipher.encrypt("x", { userId: "u1", purpose: "access_token" });
-    const tampered = `${sealed.slice(0, -2)}${sealed.endsWith("A") ? "B" : "A"}=`;
+    // Flip one bit of the decoded bytes; changing a final base64 character can
+    // touch only padding bits and leave the data unchanged.
+    const prefix = sealed.slice(0, sealed.lastIndexOf(".") + 1);
+    const bytes = Uint8Array.from(atob(sealed.slice(prefix.length)), (c) => c.charCodeAt(0));
+    const middle = Math.floor(bytes.length / 2);
+    bytes[middle] = (bytes[middle] ?? 0) ^ 1;
+    const tampered = `${prefix}${btoa(String.fromCharCode(...bytes))}`;
     await expect(
       cipher.decrypt(tampered, { userId: "u1", purpose: "access_token" }),
     ).rejects.toThrow();
