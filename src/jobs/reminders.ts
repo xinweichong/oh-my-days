@@ -3,7 +3,7 @@ import { ActionButtons } from "../application/reactions";
 import { dueLabel } from "../application/task-flow";
 import type { CalendarPort, CalendarSyncSource } from "../calendar/port";
 import {
-  agendaDueDate,
+  agendaKind,
   DEFAULT_EVENT_REMINDER_MINUTES,
   DEFAULT_TASK_REMINDER_MINUTES,
   reminderKeys,
@@ -73,17 +73,26 @@ export async function runReminders(deps: ReminderDeps, limit: number): Promise<n
 }
 
 /**
- * One combined agenda per local date, sent at 8am or on the first tick after
- * (catch-up after downtime). Keyed by local date, so a timezone change cannot
- * produce a second agenda for a date already covered.
+ * One combined agenda per local date, sent at 8am or on the first tick after.
+ * Late after downtime (spec §8): from noon only the rest of the day, and from
+ * 8pm none, with the date recorded as covered. Keyed by local date, so a
+ * timezone change cannot produce a second agenda for a date already covered.
  */
 async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean> {
   const now = deps.clock.now();
-  const date = agendaDueDate(now, user.timezone);
-  if (!date || (await agendaSent(deps.db, user.id, date))) return false;
+  const due = agendaKind(now, user.timezone);
+  if (!due || (await agendaSent(deps.db, user.id, due.date))) return false;
+  const { date } = due;
+  if (due.kind === "skip") {
+    await claimAgendaStatement(deps.db, user.id, date, `skipped:${deps.ids.next()}`, now).run();
+    logEvent("agenda.skipped", { userId: user.id, date });
+    return false;
+  }
+  const catchUp = due.kind === "catch_up";
   const { text } = await renderDay({ db: deps.db, sourceFor: deps.sourceFor }, user, date, now, {
-    heading: "Here's your day.",
+    heading: catchUp ? "Catch-up: today so far." : "Here's your day.",
     includeSnoozed: false,
+    remainingOnly: catchUp,
   });
   const claim = deps.ids.next();
   const guard = agendaClaimGuard(user.id, date, claim);

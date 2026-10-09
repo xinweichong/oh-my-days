@@ -45,9 +45,29 @@ export function previousMonthStart(date: LocalDate): LocalDate {
   return m === 1 ? `${y - 1}-12-01` : `${y}-${String(m - 1).padStart(2, "0")}-01`;
 }
 
+/** From this hour a missed agenda is a shorter catch-up (spec §8). */
+export const AGENDA_CATCH_UP_HOUR = 12;
+/** From this hour a missed agenda is skipped and the date counted as covered. */
+export const AGENDA_SKIP_HOUR = 20;
+
 /** The local date the agenda belongs to, if it is due (8am or later local time). */
 export function agendaDueDate(now: number, timeZone: string): LocalDate | null {
   return wallPartsAt(now, timeZone).hour >= AGENDA_HOUR ? localDateAt(now, timeZone) : null;
+}
+
+/**
+ * Which agenda is due for an unsent local date: the full one in the morning,
+ * a catch-up of the rest of the day from noon, none (date covered) from 8pm.
+ */
+export function agendaKind(
+  now: number,
+  timeZone: string,
+): { date: LocalDate; kind: "full" | "catch_up" | "skip" } | null {
+  const hour = wallPartsAt(now, timeZone).hour;
+  if (hour < AGENDA_HOUR) return null;
+  const kind =
+    hour >= AGENDA_SKIP_HOUR ? "skip" : hour >= AGENDA_CATCH_UP_HOUR ? "catch_up" : "full";
+  return { date: localDateAt(now, timeZone), kind };
 }
 
 /**

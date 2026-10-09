@@ -241,7 +241,12 @@ export async function renderDay(
   user: UserRecord,
   date: LocalDate,
   now: number,
-  options: { heading: string; includeSnoozed: boolean },
+  options: {
+    heading: string;
+    includeSnoozed: boolean;
+    /** Leave out events that have ended by `now` (a late catch-up agenda). */
+    remainingOnly?: boolean;
+  },
 ): Promise<{ text: string; live: boolean }> {
   const calendars = viewCalendars(user, await listStoredCalendars(deps.db, user.id));
   const name = calendarNames(calendars);
@@ -249,10 +254,18 @@ export async function renderDay(
   const tasks = await tasksForDay(deps.db, user, date, now, options.includeSnoozed);
 
   const lines = [options.heading, `${formatDayLabel(date)} ${date.slice(0, 4)}`, ""];
-  const todays = events.filter((e) => eventOnDate(e.fields, date, user.timezone));
+  const todays = events.filter(
+    (e) =>
+      eventOnDate(e.fields, date, user.timezone) &&
+      !(options.remainingOnly && endedBy(e.fields, now, user.timezone)),
+  );
   if (todays.length === 0) {
     lines.push(
-      date === localDateAt(now, user.timezone) ? "Your calendar is clear today." : "No events.",
+      options.remainingOnly
+        ? "No more events today."
+        : date === localDateAt(now, user.timezone)
+          ? "Your calendar is clear today."
+          : "No events.",
     );
   } else {
     lines.push(
@@ -282,6 +295,13 @@ export async function renderDay(
   }
   if (!live) lines.push("", "Google Calendar couldn't be reached; events are from the last sync.");
   return { text: lines.join("\n"), live };
+}
+
+/** Timed events end at their end instant; all-day events last the whole local day. */
+function endedBy(fields: EventFields, now: number, timeZone: string): boolean {
+  const { end } = fields;
+  if ("dateTime" in end) return Date.parse(end.dateTime) <= now;
+  return end.date <= localDateAt(now, timeZone);
 }
 
 /** Days of [from, to) with their events and due tasks, compactly. */

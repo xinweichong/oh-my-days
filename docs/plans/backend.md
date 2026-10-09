@@ -381,6 +381,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   `connected_at + TTL`, recorded per `auth_generation` (migration 0012);
   `/health` shows "Reconnect by …". The after-the-fact alert is unchanged
   (`tests/flows/access-expiry.test.ts`).
+- B5: an agenda still unsent at 12:00 local is "Catch-up: today so far." with
+  only events that haven't ended; from 20:00 it is skipped and the date recorded
+  as covered; finishing setup after 08:00 covers that day (spec §8,
+  `tests/flows/late-agenda.test.ts`). This replaces stage 6's "catch-up later
+  that day".
 
 Stage 2 decisions to review:
 

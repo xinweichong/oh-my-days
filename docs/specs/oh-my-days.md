@@ -296,6 +296,8 @@ Proposed implementation definition: count failures of completed sync attempts, n
 
 After bot downtime, send one catch-up summary for overdue tasks and still-upcoming events whose reminders were missed. Do not send a burst of stale alerts. Skip old one-hour-before event warnings once the events have started.
 
+A late daily agenda (clarified 2026-10-09, [improvement B5](../plans/improvements.md#b5-late-agenda-cutoff)): if the agenda has not gone out by 12:00 local time, send it as **Catch-up: today so far** with only events that have not ended and the still-open tasks; after 20:00, skip it and count the date as covered. When setup finishes after 08:00, the first agenda is the next day's.
+
 Do not imply that a Google sync outage, an AI outage, and a full hosting/database outage have identical effects. AI loss should not stop deterministic features. When hosting or storage is unavailable, reminders or health messages can themselves be delayed until recovery.
 
 ## 9. Language interpretation and data boundaries

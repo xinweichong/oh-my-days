@@ -37,7 +37,7 @@ when the item is approved, before implementation.
 | B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |
 | B3 | Scheduler liveness in `/healthz` | 2 | — | Implemented (`feature/scheduler-liveness`) |
 | B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Approved |
-| B5 | Late-agenda cutoff | 2 | Clarifies §7 catch-up | Approved |
+| B5 | Late-agenda cutoff | 2 | Clarifies §8 catch-up; spec amended | Implemented (`feature/late-agenda`) |
 | C1 | Actionable agenda; snooze all overdue | 3 | — | Approved |
 | C2 | Location, call link, Calendar link in event reminders | 3 | — | Approved |
 | C3 | `/find` and date jump for events | 3 | — | Approved |

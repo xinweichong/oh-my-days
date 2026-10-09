@@ -65,7 +65,8 @@ describe("daily agenda", () => {
     await addTask(world, "Buy milk", null, null);
 
     await until(world, sgt(26, 7, 59));
-    expect(agendas(world)).toHaveLength(1); // Friday's, sent during setup
+    // Setup finished at 9am Friday, so Friday is covered; Saturday's is the first.
+    expect(agendas(world)).toHaveLength(0);
     await until(world, sgt(26, 8));
     expect(agendas(world).at(-1)).toBe(
       [
@@ -88,7 +89,7 @@ describe("daily agenda", () => {
     expect(world.findButton("View week")).toBeTruthy();
 
     await until(world, sgt(26, 12));
-    expect(agendas(world)).toHaveLength(2); // no duplicate for the same date
+    expect(agendas(world)).toHaveLength(1); // no duplicate for the same date
   });
 
   it("says the calendar is clear, and folds a snooze ending at 8am into the agenda", async () => {
@@ -135,9 +136,9 @@ describe("daily agenda", () => {
     await world.press("Change timezone");
     await world.send("Europe/London");
     await until(world, Date.UTC(2026, 8, 26, 7)); // 08:00 Saturday in London
-    expect(agendas(world)).toHaveLength(2);
+    expect(agendas(world)).toHaveLength(1);
     await until(world, Date.UTC(2026, 8, 27, 7)); // 08:00 Sunday in London (BST)
-    expect(agendas(world)).toHaveLength(3);
+    expect(agendas(world)).toHaveLength(2);
   });
 
   it("is sent once even when two scheduled runs overlap", async () => {

@@ -1,4 +1,5 @@
 import { isWritable } from "../calendar/port";
+import { agendaDueDate } from "../domain/schedule";
 import type { AppConfig } from "../env";
 import { accessEndsAt } from "../jobs/access-expiry";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
@@ -17,6 +18,7 @@ import {
   type PendingInputKind,
   type UiAction,
 } from "../storage/interactions";
+import { claimAgendaStatement } from "../storage/reminders";
 import {
   advanceSetupStatement,
   type SetupStep,
@@ -90,11 +92,17 @@ async function advance(
   const to = NEXT_STEP[from];
   if (!to || user.setupStep !== from) return { replies: [] };
   const now = deps.clock.now();
-  const next = await setupPrompt(deps, { ...user, ...changes, setupStep: to });
+  const updated = { ...user, ...changes, setupStep: to };
+  const next = await setupPrompt(deps, updated);
+  // Setup finishing after 8am: today's agenda is covered; the first is tomorrow's.
+  const covered = to === "done" ? agendaDueDate(now, updated.timezone) : null;
   return combine(
     {
       replies: [],
-      statements: (db, guard) => [advanceSetupStatement(db, user.id, from, to, now, guard)],
+      statements: (db, guard) => [
+        advanceSetupStatement(db, user.id, from, to, now, guard),
+        ...(covered ? [claimAgendaStatement(db, user.id, covered, "setup", now)] : []),
+      ],
     },
     next,
   );
