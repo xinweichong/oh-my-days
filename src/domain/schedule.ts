@@ -1,5 +1,5 @@
 import type { Deadline } from "./tasks";
-import { addDays, type LocalDate, localDateAt, wallPartsAt, weekday } from "./time";
+import { addDays, type LocalDate, localDateAt, wallPartsAt, weekday, zonedInstant } from "./time";
 
 /** Spec §5: one hour before timed events. */
 export const DEFAULT_EVENT_REMINDER_MINUTES = 60;
@@ -53,6 +53,21 @@ export const AGENDA_SKIP_HOUR = 20;
 /** The local date the agenda belongs to, if it is due (8am or later local time). */
 export function agendaDueDate(now: number, timeZone: string): LocalDate | null {
   return wallPartsAt(now, timeZone).hour >= AGENDA_HOUR ? localDateAt(now, timeZone) : null;
+}
+
+/**
+ * When the next agenda becomes due: today at 8am if today's isn't covered yet
+ * (now, if that has passed), otherwise tomorrow at 8am. A skipped 8am (DST)
+ * falls back to the following hour.
+ */
+export function nextAgendaAt(now: number, timeZone: string, todayCovered: boolean): number {
+  const today = localDateAt(now, timeZone);
+  const date = todayCovered ? addDays(today, 1) : today;
+  for (const time of [`${String(AGENDA_HOUR).padStart(2, "0")}:00`, "09:00"]) {
+    const at = zonedInstant(date, time, timeZone);
+    if (at.ok) return todayCovered ? at.instant : Math.max(now, at.instant);
+  }
+  return now + 60 * 60_000;
 }
 
 /**

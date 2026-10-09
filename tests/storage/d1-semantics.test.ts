@@ -23,9 +23,19 @@ describe("D1 batch semantics", () => {
   it("lets later statements observe earlier writes in the same batch", async () => {
     const results = await env.DB.batch([
       await seedUser("u1", 1),
-      env.DB.prepare("UPDATE users SET timezone = 'Europe/London' WHERE id = 'u1'"),
+      env.DB.prepare("UPDATE users SET status = 'disabled' WHERE id = 'u1'"),
     ]);
     expect(results[1]?.meta.changes).toBe(1);
+  });
+
+  it("counts rows changed by triggers in meta.changes (ADR 0004)", async () => {
+    // Changing a timezone also clears next_due_at by trigger: two rows changed.
+    // Guards that test `changes === 1` must target tables without triggers.
+    await env.DB.batch([await seedUser("u1", 1)]);
+    const result = await env.DB.prepare(
+      "UPDATE users SET timezone = 'Europe/London' WHERE id = 'u1'",
+    ).run();
+    expect(result.meta.changes).toBe(2);
   });
 
   it("reports zero changes for a guarded statement whose guard fails", async () => {

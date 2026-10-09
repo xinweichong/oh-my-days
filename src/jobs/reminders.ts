@@ -6,8 +6,10 @@ import {
   agendaKind,
   DEFAULT_EVENT_REMINDER_MINUTES,
   DEFAULT_TASK_REMINDER_MINUTES,
+  nextAgendaAt,
   reminderKeys,
 } from "../domain/schedule";
+import { localDateAt } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
@@ -23,8 +25,18 @@ import {
   horizonEvents,
   loggedReminderKeys,
 } from "../storage/reminders";
-import { isSnoozed, reminderCandidateTasks, type TaskRecord } from "../storage/tasks";
-import { findUserById, type UserRecord } from "../storage/users";
+import {
+  isSnoozed,
+  nextSnoozeEnd,
+  reminderCandidateTasks,
+  type TaskRecord,
+} from "../storage/tasks";
+import {
+  findUserById,
+  setNextDueStatement,
+  type UserRecord,
+  usersDueForReminders,
+} from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import { formatEventRange } from "../telegram/format";
 
@@ -56,20 +68,45 @@ interface Due {
   minutes?: number;
 }
 
-/** Sends due agendas and reminders for up to `limit` users. */
+/**
+ * An idle user is visited at least this often even when nothing is scheduled,
+ * so a missed invalidation can delay a reminder by at most this long.
+ */
+export const MAX_IDLE_MS = 60 * 60_000;
+
+/**
+ * Sends due agendas and reminders for up to `limit` users whose next due time
+ * has passed, then records each one's next due time (improvement B4).
+ */
 export async function runReminders(deps: ReminderDeps, limit: number): Promise<number> {
-  const { results } = await deps.db
-    .prepare("SELECT id FROM users WHERE setup_step = 'done' AND status = 'active' LIMIT ?")
-    .bind(limit)
-    .all<{ id: string }>();
   let sent = 0;
-  for (const { id } of results) {
+  for (const { id, dueVersion } of await usersDueForReminders(deps.db, deps.clock.now(), limit)) {
     const user = await findUserById(deps.db, id);
     if (!user) continue;
     sent += (await sendAgenda(deps, user)) ? 1 : 0;
-    sent += await sendReminders(deps, user);
+    const reminders = await sendReminders(deps, user);
+    sent += reminders.sent;
+    const next = await nextDue(deps, user, reminders.next);
+    await setNextDueStatement(deps.db, user.id, next, dueVersion).run();
   }
   return sent;
+}
+
+/** The earliest of the next agenda, reminder, and snooze end, capped at an hour. */
+async function nextDue(
+  deps: ReminderDeps,
+  user: UserRecord,
+  nextReminder: number | null,
+): Promise<number> {
+  const now = deps.clock.now();
+  const covered = await agendaSent(deps.db, user.id, localDateAt(now, user.timezone));
+  const candidates = [
+    now + MAX_IDLE_MS,
+    nextAgendaAt(now, user.timezone, covered),
+    nextReminder ?? Number.POSITIVE_INFINITY,
+    (await nextSnoozeEnd(deps.db, user.id, now)) ?? Number.POSITIVE_INFINITY,
+  ];
+  return Math.min(...candidates);
 }
 
 /**
@@ -146,8 +183,17 @@ function minutesLabel(minutes: number): string {
   return `In ${minutes} minutes`;
 }
 
-async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Promise<Due[]> {
+/** Reminders due now (not yet handled), and when the next one falls due. */
+async function collectDue(
+  deps: ReminderDeps,
+  user: UserRecord,
+  now: number,
+): Promise<{ due: Due[]; next: number | null }> {
   const due: Due[] = [];
+  let next: number | null = null;
+  const later = (at: number) => {
+    next = next === null ? at : Math.min(next, at);
+  };
   const overrides = await allReminderOverrides(deps.db, user.id);
   const eventOverrides = overrides.event;
   for (const e of await horizonEvents(deps.db, user.id, now, now + 7 * 86_400_000)) {
@@ -158,7 +204,10 @@ async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Pr
       : DEFAULT_EVENT_REMINDER_MINUTES;
     if (minutes === null || minutes === undefined) continue;
     const dueAt = e.startsAt - minutes * 60_000;
-    if (dueAt > now) continue; // not yet; events already started are outside the window
+    if (dueAt > now) {
+      later(dueAt); // not yet; events already started are outside the window
+      continue;
+    }
     const range = formatEventRange(
       {
         start: { dateTime: new Date(e.startsAt).toISOString(), timeZone: user.timezone },
@@ -204,7 +253,10 @@ async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Pr
       : DEFAULT_TASK_REMINDER_MINUTES;
     if (minutes === null || minutes === undefined) continue;
     const dueAt = task.deadline.at - minutes * 60_000;
-    if (dueAt > now) continue;
+    if (dueAt > now) {
+      later(dueAt);
+      continue;
+    }
     due.push({
       key: reminderKeys.taskDue(task.id, task.deadline.at, minutes),
       dueAt,
@@ -220,7 +272,7 @@ async function collectDue(deps: ReminderDeps, user: UserRecord, now: number): Pr
     user.id,
     due.map((d) => d.key),
   );
-  return due.filter((d) => !logged.has(d.key)).sort((a, b) => a.dueAt - b.dueAt);
+  return { due: due.filter((d) => !logged.has(d.key)).sort((a, b) => a.dueAt - b.dueAt), next };
 }
 
 /**
@@ -255,10 +307,13 @@ async function revalidate(
   return { keep, skip };
 }
 
-async function sendReminders(deps: ReminderDeps, user: UserRecord): Promise<number> {
+async function sendReminders(
+  deps: ReminderDeps,
+  user: UserRecord,
+): Promise<{ sent: number; next: number | null }> {
   const now = deps.clock.now();
-  const candidates = await collectDue(deps, user, now);
-  if (candidates.length === 0) return 0;
+  const { due: candidates, next } = await collectDue(deps, user, now);
+  if (candidates.length === 0) return { sent: 0, next };
   const { keep, skip } = await revalidate(deps, user, candidates);
   const claim = deps.ids.next();
   const statements = skip.map((s) =>
@@ -266,7 +321,7 @@ async function sendReminders(deps: ReminderDeps, user: UserRecord): Promise<numb
   );
   if (keep.length === 0) {
     await deps.db.batch(statements);
-    return 0;
+    return { sent: 0, next };
   }
 
   const buttons = new ActionButtons(deps.ids, user.id, now);
@@ -342,5 +397,5 @@ async function sendReminders(deps: ReminderDeps, user: UserRecord): Promise<numb
     ),
   ]);
   logEvent("reminders.queued", { userId: user.id, count: keep.length, skipped: skip.length });
-  return keep.length;
+  return { sent: keep.length, next };
 }

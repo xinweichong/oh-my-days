@@ -36,7 +36,7 @@ when the item is approved, before implementation.
 | B1 | Warn before Google access expires | 2 | — | Implemented (`feature/expiry-warning`); live check at one Testing expiry pending |
 | B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |
 | B3 | Scheduler liveness in `/healthz` | 2 | — | Implemented (`feature/scheduler-liveness`) |
-| B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Approved |
+| B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Implemented (`feature/idle-ticks`); live 24 h re-measure pending deploy |
 | B5 | Late-agenda cutoff | 2 | Clarifies §8 catch-up; spec amended | Implemented (`feature/late-agenda`) |
 | C1 | Actionable agenda; snooze all overdue | 3 | — | Approved |
 | C2 | Location, call link, Calendar link in event reminders | 3 | — | Approved |
@@ -300,7 +300,7 @@ settings (a later decision).
 - **Budget.** Each open is ~2–4 Worker requests and bounded D1 reads; live
   Google reads are limited to the visible range. Measured and added to
   [capacity](../capacity.md) before release.
-- **ADR 0004** records the Mini App surface, `initData` authentication, and
+- **ADR 0005** records the Mini App surface, `initData` authentication, and
   API conventions when step 5a starts.
 
 ### Delivery

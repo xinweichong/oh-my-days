@@ -154,3 +154,36 @@ export function countTypingHintStatement(
     )
     .bind(userId, limit);
 }
+
+/** Users whose reminders or agenda may be due, earliest first. */
+export async function usersDueForReminders(
+  db: D1Database,
+  now: number,
+  limit: number,
+): Promise<{ id: string; dueVersion: number }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT id, due_version FROM users
+       WHERE setup_step = 'done' AND status = 'active'
+         AND (next_due_at IS NULL OR next_due_at <= ?)
+       ORDER BY COALESCE(next_due_at, 0) LIMIT ?`,
+    )
+    .bind(now, limit)
+    .all<{ id: string; due_version: number }>();
+  return results.map((r) => ({ id: r.id, dueVersion: r.due_version }));
+}
+
+/**
+ * Stores when the user next needs the reminder pass, unless something changed
+ * since `dueVersion` was read (that change cleared it, and must win).
+ */
+export function setNextDueStatement(
+  db: D1Database,
+  userId: string,
+  at: number,
+  dueVersion: number,
+): D1PreparedStatement {
+  return db
+    .prepare("UPDATE users SET next_due_at = ? WHERE id = ? AND due_version = ?")
+    .bind(at, userId, dueVersion);
+}

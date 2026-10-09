@@ -37,6 +37,25 @@ of its queries, so reads should fall. Recheck with `npx wrangler d1 info
 oh-my-days` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
+## Idle reminder pass (improvement B4, not yet deployed)
+
+The reminder pass now visits a user only when their `next_due_at` has passed
+([ADR 0004](adr/0004-next-due-time-by-trigger.md)); an idle user is visited
+about once an hour instead of every minute. Local measurement (2026-10-09,
+one user, one calendar, 60 idle minute ticks in the test world, statements
+counted at `prepare`):
+
+| Statements in one idle hour | Before B4 | After B4 |
+|---|---:|---:|
+| Reminder-pass reads (horizon, overrides, tasks, log, agenda) | 576 | 6 |
+| All statements | 2,419 | 1,707 |
+
+The remaining statements are the rest of each tick (inbox, operations,
+deliveries, maintenance). Rows read and CPU have **not** been re-measured live:
+the plan's 24-hour `wrangler d1 info` and `wrangler tail` measurement needs the
+change deployed, which awaits the owner's approval. Do that before adding a
+second user.
+
 Scheduler liveness (improvement B3, not yet deployed) writes one `app_state`
 row per tick: about 1,440 rows written a day, under 3% of the operating target.
 

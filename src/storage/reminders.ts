@@ -19,8 +19,9 @@ export function replaceHorizonStatements(
   events: readonly HorizonEvent[],
   now: number,
 ): D1PreparedStatement[] {
+  // Upsert, then drop rows this refresh didn't see: unchanged occurrences are
+  // left alone, so only new or moved ones mark the user's next due time stale.
   return [
-    db.prepare("DELETE FROM event_horizon WHERE user_id = ?").bind(userId),
     ...events.map((e) =>
       db
         .prepare(
@@ -41,6 +42,9 @@ export function replaceHorizonStatements(
           now,
         ),
     ),
+    db
+      .prepare("DELETE FROM event_horizon WHERE user_id = ? AND refreshed_at < ?")
+      .bind(userId, now),
     db.prepare("UPDATE users SET horizon_refreshed_at = ? WHERE id = ?").bind(now, userId),
   ];
 }

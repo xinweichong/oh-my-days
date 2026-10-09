@@ -386,6 +386,12 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   as covered; finishing setup after 08:00 covers that day (spec §8,
   `tests/flows/late-agenda.test.ts`). This replaces stage 6's "catch-up later
   that day".
+- B4: the reminder pass visits only users whose `next_due_at` has passed
+  (at most an hour apart); triggers clear it on task, override, horizon, and
+  timezone changes, and `due_version` keeps a concurrent change from being
+  overwritten ([ADR 0004](../adr/0004-next-due-time-by-trigger.md), migration
+  0013, `tests/jobs/idle-ticks.test.ts`). Local count: reminder-pass reads per
+  idle hour 576 → 6 ([capacity](../capacity.md)); live re-measure pending.
 
 Stage 2 decisions to review:
 

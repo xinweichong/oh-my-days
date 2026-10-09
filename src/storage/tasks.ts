@@ -387,6 +387,21 @@ export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): 
  * Open tasks that could need a reminder now: exact deadlines within the next
  * 25 hours (longest built-in offer is one day), and snoozes that just ended.
  */
+/** The earliest snooze still to end, for scheduling the reminder pass. */
+export async function nextSnoozeEnd(
+  db: D1Database,
+  userId: string,
+  now: number,
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      "SELECT MIN(snoozed_until) AS at FROM tasks WHERE user_id = ? AND status = 'open' AND snoozed_until > ?",
+    )
+    .bind(userId, now)
+    .first<{ at: number | null }>();
+  return row?.at ?? null;
+}
+
 export async function reminderCandidateTasks(
   db: D1Database,
   userId: string,
