@@ -1,5 +1,6 @@
 import { isWritable } from "../calendar/port";
 import { agendaDueDate } from "../domain/schedule";
+import { COMMON_ZONES, matchCity, nextRecentZones, zoneLabel } from "../domain/timezones";
 import type { AppConfig } from "../env";
 import { accessEndsAt } from "../jobs/access-expiry";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
@@ -510,6 +511,11 @@ export async function handleUiAction(
 
     case "change_timezone":
       return combine(ack(), removeButtons(user, callback), askFor(deps, user, "timezone"));
+    case "set_timezone": {
+      const zone = canonicalTimezone(String(payload.zone ?? ""));
+      if (!zone) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), await applyTimezone(deps, user, zone));
+    }
 
     case "open_calendars":
       return combine(ack(), await calendarPicker(deps, user, "settings", null));
@@ -605,11 +611,61 @@ export async function handleUiAction(
 // --- Typed answers -----------------------------------------------------------
 
 function askFor(deps: SetupDeps, user: UserRecord, kind: PendingInputKind): Reaction {
-  const prompt =
-    kind === "timezone"
-      ? "Send your timezone as Region/City, for example Europe/London."
-      : "Send a name for the new calendar.";
-  return guidedPrompt(deps, user, kind, {}, prompt);
+  if (kind === "timezone") return askTimezone(deps, user);
+  return guidedPrompt(deps, user, kind, {}, "Send a name for the new calendar.");
+}
+
+/** Recent zones first, then common ones, as buttons; or a typed city or Region/City. */
+function askTimezone(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const zones = [...user.recentTimezones, ...COMMON_ZONES]
+    .filter((z, i, all) => z !== user.timezone && all.indexOf(z) === i)
+    .slice(0, 8);
+  const options = zones.map((zone) => buttons.button(zoneLabel(zone), "set_timezone", { zone }));
+  const rows: InlineKeyboardButton[][] = [];
+  for (let i = 0; i < options.length; i += 2) rows.push(options.slice(i, i + 2));
+  return guidedPrompt(
+    deps,
+    user,
+    "timezone",
+    {},
+    "Choose a timezone, or type a city or Region/City, for example London or Europe/London.",
+    rows,
+    buttons,
+  );
+}
+
+/** Zones a typed city name is matched against. */
+function knownZones(): readonly string[] {
+  try {
+    return Intl.supportedValuesOf("timeZone");
+  } catch {
+    return COMMON_ZONES;
+  }
+}
+
+/** Sets the timezone (remembering the previous one), and continues setup if in it. */
+async function applyTimezone(deps: SetupDeps, user: UserRecord, zone: string): Promise<Reaction> {
+  const now = deps.clock.now();
+  const recent = nextRecentZones(user.timezone, user.recentTimezones, zone);
+  const update: Reaction = {
+    replies: [],
+    statements: (db) => [
+      clearPendingInputStatement(db, user.id),
+      setTimezoneStatement(db, user.id, zone, now, recent),
+    ],
+  };
+  const updated = { ...user, timezone: zone, recentTimezones: recent };
+  if (user.setupStep === "timezone") {
+    return combine(update, await advance(deps, updated, "timezone"));
+  }
+  return combine(
+    update,
+    message(
+      user.privateChatId,
+      `Timezone set to ${zone}. Existing events keep their times; new dates and reminders use ${zone}.`,
+    ),
+  );
 }
 
 /** Handles a text message answering a pending question. */
@@ -628,27 +684,19 @@ export async function handlePendingInput(
 
   if (kind === "timezone") {
     const zone = canonicalTimezone(text);
-    if (!zone) {
-      return message(
-        user.privateChatId,
-        "I don't recognize that timezone. Send it as Region/City, for example Europe/London.",
-      );
+    if (zone) return applyTimezone(deps, user, zone);
+    const city = matchCity(text, knownZones());
+    if (city && "zone" in city) return applyTimezone(deps, user, city.zone);
+    if (city) {
+      const buttons = new ActionButtons(deps.ids, user.id, now);
+      const rows = city.choose.map((z) => [
+        buttons.button(z.replace(/_/g, " "), "set_timezone", { zone: z }),
+      ]);
+      return guidedPrompt(deps, user, "timezone", {}, "Which one?", rows, buttons);
     }
-    const update: Reaction = {
-      replies: [],
-      statements: (db) => [setTimezoneStatement(db, user.id, zone, now)],
-    };
-    const updated = { ...user, timezone: zone };
-    if (user.setupStep === "timezone") {
-      return combine(clear, update, await advance(deps, updated, "timezone"));
-    }
-    return combine(
-      clear,
-      update,
-      message(
-        user.privateChatId,
-        `Timezone set to ${zone}. Existing events keep their times; new dates and reminders use ${zone}.`,
-      ),
+    return message(
+      user.privateChatId,
+      "I don't recognize that timezone. Send a city, for example London, or Region/City, for example Europe/London.",
     );
   }
 

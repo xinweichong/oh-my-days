@@ -23,6 +23,8 @@ export interface UserRecord {
   taskCalendarId: string | null;
   /** Typing hints shown after guided creations (they stop after a few). */
   typingHintsShown: number;
+  /** Earlier timezones, newest first. */
+  recentTimezones: string[];
 }
 
 interface UserRow {
@@ -35,6 +37,7 @@ interface UserRow {
   default_calendar_id: string | null;
   task_calendar_id: string | null;
   typing_hints_shown: number;
+  recent_timezones: string;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -48,11 +51,21 @@ function toRecord(row: UserRow): UserRecord {
     defaultCalendarId: row.default_calendar_id,
     taskCalendarId: row.task_calendar_id,
     typingHintsShown: row.typing_hints_shown,
+    recentTimezones: parseZones(row.recent_timezones),
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
-  default_calendar_id, task_calendar_id, typing_hints_shown`;
+  default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones`;
+
+function parseZones(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((z): z is string => typeof z === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 /** Creates the user on first contact, or refreshes the private chat ID. */
 export function upsertUserStatement(
@@ -133,13 +146,14 @@ export function setTimezoneStatement(
   userId: string,
   timezone: string,
   now: number,
+  recent: readonly string[] = [],
 ): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE users SET timezone = ?, settings_version = settings_version + 1, updated_at = ?
-       WHERE id = ?`,
+      `UPDATE users SET timezone = ?, recent_timezones = ?, settings_version = settings_version + 1,
+         updated_at = ? WHERE id = ?`,
     )
-    .bind(timezone, now, userId);
+    .bind(timezone, JSON.stringify(recent), now, userId);
 }
 
 /** Counts one typing hint shown, up to `limit`. */

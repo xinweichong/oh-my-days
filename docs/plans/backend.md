@@ -427,6 +427,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   operation, once, and says it is a copy without the description, location, or
   attachments. Events with guests, series, and occurrences are excluded
   (`tests/flows/restore-event.test.ts`).
+- C7: changing timezone offers buttons for the user's recent zones (newest
+  first, up to three, migration 0015) and a short common list; a typed city
+  matches the runtime's IANA zones by city name (`London` → `Europe/London`),
+  and a shared name or a partial name offers choices. Region/City still works
+  (`tests/domain/timezones.test.ts`, `tests/flows/timezone-choice.test.ts`).
 
 Stage 2 decisions to review:
 
