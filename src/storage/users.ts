@@ -29,6 +29,8 @@ export interface UserRecord {
   agendaHour: number;
   /** Default minutes before timed events and exact deadlines to remind. */
   reminderMinutes: number;
+  /** Local hour of the evening preview of tomorrow, or null when off. */
+  eveningHour: number | null;
 }
 
 interface UserRow {
@@ -44,6 +46,7 @@ interface UserRow {
   recent_timezones: string;
   agenda_hour: number;
   reminder_minutes: number;
+  evening_hour: number | null;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -60,12 +63,13 @@ function toRecord(row: UserRow): UserRecord {
     recentTimezones: parseZones(row.recent_timezones),
     agendaHour: row.agenda_hour,
     reminderMinutes: row.reminder_minutes,
+    eveningHour: row.evening_hour,
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
   default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones, agenda_hour,
-  reminder_minutes`;
+  reminder_minutes, evening_hour`;
 
 function parseZones(value: string): string[] {
   try {
@@ -213,19 +217,23 @@ export function setNextDueStatement(
 
 /** Agenda hours a user can choose; outside these, the late-agenda rules would overlap. */
 export const AGENDA_HOURS = [6, 7, 8, 9, 10, 11] as const;
+/** Evening preview hours a user can choose. */
+export const EVENING_HOURS = [18, 19, 20, 21, 22] as const;
 /** Default reminder leads a user can choose, in minutes. */
 export const REMINDER_LEADS = [10, 30, 60, 120] as const;
 
 export function setScheduleSettingStatement(
   db: D1Database,
   userId: string,
-  setting: { agendaHour: number } | { reminderMinutes: number },
+  setting: { agendaHour: number } | { reminderMinutes: number } | { eveningHour: number | null },
   now: number,
 ): D1PreparedStatement {
   const [column, value] =
     "agendaHour" in setting
       ? ["agenda_hour", setting.agendaHour]
-      : ["reminder_minutes", setting.reminderMinutes];
+      : "reminderMinutes" in setting
+        ? ["reminder_minutes", setting.reminderMinutes]
+        : ["evening_hour", setting.eveningHour];
   return db
     .prepare(
       `UPDATE users SET ${column} = ?, settings_version = settings_version + 1, updated_at = ?

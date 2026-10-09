@@ -62,6 +62,9 @@ row per tick: about 1,440 rows written a day, under 3% of the operating target.
 The access-expiry warning (B1) adds one indexed read of `google_connections`
 to frequent maintenance (every 5 minutes) and one write per user per week.
 
+The evening preview (D2), when turned on, adds one live Google read of the
+next day per user per evening, like the agenda.
+
 Quick capture (improvement A1, not yet deployed) adds no scheduled work: each
 plain message reads the user's lists and calendars (a few rows each) and makes
 the same writes as the guided command it replaces. Choice buttons are retired

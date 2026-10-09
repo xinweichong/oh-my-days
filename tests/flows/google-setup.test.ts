@@ -93,6 +93,7 @@ describe("Google connection and setup", () => {
         "Timezone: Asia/Singapore",
         "Daily agenda: 8am",
         "Default reminder: 1 hour before",
+        "Evening preview: Off",
         "",
         "Type what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.",
       ].join("\n"),

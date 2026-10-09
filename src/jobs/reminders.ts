@@ -3,8 +3,14 @@ import { ActionButtons } from "../application/reactions";
 import { dueLabel } from "../application/task-flow";
 import { dayButtons } from "../application/view-flow";
 import type { CalendarPort, CalendarSyncSource, EventDisplay } from "../calendar/port";
-import { agendaKind, nextAgendaAt, reminderKeys } from "../domain/schedule";
-import { localDateAt } from "../domain/time";
+import {
+  agendaKind,
+  eveningDueDate,
+  nextAgendaAt,
+  nextEveningAt,
+  reminderKeys,
+} from "../domain/schedule";
+import { addDays, localDateAt } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
@@ -86,6 +92,7 @@ export async function runReminders(deps: ReminderDeps, limit: number): Promise<n
     const user = await findUserById(deps.db, id);
     if (!user) continue;
     sent += (await sendAgenda(deps, user)) ? 1 : 0;
+    sent += (await sendEveningPreview(deps, user)) ? 1 : 0;
     const reminders = await sendReminders(deps, user);
     sent += reminders.sent;
     const next = await nextDue(deps, user, reminders.next);
@@ -101,9 +108,20 @@ async function nextDue(
   nextReminder: number | null,
 ): Promise<number> {
   const now = deps.clock.now();
-  const covered = await agendaSent(deps.db, user.id, localDateAt(now, user.timezone));
+  const today = localDateAt(now, user.timezone);
+  const covered = await agendaSent(deps.db, user.id, today);
+  const evening =
+    user.eveningHour === null
+      ? null
+      : nextEveningAt(
+          now,
+          user.timezone,
+          await agendaSent(deps.db, user.id, eveningKey(today)),
+          user.eveningHour,
+        );
   const candidates = [
     now + MAX_IDLE_MS,
+    evening ?? Number.POSITIVE_INFINITY,
     nextAgendaAt(now, user.timezone, covered, user.agendaHour),
     nextReminder ?? Number.POSITIVE_INFINITY,
     (await nextSnoozeEnd(deps.db, user.id, now)) ?? Number.POSITIVE_INFINITY,
@@ -171,6 +189,61 @@ async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean
   ]);
   const won = results[0]?.meta.changes === 1;
   if (won) logEvent("agenda.queued", { userId: user.id, date });
+  return won;
+}
+
+/** Evening previews share agenda_runs under their own key per local date. */
+function eveningKey(date: string): string {
+  return `evening:${date}`;
+}
+
+/** The optional evening "Tomorrow" message (spec §7), at most once per date. */
+async function sendEveningPreview(deps: ReminderDeps, user: UserRecord): Promise<boolean> {
+  const now = deps.clock.now();
+  const date = eveningDueDate(now, user.timezone, user.eveningHour);
+  if (!date) return false;
+  const key = eveningKey(date);
+  if (await agendaSent(deps.db, user.id, key)) return false;
+  const tomorrow = addDays(date, 1);
+  const { text } = await renderDay(
+    { db: deps.db, sourceFor: deps.sourceFor },
+    user,
+    tomorrow,
+    now,
+    {
+      heading: "Tomorrow",
+      includeSnoozed: false,
+    },
+  );
+  const claim = deps.ids.next();
+  const guard = agendaClaimGuard(user.id, key, claim);
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const results = await deps.db.batch([
+    claimAgendaStatement(deps.db, user.id, key, claim, now),
+    ...buttons.statements(deps.db, guard),
+    enqueueStatement(
+      deps.db,
+      deps.ids,
+      user.id,
+      {
+        logicalKey: `evening:${date}`,
+        call: {
+          method: "sendMessage",
+          params: {
+            chat_id: user.privateChatId,
+            text,
+            reply_markup: {
+              inline_keyboard: [[buttons.button("View week", "view_week", {})]],
+            },
+          },
+        },
+      },
+      now,
+      guard,
+    ),
+  ]);
+  const won = results[0]?.meta.changes === 1;
+  if (won) logEvent("evening.queued", { userId: user.id, date });
   return won;
 }
 

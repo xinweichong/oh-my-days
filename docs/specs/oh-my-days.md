@@ -221,6 +221,10 @@ Date-only due reminders and the overdue summary are combined into this message. 
 
 Event reminders and exact-time task reminders remain separate one-hour-before notifications. Reminder overrides must be shown in `/reminders`.
 
+### Evening preview
+
+Optional and off by default (added 2026-10-10, [improvement D2](../plans/improvements.md#6-phase-4--further-features-d1d6)). The user can turn on a short **Tomorrow** message at a chosen evening hour (6–10pm in their timezone) in `/settings`. It uses the agenda's rendering for the next day (events, tasks due, count without deadlines), is sent at most once per date, and is skipped rather than sent late after midnight. It does not replace or change the morning agenda.
+
 ### Slash commands
 
 These views and controls must work without AI:

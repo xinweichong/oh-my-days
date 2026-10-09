@@ -81,6 +81,33 @@ export function nextAgendaAt(
 }
 
 /**
+ * The evening preview due now, if any: from its hour until midnight, for the
+ * local date (it previews the next day). Not sent late after midnight.
+ */
+export function eveningDueDate(
+  now: number,
+  timeZone: string,
+  eveningHour: number | null,
+): LocalDate | null {
+  if (eveningHour === null) return null;
+  return wallPartsAt(now, timeZone).hour >= eveningHour ? localDateAt(now, timeZone) : null;
+}
+
+/** When the next evening preview is due: today if not yet sent, else tomorrow. */
+export function nextEveningAt(
+  now: number,
+  timeZone: string,
+  sentToday: boolean,
+  eveningHour: number,
+): number | null {
+  const today = localDateAt(now, timeZone);
+  const date = sentToday ? addDays(today, 1) : today;
+  const at = zonedInstant(date, `${String(eveningHour).padStart(2, "0")}:00`, timeZone);
+  if (!at.ok) return null;
+  return sentToday ? at.instant : Math.max(now, at.instant);
+}
+
+/**
  * Which agenda is due for an unsent local date: the full one in the morning,
  * a catch-up of the rest of the day from noon, none (date covered) from 8pm.
  */

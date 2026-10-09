@@ -274,7 +274,8 @@ export async function renderDay(
     );
   }
   if (tasks.due.length > 0) {
-    lines.push("", "Due today", ...capped(tasks.due.map((t) => taskLine(t, user.timezone, false))));
+    const heading = date === localDateAt(now, user.timezone) ? "Due today" : "Due";
+    lines.push("", heading, ...capped(tasks.due.map((t) => taskLine(t, user.timezone, false))));
   }
   if (tasks.overdue.length > 0) {
     lines.push(

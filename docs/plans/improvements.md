@@ -46,7 +46,7 @@ when the item is approved, before implementation.
 | C6 | Restore a deleted guest-free event | 3 | — | Implemented (`feature/improvements`) |
 | C7 | Timezone buttons and city names | 3 | — | Implemented (`feature/improvements`) |
 | D1 | Configurable agenda time and default reminder lead | 4 | Changes fixed defaults; spec amended | Implemented (`feature/improvements`) |
-| D2 | Optional evening preview of tomorrow | 4 | New | Approved |
+| D2 | Optional evening preview of tomorrow | 4 | New; spec amended | Implemented (`feature/improvements`) |
 | D3 | More repeat rules | 4 | Extends §6 | Approved |
 | D4 | Schedule a work session for a task | 4 | Already in §6, unbuilt | Approved |
 | D5 | Quiet hours | 4 | New | Approved |

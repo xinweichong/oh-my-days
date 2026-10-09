@@ -23,6 +23,7 @@ import { claimAgendaStatement } from "../storage/reminders";
 import {
   AGENDA_HOURS,
   advanceSetupStatement,
+  EVENING_HOURS,
   REMINDER_LEADS,
   type SetupStep,
   setScheduleSettingStatement,
@@ -248,6 +249,7 @@ async function settingsLines(deps: SetupDeps, user: UserRecord): Promise<string[
     `Timezone: ${user.timezone}`,
     `Daily agenda: ${hourLabel(user.agendaHour)}`,
     `Default reminder: ${leadLabel(user.reminderMinutes)}`,
+    `Evening preview: ${user.eveningHour === null ? "Off" : hourLabel(user.eveningHour)}`,
   ];
 }
 
@@ -259,6 +261,30 @@ function hourLabel(hour: number): string {
 export function leadLabel(minutes: number): string {
   if (minutes % 60 === 0) return minutes === 60 ? "1 hour before" : `${minutes / 60} hours before`;
   return `${minutes} minutes before`;
+}
+
+function eveningPicker(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const mark = (on: boolean) => (on ? "✓ " : "");
+  const options = [
+    buttons.button(`${mark(user.eveningHour === null)}Off`, "set_evening_hour", { hour: null }),
+    ...EVENING_HOURS.map((hour) =>
+      buttons.button(`${mark(user.eveningHour === hour)}${hourLabel(hour)}`, "set_evening_hour", {
+        hour,
+      }),
+    ),
+  ];
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        "Get a short preview of tomorrow in the evening?",
+        { inline_keyboard: [options.slice(0, 3), options.slice(3)] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
 }
 
 function schedulePicker(deps: SetupDeps, user: UserRecord, setting: "agenda" | "lead"): Reaction {
@@ -322,7 +348,10 @@ export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<R
         buttons.button("Agenda time", "open_agenda_hour", {}),
         buttons.button("Default reminder", "open_reminder_lead", {}),
       ],
-      [buttons.button("Contacts", "open_contacts", {})],
+      [
+        buttons.button("Evening preview", "open_evening", {}),
+        buttons.button("Contacts", "open_contacts", {}),
+      ],
     ],
   };
   return {
@@ -576,6 +605,22 @@ export async function handleUiAction(
       return combine(ack(), schedulePicker(deps, user, "agenda"));
     case "open_reminder_lead":
       return combine(ack(), schedulePicker(deps, user, "lead"));
+    case "open_evening":
+      return combine(ack(), eveningPicker(deps, user));
+    case "set_evening_hour": {
+      const hour = payload.hour === null ? null : Number(payload.hour);
+      if (hour !== null && !EVENING_HOURS.some((h) => h === hour)) {
+        return ack("This button is no longer valid.");
+      }
+      const text =
+        hour === null
+          ? "Evening preview off."
+          : `I'll send a preview of tomorrow at ${hourLabel(hour)}.`;
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [{ method: "sendMessage", params: { chat_id: user.privateChatId, text } }],
+        statements: (db) => [setScheduleSettingStatement(db, user.id, { eveningHour: hour }, now)],
+      });
+    }
     case "set_agenda_hour": {
       const hour = Number(payload.hour);
       if (!AGENDA_HOURS.some((h) => h === hour)) return ack("This button is no longer valid.");

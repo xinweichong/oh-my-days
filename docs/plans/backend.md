@@ -438,6 +438,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   `next_due_at`. The agenda stays keyed by local date. "Tomorrow at …" snoozes
   follow the agenda hour. The setup summary no longer says event and task
   creation "arrives in a later update" (`tests/flows/schedule-settings.test.ts`).
+- D2: an optional evening "Tomorrow" message (off by default; 6–10pm in
+  `/settings`, migration 0017) renders the next day like the agenda, once per
+  date (recorded in `agenda_runs` as `evening:<date>`), never after midnight.
+  The reminder pass schedules it in `next_due_at`
+  (`tests/flows/evening-preview.test.ts`).
 
 Stage 2 decisions to review:
 
