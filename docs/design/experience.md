@@ -142,7 +142,7 @@ included; the approved Telegram Mini App is described below. No image-first/code
 ## Telegram Mini App
 
 Status: Layout and behavior approved by the owner on 2026-10-09 (improvement
-plan [Phase 4.0](../plans/improvements.md#6-phase-4--telegram-mini-app-d7-approved)).
+plan [step 5.0](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)).
 Not implemented. Three structures were compared (smart lists home, day split by
 time of day, bottom tabs); the owner chose **smart lists home**.
 

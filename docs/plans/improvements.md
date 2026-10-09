@@ -1,7 +1,8 @@
 # Oh My Days — post-release improvement plan
 
-Status: Proposed 2026-10-08. D7 (Telegram Mini App) approved by the owner on
-2026-10-08 and its layout on 2026-10-09; every other item awaits approval. Nothing here is implemented.
+Status: Every item approved by the owner (D7 on 2026-10-08, its layout and all
+other items on 2026-10-09). Build order: Phases 1–4, then the Mini App (Phase 5)
+last. Nothing here is implemented yet.
 Source of truth: [product specification](../specs/oh-my-days.md). Builds on the
 [backend plan](backend.md), whose stages 0–8 and 10 are implemented and deployed.
 
@@ -27,33 +28,34 @@ when the item is approved, before implementation.
 
 | ID | Item | Phase | Spec | Status |
 |---|---|---|---|---|
-| A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI) | Proposed |
-| A2 | Weekday and relative dates | 1 | — | Proposed |
-| A3 | Examples and hints in `/help` | 1 | — | Proposed |
-| A4 | Cancel on guided prompts, `/cancel` | 1 | — | Proposed |
-| B1 | Warn before Google access expires | 2 | — | Proposed |
-| B2 | Google OAuth verification (owner action) | any | — | Proposed |
-| B3 | Scheduler liveness in `/healthz` | 2 | — | Proposed |
-| B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Proposed |
-| B5 | Late-agenda cutoff | 2 | Clarifies §7 catch-up | Proposed |
-| C1 | Actionable agenda; snooze all overdue | 3 | — | Proposed |
-| C2 | Location, call link, Calendar link in event reminders | 3 | — | Proposed |
-| C3 | `/find` and date jump for events | 3 | — | Proposed |
-| C4 | Choose the calendar for a new event | 3 | — | Proposed |
-| C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Proposed |
-| C6 | Restore a deleted guest-free event | 3 | — | Proposed |
-| C7 | Timezone buttons and city names | 3 | — | Proposed |
-| D7 | Telegram Mini App: tasks and day/week overview | 4 | §2 exclusion amended | **Approved** |
-| D1 | Configurable agenda time and default reminder lead | 5 | Changes fixed defaults | Proposed |
-| D2 | Optional evening preview of tomorrow | 5 | New | Proposed |
-| D3 | More repeat rules | 5 | Extends §6 | Proposed |
-| D4 | Schedule a work session for a task | 5 | Already in §6, unbuilt | Proposed |
-| D5 | Quiet hours | 5 | New | Proposed |
-| D6 | `/export` of tasks, lists, contacts | 5 | New | Proposed |
+| A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI) | Approved |
+| A2 | Weekday and relative dates | 1 | — | Approved |
+| A3 | Examples and hints in `/help` | 1 | — | Approved |
+| A4 | Cancel on guided prompts, `/cancel` | 1 | — | Approved |
+| B1 | Warn before Google access expires | 2 | — | Approved |
+| B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |
+| B3 | Scheduler liveness in `/healthz` | 2 | — | Approved |
+| B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Approved |
+| B5 | Late-agenda cutoff | 2 | Clarifies §7 catch-up | Approved |
+| C1 | Actionable agenda; snooze all overdue | 3 | — | Approved |
+| C2 | Location, call link, Calendar link in event reminders | 3 | — | Approved |
+| C3 | `/find` and date jump for events | 3 | — | Approved |
+| C4 | Choose the calendar for a new event | 3 | — | Approved |
+| C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Approved |
+| C6 | Restore a deleted guest-free event | 3 | — | Approved |
+| C7 | Timezone buttons and city names | 3 | — | Approved |
+| D1 | Configurable agenda time and default reminder lead | 4 | Changes fixed defaults | Approved |
+| D2 | Optional evening preview of tomorrow | 4 | New | Approved |
+| D3 | More repeat rules | 4 | Extends §6 | Approved |
+| D4 | Schedule a work session for a task | 4 | Already in §6, unbuilt | Approved |
+| D5 | Quiet hours | 4 | New | Approved |
+| D6 | `/export` of tasks, lists, contacts | 4 | New | Approved |
+| D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | Approved |
 
-Phases are ordered by dependency and user value. Within a phase, items are
-independent branches unless stated. Reject an item by marking it Rejected here;
-its dependants are noted below.
+Build the phases in order, 1 to 5; the Mini App is last because it reuses quick
+capture, date parsing, history, and the other chat operations. Within a phase,
+items are independent branches unless stated. For items marked in the Spec
+column, amend the spec in the same branch before implementing.
 
 ## 3. Phase 1 — Typing works (A2 → A1, A3, A4)
 
@@ -225,7 +227,24 @@ with B4; `/healthz` liveness verified with a paused cron in local tests.
 Each C item is its own branch with flow tests, including cross-user refusal
 and stale-button cases.
 
-## 6. Phase 4 — Telegram Mini App (D7, approved)
+## 6. Phase 4 — Further features (D1–D6)
+
+- **D1** Settings for agenda hour and default event/timed-task reminder lead;
+  defaults stay 8am and 1 hour. Requires amending the spec's fixed values.
+  Agenda keys remain per local date, so changing the hour cannot send twice.
+- **D2** Evening preview: off by default; a short "Tomorrow" message at a chosen
+  time, same rendering as the agenda.
+- **D3** Repeat rules: every N days/weeks/months, weekdays only, last day of the
+  month (RFC 5545 `BYSETPOS=-1`). Same materialization (ADR 0003).
+- **D4** Work sessions: "Schedule time" on a task creates an ordinary event in
+  the default calendar linked to the task; deadline untouched; completing the
+  task does not delete the event.
+- **D5** Quiet hours: reminders falling in the window are held and sent once as
+  a summary afterwards; agenda unaffected.
+- **D6** `/export`: a JSON document of the user's tasks, lists, series, and
+  contacts sent as a Telegram file; no tokens or event cache.
+
+## 7. Phase 5 — Telegram Mini App (D7, built last)
 
 A Mini App is a web page that Telegram opens inside the chat. It gives a
 Reminders-style task manager and a read-only day/week overview, using the same
@@ -281,37 +300,20 @@ settings (a later decision).
   Google reads are limited to the visible range. Measured and added to
   [capacity](../capacity.md) before release.
 - **ADR 0004** records the Mini App surface, `initData` authentication, and
-  API conventions when Phase 4a starts.
+  API conventions when step 5a starts.
 
 ### Delivery
 
 | Step | Content | Exit evidence |
 |---|---|---|
-| 4.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
-| 4a Foundation | `initData` verification, `/app` shell, read API, Today and Week | Auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs); views match `/daily` and `/weekly` output for the same fixtures |
-| 4b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | Every action matches the chat operation's result, Undo, and projection; 409 on stale version; redelivered POST idempotent |
-| 4c Bulk and history | Multi-select actions, Recent | Bulk operations atomic per item with one summary; confirmation bound to the exact set |
-| 4d Release | Live smoke test on the owner's phone (iOS/Android as available), capacity check, docs | Acceptance rows added; runbook updated |
+| 5.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
+| 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | Auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs); views match `/daily` and `/weekly` output for the same fixtures |
+| 5b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | Every action matches the chat operation's result, Undo, and projection; 409 on stale version; redelivered POST idempotent |
+| 5c Bulk and history | Multi-select actions, Recent | Bulk operations atomic per item with one summary; confirmation bound to the exact set |
+| 5d Release | Live smoke test on the owner's phone (iOS/Android as available), capacity check, docs | Acceptance rows added; runbook updated |
 
 Depends on A1/A2 (quick add and date parsing) and C5 (history operations).
-If C5 is rejected, 4c builds the history reads itself.
 
-## 7. Phase 5 — Optional features (each needs approval)
-
-- **D1** Settings for agenda hour and default event/timed-task reminder lead;
-  defaults stay 8am and 1 hour. Requires amending the spec's fixed values.
-  Agenda keys remain per local date, so changing the hour cannot send twice.
-- **D2** Evening preview: off by default; a short "Tomorrow" message at a chosen
-  time, same rendering as the agenda.
-- **D3** Repeat rules: every N days/weeks/months, weekdays only, last day of the
-  month (RFC 5545 `BYSETPOS=-1`). Same materialization (ADR 0003).
-- **D4** Work sessions: "Schedule time" on a task creates an ordinary event in
-  the default calendar linked to the task; deadline untouched; completing the
-  task does not delete the event.
-- **D5** Quiet hours: reminders falling in the window are held and sent once as
-  a summary afterwards; agenda unaffected.
-- **D6** `/export`: a JSON document of the user's tasks, lists, series, and
-  contacts sent as a Telegram file; no tokens or event cache.
 
 ## 8. Cross-cutting rules
 

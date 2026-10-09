@@ -36,7 +36,7 @@ This document records the completed design interview. Sections describing propos
 - Voice notes, screenshots, image interpretation, and multi-instruction messages.
 - Completion-relative recurrence, such as three months after the previous completion.
 - Gmail email integration and Google Contacts integration.
-- A separate calendar frontend. Minimal Google authorization pages may be needed. Exception: a Telegram Mini App for tasks and a read-only day/week overview, approved 2026-10-08 (see [improvement plan](../plans/improvements.md#6-phase-4--telegram-mini-app-d7-approved)); it does not edit events or replace Google Calendar.
+- A separate calendar frontend. Minimal Google authorization pages may be needed. Exception: a Telegram Mini App for tasks and a read-only day/week overview, approved 2026-10-08 (see [improvement plan](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)); it does not edit events or replace Google Calendar.
 - Paid infrastructure, paid AI fallback, and automatic upgrades.
 
 ## 3. User setup and settings
