@@ -376,6 +376,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
 - B3: each tick records its finish time in `app_state`; `/healthz` returns
   `ok tick_age_s=N`, or 503 `stale …` when none finished in 10 minutes or none
   has run. `/health` shows the same age (`tests/http/liveness.test.ts`).
+- B1: with `TESTING_TOKEN_TTL_DAYS` set, frequent maintenance sends one
+  "Google access ends tomorrow around …" warning with **Reconnect** a day before
+  `connected_at + TTL`, recorded per `auth_generation` (migration 0012);
+  `/health` shows "Reconnect by …". The after-the-fact alert is unchanged
+  (`tests/flows/access-expiry.test.ts`).
 
 Stage 2 decisions to review:
 

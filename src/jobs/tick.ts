@@ -13,6 +13,7 @@ import {
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
 import { purgeOldReminderStatements } from "../storage/reminders";
+import { type AccessExpiryDeps, warnBeforeAccessEnds } from "./access-expiry";
 import { syncBotCommands } from "./bot-commands";
 import {
   refreshCalendarLists,
@@ -57,6 +58,7 @@ export interface TickDeps {
   delivery: DeliveryDeps;
   sync: SyncDeps;
   reminders: ReminderDeps;
+  expiry: AccessExpiryDeps;
 }
 
 export interface TickSummary {
@@ -93,6 +95,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
     await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
     await evaluateSyncHealth(deps.reminders);
+    await warnBeforeAccessEnds(deps.expiry);
   }
 
   // Reminders and agendas come before delivery so they go out in this tick.

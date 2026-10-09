@@ -165,6 +165,7 @@ export function tickDeps(s: Services): TickDeps {
       ids: s.ids,
       sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
     },
+    expiry: { db: s.db, clock: s.clock, ids: s.ids, ttlDays: s.config.testingTokenTtlDays },
   };
 }
 

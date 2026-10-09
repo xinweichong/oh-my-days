@@ -178,6 +178,7 @@ describe("confirmation", () => {
       clock: h.clock,
       runner: h,
       inbox: { db: h.db, clock: h.clock, ids: h.ids, handler: async () => ({ replies: [] }) },
+      expiry: { db: h.db, clock: h.clock, ids: h.ids, ttlDays: null },
       delivery: {
         db: h.db,
         clock: h.clock,

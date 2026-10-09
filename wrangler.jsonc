@@ -12,7 +12,9 @@
   "vars": {
     "PUBLIC_BASE_URL": "https://ohmydays.xinweichong.com",
     "TELEGRAM_BOT_USERNAME": "oh_my_days_bot",
-    "CONTACT_EMAIL": "xwchong@gmail.com"
+    "CONTACT_EMAIL": "xwchong@gmail.com",
+    // Google access lasts 7 days while the OAuth app is in Testing; remove once verified.
+    "TESTING_TOKEN_TTL_DAYS": "7"
   },
   "d1_databases": [
     {

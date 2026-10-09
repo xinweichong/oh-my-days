@@ -1,5 +1,6 @@
 import { isWritable } from "../calendar/port";
 import type { AppConfig } from "../env";
+import { accessEndsAt } from "../jobs/access-expiry";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
@@ -295,8 +296,12 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     : connection.status === "active"
       ? `Connected (${connection.email})`
       : `Reconnection needed (${connection.email})`;
+  const ttl = deps.config.testingTokenTtlDays;
   const lines = [
     `Google Calendar: ${status}`,
+    ...(connection?.status === "active" && ttl !== null
+      ? [`Reconnect by: ${reconnectBy(accessEndsAt(connection.connectedAt, ttl), user.timezone)}`]
+      : []),
     `Last successful sync: ${describeSync(sync, deps.clock.now(), user.timezone)}`,
   ];
   if (sync.failingCalendars > 0) {
@@ -323,6 +328,14 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+/** "Fri 2 Oct, 9am" (estimated: Testing-mode access lasts a fixed number of days). */
+function reconnectBy(endsAt: number, timeZone: string): string {
+  return formatShortStart(
+    { start: { dateTime: new Date(endsAt).toISOString(), timeZone } },
+    timeZone,
+  );
 }
 
 function describeTick(last: number | null, now: number): string {

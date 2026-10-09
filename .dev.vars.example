@@ -20,3 +20,7 @@ TOKEN_ENCRYPTION_KEY=replace-with-32-random-bytes-base64
 
 # Optional: contact address shown in the privacy policy at /privacy.
 # CONTACT_EMAIL=you@example.com
+
+# Optional (set in wrangler.jsonc): days Google access lasts while the OAuth app
+# is in Testing. Drives a warning a day before; remove once the app is verified.
+# TESTING_TOKEN_TTL_DAYS=7

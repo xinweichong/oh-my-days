@@ -26,9 +26,12 @@ Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1 databa
 
 ## Google access stops working
 
-The OAuth app is in Testing, so Google ends access every 7 days (ADR 0002). The
-bot sends one alert with **Reauthorize**; paused changes resume after
-reconnecting. Nothing else is needed. If reconnecting fails, check the OAuth
+The OAuth app is in Testing, so Google ends access every 7 days (ADR 0002).
+With `TESTING_TOKEN_TTL_DAYS` set (wrangler.jsonc), the bot warns about a day
+before, once per connection, with **Reconnect**, and `/health` shows "Reconnect
+by …". If access lapses anyway, the bot sends one alert with **Reauthorize**;
+paused changes resume after reconnecting. Once the app is verified, remove
+`TESTING_TOKEN_TTL_DAYS` and update ADR 0002. Nothing else is needed. If reconnecting fails, check the OAuth
 client's redirect URI (`https://ohmydays.xinweichong.com/oauth/callback`) and
 that the user is still a test user on the consent screen.
 

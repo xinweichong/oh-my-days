@@ -71,6 +71,7 @@ export const testConfig: AppConfig = {
   googleClientSecret: "test-client-secret",
   tokenEncryptionKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
   contactEmail: null,
+  testingTokenTtlDays: null,
 };
 
 export function testServices(db: D1Database, overrides: Partial<Services> = {}): Services {

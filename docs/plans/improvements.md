@@ -33,7 +33,7 @@ when the item is approved, before implementation.
 | A2 | Weekday and relative dates | 1 | — | Implemented (`feature/date-grammar`) |
 | A3 | Examples and hints in `/help` | 1 | — | Implemented (`feature/help-examples`) |
 | A4 | Cancel on guided prompts, `/cancel` | 1 | — | Implemented (`feature/guided-cancel`) |
-| B1 | Warn before Google access expires | 2 | — | Approved |
+| B1 | Warn before Google access expires | 2 | — | Implemented (`feature/expiry-warning`); live check at one Testing expiry pending |
 | B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |
 | B3 | Scheduler liveness in `/healthz` | 2 | — | Implemented (`feature/scheduler-liveness`) |
 | B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Approved |
