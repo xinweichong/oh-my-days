@@ -18,6 +18,7 @@ import {
   type PendingInputKind,
   type UiAction,
 } from "../storage/interactions";
+import { findOperation } from "../storage/operations";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import {
@@ -37,6 +38,8 @@ import {
   type DeleteEventIntent,
   deletePreview,
   guestChangePreview,
+  MOVE_EVENT,
+  type MoveEventIntent,
   PATCH_EVENT,
   type PatchEventIntent,
 } from "./event-operations";
@@ -348,6 +351,8 @@ export async function create(
     overlapCalendarIds: overlapCalendarIds(user, calendars),
     ...(options.switchTo ? { switchTo: options.switchTo } : {}),
     ...(options.note ? { note: options.note } : {}),
+    // One-off events can be moved to another writable calendar from the result.
+    ...(!freq && eventCalendars(user, calendars).length > 1 ? { movable: true as const } : {}),
     ...(freq
       ? {
           recurrence: [toRRule(freq)],
@@ -423,6 +428,80 @@ async function eventList(
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+/** A just-created event, if its creation succeeded and it can still be moved from there. */
+async function createdEvent(deps: EventFlowDeps, user: UserRecord, operationId: string) {
+  const op = await findOperation(deps.db, user.id, operationId);
+  if (op?.kind !== CREATE_EVENT || op.status !== "succeeded") return null;
+  const intent = op.intent as CreateEventIntent;
+  const result = op.result as { fields: EventFields } | null;
+  return intent.movable && result ? { op, intent, fields: result.fields } : null;
+}
+
+/** "Calendar: Personal ▸": the other calendars a new event can go to. */
+async function calendarMenu(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+): Promise<Reaction> {
+  const created = await createdEvent(deps, user, operationId);
+  if (!created) return message(user.privateChatId, "This event can't be moved from here anymore.");
+  const others = eventCalendars(user, await listStoredCalendars(deps.db, user.id)).filter(
+    (c) => c.calendarId !== created.intent.calendarId,
+  );
+  if (others.length === 0) {
+    return message(user.privateChatId, "There's no other calendar you can add events to.");
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const rows = others.map((c) => [
+    buttons.button(c.summary, "event_calendar_move", { operationId, calendarId: c.calendarId }),
+  ]);
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Move ${created.fields.summary} to which calendar?`,
+        { inline_keyboard: [...rows, cancelRow(buttons, "the move")] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+/** Moves the just-created event, only if it is still exactly as created. */
+async function moveToCalendar(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+  calendarId: string,
+  key: string,
+): Promise<Reaction> {
+  const created = await createdEvent(deps, user, operationId);
+  if (!created) return message(user.privateChatId, "This event can't be moved from here anymore.");
+  const destination = eventCalendars(user, await listStoredCalendars(deps.db, user.id)).find(
+    (c) => c.calendarId === calendarId,
+  );
+  if (!destination || destination.calendarId === created.intent.calendarId) {
+    return message(user.privateChatId, "That calendar isn't available for events.");
+  }
+  const intent: MoveEventIntent = {
+    calendarId: created.intent.calendarId,
+    eventId: created.intent.eventId,
+    destinationId: destination.calendarId,
+    title: created.fields.summary,
+    calendarName: created.intent.calendarName ?? "its calendar",
+    destinationName: destination.summary,
+    base: created.fields,
+  };
+  const prepared = await prepareProposal(deps, user, {
+    kind: MOVE_EVENT,
+    idempotencyKey: key,
+    intent,
+    confirmation: null,
+  });
+  return { replies: prepared.replies, statements: prepared.statements };
 }
 
 /** Every event on one date (past or upcoming), to choose one to change. */
@@ -660,6 +739,23 @@ export async function handleEventAction(
           user,
           Number(payload.page ?? 0),
           Number(payload.page ?? 0) > 0 ? callback.messageId : null,
+        ),
+      );
+    case "event_calendar_menu":
+      return combine(
+        answer(callback),
+        await calendarMenu(deps, user, String(payload.operationId ?? "")),
+      );
+    case "event_calendar_move":
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await moveToCalendar(
+          deps,
+          user,
+          String(payload.operationId ?? ""),
+          String(payload.calendarId ?? ""),
+          key,
         ),
       );
     case "event_pick_date":

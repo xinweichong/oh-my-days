@@ -411,6 +411,12 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   recurring series from a live Google `q` search over the next year; at most 20
   results, 8 per page; a note says when Google couldn't be searched. "Change an
   event" gains **Pick a date** for any day (`tests/flows/find.test.ts`).
+- C4: when the user has another writable calendar, a new one-off event's
+  result shows **Calendar: X ▸**; choosing one runs a `calendar.event.move`
+  operation (Google `move`, no guest emails) that first re-reads the event and
+  refuses if it changed since creation; a lost response is reconciled by
+  finding the event in the destination; Undo moves it back. Quick capture also
+  accepts `on <calendar>` (`tests/flows/calendar-choice.test.ts`).
 
 Stage 2 decisions to review:
 

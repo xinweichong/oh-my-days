@@ -142,6 +142,7 @@ export class FakeGoogle {
       insertEvent: (c, e, f, x) => withAccount((a) => a.events.insertEvent(c, e, f, x)),
       patchEvent: (c, e, p, m, x) => withAccount((a) => a.events.patchEvent(c, e, p, m, x)),
       deleteEvent: (c, e, m, x) => withAccount((a) => a.events.deleteEvent(c, e, m, x)),
+      moveEvent: (c, e, d) => withAccount((a) => a.events.moveEvent(c, e, d)),
       listEventPage: async (c, cursor) => {
         const token = await tokens(false);
         const subject = token.ok ? this.accessTokens.get(token.token) : undefined;

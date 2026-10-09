@@ -125,6 +125,16 @@ export function createGoogleCalendar(
       }).then((r) => (r.ok ? { ok: true as const, value: null } : r));
     },
 
+    moveEvent(calendarId, eventId, destinationId) {
+      return request(
+        "write",
+        "POST",
+        `${eventPath(calendarId, eventId)}/move`,
+        (b) => toEvent(destinationId, b),
+        { query: { destination: destinationId, sendUpdates: "none" } },
+      );
+    },
+
     async listCalendars() {
       const entries: CalendarListEntry[] = [];
       let pageToken: string | undefined;

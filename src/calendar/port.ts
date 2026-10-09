@@ -89,6 +89,15 @@ export interface CalendarPort {
     ifMatchEtag: string,
     extras?: Pick<EventExtras, "notifyGuests">,
   ): Promise<ProviderResult<null>>;
+  /**
+   * Moves an event to another calendar (same event ID; guests not notified).
+   * Callers check the current version first: Google's move takes no If-Match.
+   */
+  moveEvent(
+    calendarId: string,
+    eventId: string,
+    destinationId: string,
+  ): Promise<ProviderResult<CalendarEvent>>;
 }
 
 /** Returns the user's calendar port, or null when no usable Google connection exists. */

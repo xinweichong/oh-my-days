@@ -11,7 +11,7 @@ import type {
 } from "../../src/calendar/port";
 import type { EventFields } from "../../src/domain/calendar-event";
 
-type Method = "get" | "insert" | "patch" | "delete" | "list";
+type Method = "get" | "insert" | "patch" | "delete" | "list" | "move";
 
 /** Attributes the sync engine reads beyond the editable fields. */
 export interface EventMeta {
@@ -215,6 +215,23 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
         organizerSelf: meta.organizerSelf ?? true,
         ...(meta.display ? { display: meta.display } : {}),
       });
+    });
+  }
+
+  async moveEvent(
+    calendarId: string,
+    eventId: string,
+    destinationId: string,
+  ): Promise<ProviderResult<CalendarEvent>> {
+    return this.run("move", () => {
+      const source = this.events.get(key(calendarId, eventId));
+      if (!source || source.status === "cancelled") return err({ kind: "not_found" });
+      if (this.readOnlyCalendars.has(destinationId)) return err({ kind: "forbidden" });
+      const meta = this.meta.get(key(calendarId, eventId)) ?? {};
+      source.status = "cancelled";
+      source.etag = this.nextEtag();
+      this.touch(calendarId, eventId);
+      return ok(structuredClone(this.seed(destinationId, eventId, source.fields, meta)));
     });
   }
 

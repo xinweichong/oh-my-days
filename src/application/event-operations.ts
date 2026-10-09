@@ -28,6 +28,7 @@ import { taskCreation } from "./task-flow";
 export const CREATE_EVENT = "calendar.event.create";
 export const PATCH_EVENT = "calendar.event.patch";
 export const DELETE_EVENT = "calendar.event.delete";
+export const MOVE_EVENT = "calendar.event.move";
 
 /** Display and conflict-check details shared by event intents. */
 interface EventContext {
@@ -49,6 +50,21 @@ export interface CreateEventIntent extends EventContext {
   switchTo?: TaskInstead;
   /** A line appended to the result (e.g. a typing hint). */
   note?: string;
+  /** Other writable calendars exist: the result offers "Calendar: X ▸". */
+  movable?: true;
+}
+
+/** Moves an event to another calendar, bound to the version it was shown at. */
+export interface MoveEventIntent {
+  calendarId: string;
+  eventId: string;
+  destinationId: string;
+  title: string;
+  calendarName: string;
+  destinationName: string;
+  /** The event as it was when the move was offered; any other version is refused. */
+  base: EventFields;
+  undo?: true;
 }
 
 /** A task to create in place of a removed event (quick capture's type switch). */
@@ -207,9 +223,20 @@ export const createEventHandler: OperationHandler = {
 
   resultButtons(op) {
     const intent = op.intent as CreateEventIntent;
-    return intent.switchTo
-      ? [{ text: "Make it a task", action: "capture_to_task", payload: { operationId: op.id } }]
-      : [];
+    return [
+      ...(intent.movable
+        ? [
+            {
+              text: `Calendar: ${intent.calendarName ?? "Default"} ▸`,
+              action: "event_calendar_menu",
+              payload: { operationId: op.id },
+            },
+          ]
+        : []),
+      ...(intent.switchTo
+        ? [{ text: "Make it a task", action: "capture_to_task", payload: { operationId: op.id } }]
+        : []),
+    ];
   },
 
   inverse(op, user) {
@@ -457,6 +484,94 @@ export const deleteEventHandler: OperationHandler = {
       default:
         return commonNotice(title, event, "delete");
     }
+  },
+};
+
+export const moveEventHandler: OperationHandler = {
+  kind: MOVE_EVENT,
+  about: (op) => {
+    const intent = op.intent as MoveEventIntent;
+    return { kind: "event", calendarId: intent.destinationId, eventId: intent.eventId };
+  },
+
+  async execute({ op, calendar }) {
+    if (!calendar) return { kind: "auth_required" };
+    const intent = op.intent as MoveEventIntent;
+    const current = await calendar.getEvent(intent.calendarId, intent.eventId);
+    if (!current.ok && current.error.kind !== "not_found") return providerFailure(current.error);
+    if (!current.ok || !isLive(current.value)) {
+      // Gone from the source: an earlier attempt may already have moved it.
+      const moved = await calendar.getEvent(intent.destinationId, intent.eventId);
+      if (moved.ok && isLive(moved.value)) {
+        return succeeded<WriteResult>({ fields: moved.value.fields, etag: moved.value.etag });
+      }
+      if (!moved.ok && moved.error.kind !== "not_found") return providerFailure(moved.error);
+      return { kind: "failed", errorClass: "not_found" };
+    }
+    if (!valuesEqual(pickEventFields(current.value.fields), pickEventFields(intent.base))) {
+      return { kind: "failed", errorClass: "move_stale" };
+    }
+    const moved = await calendar.moveEvent(intent.calendarId, intent.eventId, intent.destinationId);
+    if (!moved.ok) return providerFailure(moved.error);
+    return succeeded<WriteResult>({ fields: moved.value.fields, etag: moved.value.etag });
+  },
+
+  notice(op, event) {
+    const intent = op.intent as MoveEventIntent;
+    switch (event.kind) {
+      case "succeeded":
+        return intent.undo
+          ? `Undone: ${intent.title} is back in ${intent.destinationName}.`
+          : `Moved ${intent.title} to ${intent.destinationName}.`;
+      case "pending":
+        return event.outcomeUnknown
+          ? `Pending: I couldn't confirm that ${intent.title} moved to ${intent.destinationName}. I'll check again automatically.`
+          : `Pending: ${intent.title} has not moved to ${intent.destinationName} yet. I'll retry automatically.`;
+      case "failed":
+        if (event.errorClass === "move_stale") {
+          return `${intent.title} changed since, so it stays in ${intent.calendarName}.`;
+        }
+        if (event.errorClass === "not_found") {
+          return `I can't find ${intent.title} in ${intent.calendarName} anymore. Nothing was moved.`;
+        }
+        return commonNotice(intent.title, event, "update");
+      default:
+        return commonNotice(intent.title, event, "update");
+    }
+  },
+
+  async onSucceeded(ctx) {
+    const intent = ctx.op.intent as MoveEventIntent;
+    const cached = await cacheWrite({
+      ...ctx,
+      op: { ...ctx.op, intent: { calendarId: intent.destinationId, eventId: intent.eventId } },
+    });
+    return combine(
+      {
+        replies: [],
+        statements: (db, guard) => [
+          deleteEventStatement(db, ctx.user.id, intent.calendarId, intent.eventId, guard),
+        ],
+      },
+      cached,
+    );
+  },
+
+  inverse(op) {
+    const intent = op.intent as MoveEventIntent;
+    if (intent.undo) return null;
+    const result = op.result as WriteResult;
+    const back: MoveEventIntent = {
+      calendarId: intent.destinationId,
+      eventId: intent.eventId,
+      destinationId: intent.calendarId,
+      title: intent.title,
+      calendarName: intent.destinationName,
+      destinationName: intent.calendarName,
+      base: result.fields,
+      undo: true,
+    };
+    return { kind: MOVE_EVENT, intent: back, confirmation: null };
   },
 };
 
@@ -714,4 +829,5 @@ export const eventOperationHandlers = [
   createEventHandler,
   patchEventHandler,
   deleteEventHandler,
+  moveEventHandler,
 ] as const;
