@@ -392,6 +392,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   overwritten ([ADR 0004](../adr/0004-next-due-time-by-trigger.md), migration
   0013, `tests/jobs/idle-ticks.test.ts`). Local count: reminder-pass reads per
   idle hour 576 → 6 ([capacity](../capacity.md)); live re-measure pending.
+- C1: the agenda and `/daily` add **Act on a task** (today's overdue and due
+  occurrences; picking one opens Done · Snooze · Edit) and **Snooze all overdue
+  → tomorrow 8am**: one confirmation with the count, bound to each task's
+  version; deadlines never move; one Undo restores each earlier snooze unless
+  the task changed since (`tests/flows/act-on-agenda.test.ts`).
 
 Stage 2 decisions to review:
 

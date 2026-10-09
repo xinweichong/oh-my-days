@@ -17,17 +17,30 @@ import {
   type UiAction,
 } from "../storage/interactions";
 import { horizonEvents, reminderOverrides, setOverrideStatement } from "../storage/reminders";
-import { findTask, listOpenTasks, setSnoozeStatement } from "../storage/tasks";
+import {
+  findTask,
+  listOpenTasks,
+  setSnoozeStatement,
+  snoozeIfUnchangedStatement,
+  unsnoozeIfUnchangedStatement,
+} from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
-import { renderDay, renderPeriod, type SourceFor, viewCalendars } from "./calendar-view";
+import {
+  type DayTasks,
+  renderDay,
+  renderPeriod,
+  type SourceFor,
+  tasksForDay,
+  viewCalendars,
+} from "./calendar-view";
 import { guidedPrompt } from "./cancel";
 import { whenLabel, whenQuestion } from "./choices";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import type { SetupDeps } from "./setup";
-import { dueLabel, sortByDeadline } from "./task-flow";
+import { dueLabel, sortByDeadline, taskLabel } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /**
@@ -70,21 +83,113 @@ function blocked(user: UserRecord): Reaction | null {
 export async function dailyView(deps: ViewFlowDeps, user: UserRecord): Promise<Reaction> {
   const stop = blocked(user);
   if (stop) return stop;
-  const { text } = await renderDay(deps, user, today(deps, user), deps.clock.now(), {
+  const now = deps.clock.now();
+  const date = today(deps, user);
+  const { text } = await renderDay(deps, user, date, now, {
     heading: "Today",
     includeSnoozed: false,
   });
-  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const tasks = await tasksForDay(deps.db, user, date, now, false);
+  return {
+    replies: [keyboardMessage(user, text, { inline_keyboard: dayButtons(buttons, tasks) }, null)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+/**
+ * Buttons under the agenda and /daily: views, then "Act on a task" (select a
+ * task, then Done · Snooze · Edit) and "Snooze all overdue" when relevant.
+ */
+export function dayButtons(buttons: ActionButtons, tasks: DayTasks): InlineKeyboardButton[][] {
+  const rows = [
+    [
+      buttons.button("View tasks", "task_list", { listId: null, page: 0 }),
+      buttons.button("View week", "view_week", {}),
+    ],
+  ];
+  if (tasks.due.length + tasks.overdue.length > 0) {
+    rows.push([buttons.button("Act on a task", "view_act", { page: 0 })]);
+  }
+  if (tasks.overdue.length > 0) {
+    rows.push([buttons.button("Snooze all overdue → tomorrow 8am", "snooze_overdue", {})]);
+  }
+  return rows;
+}
+
+const ACT_PAGE_SIZE = 8;
+
+/** Today's due and overdue tasks as buttons; each opens that occurrence's actions. */
+async function actPicker(
+  deps: ViewFlowDeps,
+  user: UserRecord,
+  page: number,
+  editMessageId: number | null,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  const tasks = await tasksForDay(deps.db, user, today(deps, user), now, false);
+  const all = [...tasks.overdue, ...tasks.due];
+  if (all.length === 0) return message(user.privateChatId, "Nothing is due or overdue today.");
+  const shown = all.slice(page * ACT_PAGE_SIZE, (page + 1) * ACT_PAGE_SIZE);
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const overdue = new Set(tasks.overdue.map((t) => t.id));
+  const rows = shown.map((t) => [
+    buttons.button(
+      truncate(`${overdue.has(t.id) ? "Overdue: " : ""}${taskLabel(t, user, true)}`, 60),
+      "task_pick",
+      { taskId: t.id },
+    ),
+  ]);
+  const nav: InlineKeyboardButton[] = [];
+  if (page > 0) nav.push(buttons.button("Previous", "view_act", { page: page - 1 }));
+  if ((page + 1) * ACT_PAGE_SIZE < all.length) {
+    nav.push(buttons.button("More", "view_act", { page: page + 1 }));
+  }
+  if (nav.length) rows.push(nav);
+  return {
+    replies: [keyboardMessage(user, "Which task?", { inline_keyboard: rows }, editMessageId)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function tomorrowAt8(now: number, timeZone: string): number | null {
+  const at = zonedInstant(addDays(localDateAt(now, timeZone), 1), "08:00", timeZone);
+  return at.ok ? at.instant : null;
+}
+
+/** Asks once, with the count, before snoozing every overdue task. */
+async function proposeSnoozeOverdue(deps: ViewFlowDeps, user: UserRecord): Promise<Reaction> {
+  const now = deps.clock.now();
+  const { overdue } = await tasksForDay(deps.db, user, today(deps, user), now, false);
+  const until = tomorrowAt8(now, user.timezone);
+  if (overdue.length === 0 || until === null) {
+    return message(user.privateChatId, "Nothing is overdue right now.");
+  }
+  const count = overdue.length === 1 ? "1 overdue task" : `${overdue.length} overdue tasks`;
+  const buttons = new ActionButtons(deps.ids, user.id, now, 10 * 60_000);
+  // Bound to this exact set: each task at the version shown.
+  const items = overdue.map((t) => ({
+    taskId: t.id,
+    version: t.version,
+    previous: t.snoozedUntil,
+  }));
   return {
     replies: [
       keyboardMessage(
         user,
-        text,
+        `Snooze ${count} until ${when(until, user)}?\nDeadlines stay as they are.`,
         {
           inline_keyboard: [
             [
-              buttons.button("View tasks", "task_list", { listId: null, page: 0 }),
-              buttons.button("View week", "view_week", {}),
+              buttons.button(`Snooze ${overdue.length}`, "snooze_overdue_confirm", {
+                items,
+                until,
+              }),
+              buttons.button("Keep", "task_keep", {}),
             ],
           ],
         },
@@ -92,6 +197,51 @@ export async function dailyView(deps: ViewFlowDeps, user: UserRecord): Promise<R
       ),
     ],
     statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+interface SnoozeItem {
+  taskId: string;
+  version: number;
+  previous: number | null;
+}
+
+/** Snoozes the confirmed set; a task changed since is left alone and counted out. */
+async function snoozeOverdue(
+  deps: ViewFlowDeps,
+  user: UserRecord,
+  items: SnoozeItem[],
+  until: number,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  if (until <= now) return message(user.privateChatId, "That time has already passed.");
+  const unchanged: SnoozeItem[] = [];
+  for (const item of items) {
+    const task = await findTask(deps.db, user.id, item.taskId);
+    if (task?.status === "open" && task.version === item.version) unchanged.push(item);
+  }
+  if (unchanged.length === 0) {
+    return message(user.privateChatId, "Those tasks changed since, so nothing was snoozed.");
+  }
+  const skipped = items.length - unchanged.length;
+  const count = unchanged.length === 1 ? "1 overdue task" : `${unchanged.length} overdue tasks`;
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const undo = buttons.button("Undo", "snooze_overdue_undo", { items: unchanged, until });
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Snoozed ${count} until ${when(until, user)}. Deadlines unchanged.${skipped ? `\n${skipped} changed since and ${skipped === 1 ? "was" : "were"} left as ${skipped === 1 ? "it was" : "they were"}.` : ""}`,
+        { inline_keyboard: [[undo]] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => [
+      ...unchanged.map((i) =>
+        snoozeIfUnchangedStatement(db, user.id, i.taskId, i.version, until, now),
+      ),
+      ...buttons.statements(db, guard),
+    ],
   };
 }
 
@@ -413,6 +563,44 @@ export async function handleViewAction(
     }
     case "snooze_menu":
       return combine(ack(), snoozeMenu(deps, user, taskId));
+    case "view_act": {
+      const page = Number(payload.page ?? 0);
+      return combine(
+        ack(),
+        await actPicker(deps, user, page, page > 0 ? callback.messageId : null),
+      );
+    }
+    case "snooze_overdue":
+      return combine(ack(), await proposeSnoozeOverdue(deps, user));
+    case "snooze_overdue_confirm": {
+      const items = Array.isArray(payload.items) ? (payload.items as SnoozeItem[]) : [];
+      return combine(
+        ack(),
+        removeButtons(user, callback),
+        await snoozeOverdue(deps, user, items, Number(payload.until)),
+      );
+    }
+    case "snooze_overdue_undo": {
+      const items = Array.isArray(payload.items) ? (payload.items as SnoozeItem[]) : [];
+      const until = Number(payload.until);
+      const now = deps.clock.now();
+      // Only tasks still carrying this snooze (and unchanged) are put back.
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [
+          {
+            method: "sendMessage",
+            params: {
+              chat_id: user.privateChatId,
+              text: "Undone: snoozes put back as they were, except tasks changed since.",
+            },
+          },
+        ],
+        statements: (db) =>
+          items.map((i) =>
+            unsnoozeIfUnchangedStatement(db, user.id, i.taskId, i.version, until, i.previous, now),
+          ),
+      });
+    }
     case "snooze_set":
       return combine(
         ack(),

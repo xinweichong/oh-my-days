@@ -198,7 +198,7 @@ export function sortByDeadline(tasks: TaskRecord[], timeZone: string): TaskRecor
   return [...tasks].sort((a, b) => key(a) - key(b));
 }
 
-function taskLabel(task: TaskRecord, user: UserRecord, withList: boolean): string {
+export function taskLabel(task: TaskRecord, user: UserRecord, withList: boolean): string {
   const list = withList ? `[${task.listName}] ` : "";
   const due =
     task.deadline.kind === "none"

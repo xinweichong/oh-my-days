@@ -378,6 +378,44 @@ export function setSnoozeStatement(
     .bind(until, now, taskId, userId);
 }
 
+/**
+ * Snoozes one task only if it is still open at `version` (a bulk snooze bound
+ * to the confirmed set). The deadline is never touched.
+ */
+export function snoozeIfUnchangedStatement(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  version: number,
+  until: number,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE tasks SET snoozed_until = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND version = ? AND status = 'open'`,
+    )
+    .bind(until, now, taskId, userId, version);
+}
+
+/** Puts back an earlier snooze, only if the bulk snooze is still in place unchanged. */
+export function unsnoozeIfUnchangedStatement(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  version: number,
+  snoozedBy: number,
+  previous: number | null,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE tasks SET snoozed_until = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND version = ? AND snoozed_until = ?`,
+    )
+    .bind(previous, now, taskId, userId, version, snoozedBy);
+}
+
 /** Whether a task is currently snoozed (and so left out of automatic summaries). */
 export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): boolean {
   return task.snoozedUntil !== null && task.snoozedUntil > now;

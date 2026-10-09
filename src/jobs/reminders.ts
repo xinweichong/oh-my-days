@@ -1,6 +1,7 @@
 import { renderDay, tasksForDay } from "../application/calendar-view";
 import { ActionButtons } from "../application/reactions";
 import { dueLabel } from "../application/task-flow";
+import { dayButtons } from "../application/view-flow";
 import type { CalendarPort, CalendarSyncSource } from "../calendar/port";
 import {
   agendaKind,
@@ -140,12 +141,7 @@ async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean
     .filter((t) => t.snoozedUntil !== null && t.snoozedUntil <= now)
     .map((t) => reminderKeys.snooze(t.id, t.snoozedUntil as number));
   const buttons = new ActionButtons(deps.ids, user.id, now);
-  const keyboard = [
-    [
-      buttons.button("View tasks", "task_list", { listId: null, page: 0 }),
-      buttons.button("View week", "view_week", {}),
-    ],
-  ];
+  const keyboard = dayButtons(buttons, listed);
   const results = await deps.db.batch([
     claimAgendaStatement(deps.db, user.id, date, claim, now),
     ...coveredSnoozes.map((key) =>
