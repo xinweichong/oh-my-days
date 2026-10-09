@@ -107,6 +107,38 @@ export function nextEveningAt(
   return sentToday ? at.instant : Math.max(now, at.instant);
 }
 
+/** A nightly window by local hour; it may cross midnight (22 → 7). */
+export interface QuietHours {
+  start: number;
+  end: number;
+}
+
+/**
+ * The quiet-hours window containing `now`, or else the one that ended most
+ * recently, as instants. Null when the zone skips the boundary hour (DST).
+ */
+export function quietWindow(
+  now: number,
+  timeZone: string,
+  quiet: QuietHours,
+): { from: number; to: number; active: boolean } | null {
+  const today = localDateAt(now, timeZone);
+  const at = (date: LocalDate, hour: number) => {
+    const r = zonedInstant(date, `${String(hour).padStart(2, "0")}:00`, timeZone);
+    return r.ok ? r.instant : null;
+  };
+  const crosses = quiet.start > quiet.end;
+  // Candidate windows that start yesterday, today, or (for completeness) tomorrow.
+  for (const offset of [0, -1, -2]) {
+    const startDate = addDays(today, offset);
+    const from = at(startDate, quiet.start);
+    const to = at(crosses ? addDays(startDate, 1) : startDate, quiet.end);
+    if (from === null || to === null) return null;
+    if (from <= now) return { from, to, active: now < to };
+  }
+  return null;
+}
+
 /**
  * Which agenda is due for an unsent local date: the full one in the morning,
  * a catch-up of the rest of the day from noon, none (date covered) from 8pm.

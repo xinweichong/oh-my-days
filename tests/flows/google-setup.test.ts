@@ -94,6 +94,7 @@ describe("Google connection and setup", () => {
         "Daily agenda: 8am",
         "Default reminder: 1 hour before",
         "Evening preview: Off",
+        "Quiet hours: Off",
         "",
         "Type what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.",
       ].join("\n"),

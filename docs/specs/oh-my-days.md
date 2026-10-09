@@ -225,6 +225,10 @@ Event reminders and exact-time task reminders remain separate one-hour-before no
 
 Optional and off by default (added 2026-10-10, [improvement D2](../plans/improvements.md#6-phase-4--further-features-d1d6)). The user can turn on a short **Tomorrow** message at a chosen evening hour (6–10pm in their timezone) in `/settings`. It uses the agenda's rendering for the next day (events, tasks due, count without deadlines), is sent at most once per date, and is skipped rather than sent late after midnight. It does not replace or change the morning agenda.
 
+### Quiet hours
+
+Optional and off by default (added 2026-10-10, [improvement D5](../plans/improvements.md#6-phase-4--further-features-d1d6)). The user can choose a nightly window in `/settings` (for example 10pm–7am in their timezone). Event, deadline, and snooze reminders that fall due inside it are held and sent once, as a single summary, when it ends; reminders that are no longer relevant by then (an event that has started, a deadline that has passed) are not sent, and overdue tasks still appear in the agenda. The daily agenda and evening preview are sent at their chosen times regardless.
+
 ### Slash commands
 
 These views and controls must work without AI:

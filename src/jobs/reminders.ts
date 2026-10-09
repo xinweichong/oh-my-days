@@ -8,6 +8,7 @@ import {
   eveningDueDate,
   nextAgendaAt,
   nextEveningAt,
+  quietWindow,
   reminderKeys,
 } from "../domain/schedule";
 import { addDays, localDateAt } from "../domain/time";
@@ -402,6 +403,9 @@ async function sendReminders(
   user: UserRecord,
 ): Promise<{ sent: number; next: number | null }> {
   const now = deps.clock.now();
+  const window = user.quietHours ? quietWindow(now, user.timezone, user.quietHours) : null;
+  // Quiet hours: hold everything until the window ends (spec §7).
+  if (window?.active) return { sent: 0, next: window.to };
   const { due: candidates, next } = await collectDue(deps, user, now);
   if (candidates.length === 0) return { sent: 0, next };
   const { keep, skip } = await revalidate(deps, user, candidates);
@@ -417,8 +421,10 @@ async function sendReminders(
   const buttons = new ActionButtons(deps.ids, user.id, now);
   let text: string;
   let keyboard: InlineKeyboardButton[][] = [];
+  // Held through quiet hours: always one summary.
+  const held = window !== null && keep.some((k) => k.dueAt >= window.from && k.dueAt < window.to);
   const single =
-    keep.length === 1 && now - (keep[0]?.dueAt ?? now) < LATE_AFTER_MS ? keep[0] : null;
+    !held && keep.length === 1 && now - (keep[0]?.dueAt ?? now) < LATE_AFTER_MS ? keep[0] : null;
   if (single?.event) {
     ({ text, keyboard } = eventReminder(single.event));
   } else if (single?.task) {
@@ -440,7 +446,11 @@ async function sendReminders(
     // Several at once, or late after downtime: one summary, never a burst.
     const late = keep.some((k) => now - k.dueAt >= LATE_AFTER_MS);
     text = [
-      late ? "Reminders I couldn't send on time:" : "Reminders:",
+      held
+        ? "While quiet hours were on:"
+        : late
+          ? "Reminders I couldn't send on time:"
+          : "Reminders:",
       ...keep.map((k) => `• ${k.line}`),
     ].join("\n");
     if (keep.some((k) => k.task))

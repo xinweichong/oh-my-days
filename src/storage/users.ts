@@ -31,6 +31,8 @@ export interface UserRecord {
   reminderMinutes: number;
   /** Local hour of the evening preview of tomorrow, or null when off. */
   eveningHour: number | null;
+  /** Nightly quiet hours (local start and end hours), or null when off. */
+  quietHours: { start: number; end: number } | null;
 }
 
 interface UserRow {
@@ -47,6 +49,8 @@ interface UserRow {
   agenda_hour: number;
   reminder_minutes: number;
   evening_hour: number | null;
+  quiet_start: number | null;
+  quiet_end: number | null;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -64,12 +68,16 @@ function toRecord(row: UserRow): UserRecord {
     agendaHour: row.agenda_hour,
     reminderMinutes: row.reminder_minutes,
     eveningHour: row.evening_hour,
+    quietHours:
+      row.quiet_start === null || row.quiet_end === null
+        ? null
+        : { start: row.quiet_start, end: row.quiet_end },
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
   default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones, agenda_hour,
-  reminder_minutes, evening_hour`;
+  reminder_minutes, evening_hour, quiet_start, quiet_end`;
 
 function parseZones(value: string): string[] {
   try {
@@ -219,6 +227,28 @@ export function setNextDueStatement(
 export const AGENDA_HOURS = [6, 7, 8, 9, 10, 11] as const;
 /** Evening preview hours a user can choose. */
 export const EVENING_HOURS = [18, 19, 20, 21, 22] as const;
+/** Quiet-hour windows a user can choose (local start and end hours). */
+export const QUIET_HOURS = [
+  { start: 22, end: 7 },
+  { start: 23, end: 7 },
+  { start: 22, end: 8 },
+  { start: 23, end: 8 },
+] as const;
+
+export function setQuietHoursStatement(
+  db: D1Database,
+  userId: string,
+  quiet: { start: number; end: number } | null,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE users SET quiet_start = ?, quiet_end = ?, settings_version = settings_version + 1,
+         updated_at = ? WHERE id = ?`,
+    )
+    .bind(quiet?.start ?? null, quiet?.end ?? null, now, userId);
+}
+
 /** Default reminder leads a user can choose, in minutes. */
 export const REMINDER_LEADS = [10, 30, 60, 120] as const;
 

@@ -443,6 +443,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   date (recorded in `agenda_runs` as `evening:<date>`), never after midnight.
   The reminder pass schedules it in `next_due_at`
   (`tests/flows/evening-preview.test.ts`).
+- D5: optional quiet hours (presets 10/11pm–7/8am, migration 0018). While a
+  window is active the reminder pass holds everything (no reads) and schedules
+  itself for the window's end; then reminders still relevant are sent as one
+  "While quiet hours were on:" summary. Agenda and evening preview are not
+  held (`tests/flows/quiet-hours.test.ts`).
 
 Stage 2 decisions to review:
 

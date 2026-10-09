@@ -24,8 +24,10 @@ import {
   AGENDA_HOURS,
   advanceSetupStatement,
   EVENING_HOURS,
+  QUIET_HOURS,
   REMINDER_LEADS,
   type SetupStep,
+  setQuietHoursStatement,
   setScheduleSettingStatement,
   setTimezoneStatement,
   setUserCalendarStatement,
@@ -250,7 +252,38 @@ async function settingsLines(deps: SetupDeps, user: UserRecord): Promise<string[
     `Daily agenda: ${hourLabel(user.agendaHour)}`,
     `Default reminder: ${leadLabel(user.reminderMinutes)}`,
     `Evening preview: ${user.eveningHour === null ? "Off" : hourLabel(user.eveningHour)}`,
+    `Quiet hours: ${user.quietHours ? quietLabel(user.quietHours) : "Off"}`,
   ];
+}
+
+function quietLabel(quiet: { start: number; end: number }): string {
+  return `${hourLabel(quiet.start)}–${hourLabel(quiet.end)}`;
+}
+
+function quietPicker(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const current = user.quietHours;
+  const same = (q: { start: number; end: number }) =>
+    current?.start === q.start && current?.end === q.end;
+  const options = [
+    buttons.button(`${current ? "" : "✓ "}Off`, "set_quiet_hours", { quiet: null }),
+    ...QUIET_HOURS.map((q) =>
+      buttons.button(`${same(q) ? "✓ " : ""}${quietLabel(q)}`, "set_quiet_hours", {
+        quiet: { start: q.start, end: q.end },
+      }),
+    ),
+  ];
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        "Hold reminders overnight? Ones that fall due are sent together when quiet hours end. The agenda still arrives at its time.",
+        { inline_keyboard: [options.slice(0, 1), options.slice(1, 3), options.slice(3)] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
 }
 
 function hourLabel(hour: number): string {
@@ -350,8 +383,9 @@ export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<R
       ],
       [
         buttons.button("Evening preview", "open_evening", {}),
-        buttons.button("Contacts", "open_contacts", {}),
+        buttons.button("Quiet hours", "open_quiet", {}),
       ],
+      [buttons.button("Contacts", "open_contacts", {})],
     ],
   };
   return {
@@ -605,6 +639,29 @@ export async function handleUiAction(
       return combine(ack(), schedulePicker(deps, user, "agenda"));
     case "open_reminder_lead":
       return combine(ack(), schedulePicker(deps, user, "lead"));
+    case "open_quiet":
+      return combine(ack(), quietPicker(deps, user));
+    case "set_quiet_hours": {
+      const chosen = payload.quiet as { start: number; end: number } | null | undefined;
+      const quiet = chosen
+        ? QUIET_HOURS.find((q) => q.start === chosen.start && q.end === chosen.end)
+        : null;
+      if (chosen && !quiet) return ack("This button is no longer valid.");
+      const text = quiet
+        ? `Quiet hours: ${quietLabel(quiet)}. Reminders due then are sent together afterwards.`
+        : "Quiet hours off.";
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [{ method: "sendMessage", params: { chat_id: user.privateChatId, text } }],
+        statements: (db) => [
+          setQuietHoursStatement(
+            db,
+            user.id,
+            quiet ? { start: quiet.start, end: quiet.end } : null,
+            now,
+          ),
+        ],
+      });
+    }
     case "open_evening":
       return combine(ack(), eveningPicker(deps, user));
     case "set_evening_hour": {

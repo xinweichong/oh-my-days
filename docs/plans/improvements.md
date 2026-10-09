@@ -49,7 +49,7 @@ when the item is approved, before implementation.
 | D2 | Optional evening preview of tomorrow | 4 | New; spec amended | Implemented (`feature/improvements`) |
 | D3 | More repeat rules | 4 | Extends §6 | Approved |
 | D4 | Schedule a work session for a task | 4 | Already in §6, unbuilt | Approved |
-| D5 | Quiet hours | 4 | New | Approved |
+| D5 | Quiet hours | 4 | New; spec amended | Implemented (`feature/improvements`) |
 | D6 | `/export` of tasks, lists, contacts | 4 | New | Approved |
 | D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | Approved |
 
