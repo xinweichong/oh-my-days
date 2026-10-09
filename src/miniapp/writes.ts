@@ -68,6 +68,13 @@ export async function handleWrite(
     if (!key) return apiError("bad_request", 400);
     return quickAdd(deps, user, body, key);
   }
+  if (
+    path === "tasks/bulk" ||
+    path === "tasks/bulk-cancel" ||
+    path === "tasks/bulk-cancel-preview"
+  ) {
+    return bulk(deps, user, path.slice("tasks/".length), body, key);
+  }
   let m = /^tasks\/([A-Za-z0-9_-]{1,64})\/([a-z-]+)$/.exec(path);
   if (m?.[1] && m[2]) return taskAction(deps, user, m[1], m[2], body, key);
   m = /^series\/([A-Za-z0-9_-]{1,64})\/([a-z-]+)$/.exec(path);
@@ -518,4 +525,141 @@ async function seriesAction(
   if (results === "replayed") return json({ ok: true, replayed: true });
   if ((results[0]?.meta.changes ?? 0) === 0) return json({ error: "stale" }, 409);
   return json({ ok: true });
+}
+
+// --- Several tasks (step 5c) ----------------------------------------------------------
+
+const MAX_BULK = 100;
+
+interface BulkItem {
+  id: string;
+  version: number;
+}
+
+function bulkItems(value: unknown): BulkItem[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_BULK) return null;
+  const items: BulkItem[] = [];
+  const seen = new Set<string>();
+  for (const raw of value) {
+    const item = raw as Partial<BulkItem> | null;
+    if (typeof item?.id !== "string" || typeof item.version !== "number" || seen.has(item.id)) {
+      return null;
+    }
+    seen.add(item.id);
+    items.push({ id: item.id, version: item.version });
+  }
+  return items.sort((a, b) => (a.id < b.id ? -1 : 1));
+}
+
+function count(n: number): string {
+  return n === 1 ? "1 task" : `${n} tasks`;
+}
+
+function leftAlone(n: number): string {
+  if (n === 0) return "";
+  return n === 1
+    ? " 1 changed elsewhere and was left as it was."
+    : ` ${n} changed elsewhere and were left as they were.`;
+}
+
+/**
+ * Complete, snooze, or move several tasks, each only if still at the version
+ * shown; one summary. Cancelling several is confirmed for exactly that set.
+ */
+async function bulk(
+  deps: MiniAppDeps,
+  user: UserRecord,
+  action: string,
+  body: Body,
+  key: string | null,
+): Promise<Response> {
+  const items = bulkItems(body.items);
+  if (!items) return apiError("bad_request", 400);
+  const now = deps.clock.now();
+  // Only this user's tasks: anything else counts as gone.
+  const tasks = (await Promise.all(items.map((i) => findTask(deps.db, user.id, i.id)))).flatMap(
+    (t, i) => (t && t.version === items[i]?.version && t.status === "open" ? [t] : []),
+  );
+  const bound = { action: "cancel", items: items.map((i) => [i.id, i.version]) };
+
+  if (action === "bulk-cancel-preview") {
+    if (tasks.length !== items.length) return json({ error: "stale" }, 409);
+    const marked = tasks.filter((t) => t.deadline.kind !== "none").length;
+    return json({
+      text: `Cancel ${count(tasks.length)}?${marked ? ` Deadlines are removed from Google Calendar for ${count(marked)}.` : ""}`,
+      confirmLabel: `Cancel ${count(tasks.length)}`,
+      previewHash: await previewHash(bound),
+    });
+  }
+  if (!key) return apiError("bad_request", 400);
+  const previous = await findAppRequest(deps.db, user.id, key);
+  if (previous) return json({ summary: String(previous.summary ?? "Done."), replayed: true });
+
+  let changes: TaskChanges | null = null;
+  let snoozeAt: number | null = null;
+  let verb: string;
+  switch (action) {
+    case "bulk":
+      if (body.action === "complete") {
+        changes = { status: "completed" };
+        verb = "Completed";
+      } else if (body.action === "move") {
+        const list = (await listTaskLists(deps.db, user.id)).find((l) => l.id === body.listId);
+        if (!list) return apiError("bad_list", 400);
+        changes = { listId: list.id };
+        verb = `Moved to ${list.name}:`;
+      } else if (body.action === "snooze") {
+        snoozeAt = snoozeUntil(user, body, now);
+        if (snoozeAt === null) return apiError("bad_snooze", 400);
+        verb = "Snoozed";
+      } else {
+        return apiError("bad_request", 400);
+      }
+      break;
+    case "bulk-cancel":
+      if (body.previewHash !== (await previewHash(bound))) return json({ error: "stale" }, 409);
+      changes = { status: "cancelled" };
+      verb = "Cancelled";
+      break;
+    default:
+      return apiError("not_found", 404);
+  }
+
+  // Each task's first statement changes it only at the version shown.
+  const firsts: number[] = [];
+  const statements: D1PreparedStatement[] = [];
+  for (const task of tasks) {
+    firsts.push(statements.length);
+    if (snoozeAt !== null) {
+      statements.push(
+        snoozeIfUnchangedStatement(deps.db, user.id, task.id, task.version, snoozeAt, now),
+      );
+    } else if (changes) {
+      statements.push(
+        ...taskChangeStatements(deps.db, deps.ids, user, task, changes, now, {
+          sql: "1",
+          params: [],
+        }),
+      );
+    }
+  }
+  // The key goes in the same batch, so a concurrent duplicate fails as a whole.
+  statements.push(recordAppRequestStatement(deps.db, user.id, key, { summary: "Done." }, now));
+  const results = await commit(deps, statements);
+  if (results === "replayed") return json({ summary: "Done.", replayed: true });
+  const applied = firsts.filter((i) => (results[i]?.meta.changes ?? 0) > 0).length;
+  const snoozeNote = snoozeAt !== null ? " Deadlines unchanged." : "";
+  const summary =
+    applied === 0
+      ? `Nothing was changed.${leftAlone(items.length)}`
+      : `${verb} ${count(applied)}.${snoozeNote}${leftAlone(items.length - applied)}`;
+  await deps.db
+    .prepare("UPDATE app_requests SET result = ? WHERE user_id = ? AND request_key = ?")
+    .bind(JSON.stringify({ summary }), user.id, key)
+    .run();
+  logEvent("miniapp.bulk_write", {
+    action: action === "bulk" ? String(body.action) : action,
+    applied,
+  });
+  return json({ summary, applied });
 }

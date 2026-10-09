@@ -317,3 +317,120 @@ describe("Mini App series actions", () => {
     expect(stale.status).toBe(409);
   });
 });
+
+describe("Mini App bulk actions (D7 5c)", () => {
+  async function three(world: World) {
+    await world.send("Pay rent by today");
+    await world.send("Call bank by today");
+    await world.send("Buy milk");
+    return rows<{ id: string; version: number; title: string }>(
+      env.DB,
+      "SELECT id, version, title FROM tasks ORDER BY title",
+    );
+  }
+
+  it("completes several, each only at the version shown, with one summary", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const tasks = await three(world);
+    await world.send("/tasks");
+    await world.press(/Buy milk/);
+    await world.press("Done"); // changed in chat after the app showed it
+    const k = key();
+    const result = await appApi(world, "tasks/bulk", {
+      method: "POST",
+      body: {
+        key: k,
+        action: "complete",
+        items: tasks.map((t) => ({ id: t.id, version: t.version })),
+      },
+    });
+    expect(result.body).toMatchObject({
+      summary: "Completed 2 tasks. 1 changed elsewhere and was left as it was.",
+      applied: 2,
+    });
+    const replay = await appApi(world, "tasks/bulk", {
+      method: "POST",
+      body: {
+        key: k,
+        action: "complete",
+        items: tasks.map((t) => ({ id: t.id, version: t.version })),
+      },
+    });
+    expect(replay.body).toMatchObject({ replayed: true, summary: result.body.summary });
+    const statuses = await rows<{ status: string }>(env.DB, "SELECT DISTINCT status FROM tasks");
+    expect(statuses.map((s) => s.status)).toEqual(["completed"]);
+  });
+
+  it("snoozes and moves several without touching deadlines", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const tasks = await three(world);
+    const items = tasks.map((t) => ({ id: t.id, version: t.version }));
+    const snoozed = await appApi(world, "tasks/bulk", {
+      method: "POST",
+      body: { key: key(), action: "snooze", preset: "tomorrow", items },
+    });
+    expect(snoozed.body).toMatchObject({ summary: "Snoozed 3 tasks. Deadlines unchanged." });
+    const dates = await rows<{ due_date: string | null }>(
+      env.DB,
+      "SELECT due_date FROM tasks ORDER BY title",
+    );
+    expect(dates.map((d) => d.due_date)).toEqual([null, "2026-09-25", "2026-09-25"]);
+    expect(
+      (
+        await appApi(world, "tasks/bulk", {
+          method: "POST",
+          body: { key: key(), action: "move", listId: "nope", items },
+        })
+      ).status,
+    ).toBe(400);
+  });
+
+  it("cancels several only with a confirmation bound to exactly that set", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const tasks = await three(world);
+    const items = tasks.map((t) => ({ id: t.id, version: t.version }));
+    const preview = await appApi(world, "tasks/bulk-cancel-preview", {
+      method: "POST",
+      body: { items },
+    });
+    expect(preview.body).toMatchObject({
+      text: "Cancel 3 tasks? Deadlines are removed from Google Calendar for 2 tasks.",
+      confirmLabel: "Cancel 3 tasks",
+    });
+    const fewer = await appApi(world, "tasks/bulk-cancel", {
+      method: "POST",
+      body: { key: key(), items: items.slice(1), previewHash: preview.body.previewHash },
+    });
+    expect(fewer.status).toBe(409);
+    const done = await appApi(world, "tasks/bulk-cancel", {
+      method: "POST",
+      body: { key: key(), items, previewHash: preview.body.previewHash },
+    });
+    expect(done.body).toMatchObject({ summary: "Cancelled 3 tasks." });
+  });
+
+  it("never touches another user's tasks", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const tasks = await three(world);
+    await world.send("/start", OTHER_USER);
+    await env.DB.prepare("UPDATE users SET setup_step = 'done' WHERE telegram_user_id = ?")
+      .bind(OTHER_USER)
+      .run();
+    const result = await appApi(world, "tasks/bulk", {
+      method: "POST",
+      as: OTHER_USER,
+      body: {
+        key: key(),
+        action: "complete",
+        items: tasks.map((t) => ({ id: t.id, version: t.version })),
+      },
+    });
+    expect(result.body).toMatchObject({ applied: 0 });
+    const statuses = await rows<{ status: string }>(env.DB, "SELECT DISTINCT status FROM tasks");
+    expect(statuses.map((s) => s.status)).toEqual(["open"]);
+  });
+});
