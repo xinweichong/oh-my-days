@@ -123,6 +123,7 @@ DELETE FROM event_horizon WHERE user_id = '<id>';
 DELETE FROM event_cache WHERE user_id = '<id>';
 DELETE FROM calendar_sync WHERE user_id = '<id>';
 DELETE FROM calendars WHERE user_id = '<id>';
+DELETE FROM task_sessions WHERE user_id = '<id>';
 DELETE FROM tasks WHERE user_id = '<id>';
 DELETE FROM task_series WHERE user_id = '<id>';
 DELETE FROM task_lists WHERE user_id = '<id>';
