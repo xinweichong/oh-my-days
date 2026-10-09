@@ -26,6 +26,7 @@ import {
   type UiAction,
 } from "../storage/interactions";
 import { findOperation } from "../storage/operations";
+import { findTask } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import {
@@ -84,6 +85,8 @@ export interface Draft {
   move?: { calendarId: string; eventId: string; start: EventTime; end: EventTime };
   /** Moving every occurrence of a recurring series (time of day only). */
   series?: boolean;
+  /** Scheduling work time for this task (a one-off event; the deadline is unchanged). */
+  sessionFor?: { taskId: string };
 }
 
 /**
@@ -196,7 +199,11 @@ export function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Re
     [day(2), day(3)],
     [day(4), day(5)],
   ];
-  const lead = draft.move ? `Move ${draft.title} to which day?` : `Which day is ${draft.title}?`;
+  const lead = draft.move
+    ? `Move ${draft.title} to which day?`
+    : draft.sessionFor
+      ? `Which day do you want to work on ${draft.title}?`
+      : `Which day is ${draft.title}?`;
   return ask(
     deps,
     user,
@@ -210,7 +217,8 @@ export function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Re
 
 function askTime(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const keyboard = draft.move ? [] : [[buttons.button("All day", "event_all_day", { draft })]];
+  const keyboard =
+    draft.move || draft.sessionFor ? [] : [[buttons.button("All day", "event_all_day", { draft })]];
   return ask(
     deps,
     user,
@@ -359,6 +367,8 @@ export interface CreateOptions {
   switchTo?: CreateEventIntent["switchTo"];
   /** A line appended to the result (e.g. a typing hint). */
   note?: string;
+  /** Link the new event to this task as a work session. */
+  sessionFor?: { taskId: string };
 }
 
 export async function create(
@@ -389,6 +399,7 @@ export async function create(
     overlapCalendarIds: overlapCalendarIds(user, calendars),
     ...(options.switchTo ? { switchTo: options.switchTo } : {}),
     ...(options.note ? { note: options.note } : {}),
+    ...(options.sessionFor ? { sessionFor: options.sessionFor } : {}),
     // One-off events can be moved to another writable calendar from the result.
     ...(!repeat && eventCalendars(user, calendars).length > 1 ? { movable: true as const } : {}),
     ...(repeat
@@ -831,6 +842,11 @@ export async function handleEventAction(
         removeButtons(user, callback),
         await restoreDeleted(deps, user, String(payload.operationId ?? "")),
       );
+    case "event_session_new":
+      return combine(
+        answer(callback),
+        await scheduleSession(deps, user, String(payload.taskId ?? "")),
+      );
     case "event_pick_date":
       return combine(
         answer(callback),
@@ -1027,7 +1043,7 @@ export async function handleEventAction(
       return combine(
         answer(callback),
         removeButtons(user, callback),
-        await finishTimed(deps, user, draft, { minutes }),
+        await finishTimed(deps, user, draft, { minutes }, key),
       );
     }
     default:
@@ -1060,10 +1076,32 @@ async function finishTimed(
   user: UserRecord,
   draft: Draft,
   length: { minutes: number } | { endTime: WallTime },
+  key: string,
 ): Promise<Reaction> {
   const fields = timedFields(user, draft, length);
   if (!fields.ok) return message(user.privateChatId, fields.text);
-  return askEventRepeat(deps, user, { summary: draft.title, start: fields.start, end: fields.end });
+  const event = { summary: draft.title, start: fields.start, end: fields.end };
+  if (draft.sessionFor) {
+    // Work time: a one-off event linked to the task; the deadline stays as it is.
+    return create(deps, user, event, key, null, {
+      sessionFor: draft.sessionFor,
+      note: `Work time for the task ${draft.title}. Its deadline is unchanged.`,
+    });
+  }
+  return askEventRepeat(deps, user, event);
+}
+
+/** "Schedule time" on a task: guided day, time, and length for a work session. */
+async function scheduleSession(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  taskId: string,
+): Promise<Reaction> {
+  const task = await findTask(deps.db, user.id, taskId);
+  if (task?.status !== "open") {
+    return message(user.privateChatId, "That task is no longer open.");
+  }
+  return askDate(deps, user, { title: task.title, sessionFor: { taskId } });
 }
 
 // --- Typed answers -------------------------------------------------------------
@@ -1113,7 +1151,13 @@ export async function handleEventInput(
       if (!draft) break;
       const range = draft.move ? null : parseTimeRange(text);
       if (range)
-        return finishTimed(deps, user, { ...draft, time: range.start }, { endTime: range.end });
+        return finishTimed(
+          deps,
+          user,
+          { ...draft, time: range.start },
+          { endTime: range.end },
+          key,
+        );
       const time = parseTime(text);
       if (!time) {
         return message(
@@ -1140,7 +1184,7 @@ export async function handleEventInput(
           "I didn't recognize that. Try 90m, 2 hours, or an end time like 9pm.",
         );
       }
-      return finishTimed(deps, user, draft, length);
+      return finishTimed(deps, user, draft, length, key);
     }
     case "event_repeat_interval": {
       const fields = pending.payload.fields as EventFields | undefined;

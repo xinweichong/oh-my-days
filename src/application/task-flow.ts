@@ -31,6 +31,7 @@ import {
   type SeriesRecord,
   updateSeriesStatement,
 } from "../storage/series";
+import { upcomingSessions } from "../storage/sessions";
 import {
   deleteListStatements,
   ensureInboxStatement,
@@ -272,7 +273,14 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
   const repeats = series
     ? `\nRepeats: ${describeRecurrence(recurrenceOf(series))}${series.status === "stopped" ? " (stopped)" : ""}`
     : "";
-  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${repeats}${status}`;
+  const sessions =
+    task.status === "open"
+      ? await upcomingSessions(deps.db, user.id, task.id, deps.clock.now(), 3)
+      : [];
+  const work = sessions.length
+    ? `\nWork time: ${sessions.map((s) => formatShortStart(s.fields, user.timezone)).join("; ")}`
+    : "";
+  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${repeats}${work}${status}`;
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const ref = { taskId: task.id, version: task.version };
   const rows: InlineKeyboardButton[][] =
@@ -293,6 +301,7 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
                   }),
                 ]
               : []),
+            buttons.button("Schedule time", "event_session_new", { taskId: task.id }),
             buttons.button("Cancel task", "task_cancel", ref),
           ],
         ]

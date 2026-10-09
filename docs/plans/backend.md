@@ -455,6 +455,12 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   `BYMONTHDAY=-1` is the direct RFC 5545 form). A date outside the rule starts
   the series at the first matching date (`tests/domain/recurrence.test.ts`,
   `tests/flows/repeat-rules.test.ts`).
+- D4: **Schedule time** on an open task asks day, time, and length (no all-day,
+  no repeat) and creates an ordinary one-off event in the default calendar
+  through the create operation; on success it is linked in `task_sessions`
+  (migration 0020). The task card lists upcoming work time, preferring the
+  synced copy (so Google moves and deletions show). The deadline never changes,
+  and completing the task leaves the event (`tests/flows/work-sessions.test.ts`).
 
 Stage 2 decisions to review:
 

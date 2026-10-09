@@ -6,6 +6,7 @@ import type { Deadline } from "../domain/tasks";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
 import type { ItemRef } from "../storage/outbox";
 import { claimReminderStatement } from "../storage/reminders";
+import { deleteSessionStatement, insertSessionStatement } from "../storage/sessions";
 import { listTaskLists } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
@@ -52,6 +53,8 @@ export interface CreateEventIntent extends EventContext {
   note?: string;
   /** Other writable calendars exist: the result offers "Calendar: X ▸". */
   movable?: true;
+  /** A work session for this task (spec §6); linked once created. */
+  sessionFor?: { taskId: string };
 }
 
 /** Moves an event to another calendar, bound to the version it was shown at. */
@@ -229,7 +232,31 @@ export const createEventHandler: OperationHandler = {
     }
   },
 
-  onSucceeded: cacheWrite,
+  async onSucceeded(ctx) {
+    const cached = await cacheWrite(ctx);
+    const intent = ctx.op.intent as CreateEventIntent;
+    const written = ctx.result as CreateResult;
+    if (!intent.sessionFor) return cached;
+    const { start, end } = written.fields;
+    if (!("dateTime" in start) || !("dateTime" in end)) return cached;
+    const taskId = intent.sessionFor.taskId;
+    return combine(cached, {
+      replies: [],
+      statements: (db, guard) => [
+        insertSessionStatement(
+          db,
+          ctx.user.id,
+          taskId,
+          intent.calendarId,
+          intent.eventId,
+          Date.parse(start.dateTime),
+          Date.parse(end.dateTime),
+          ctx.now,
+          guard,
+        ),
+      ],
+    });
+  },
 
   resultButtons(op) {
     const intent = op.intent as CreateEventIntent;
@@ -419,6 +446,7 @@ export const deleteEventHandler: OperationHandler = {
       replies: [],
       statements: (db, guard) => [
         deleteEventStatement(db, user.id, intent.calendarId, intent.eventId, guard),
+        deleteSessionStatement(db, user.id, intent.calendarId, intent.eventId),
       ],
     };
     const task = intent.replacedBy;
