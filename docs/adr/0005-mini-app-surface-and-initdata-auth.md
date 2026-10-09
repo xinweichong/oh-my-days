@@ -69,7 +69,7 @@ receive it.
 ## Consequences
 
 - Opening from the persistent keyboard takes two taps; inline buttons and the
-  main Mini App take one.
+  main Mini App take one. The owner accepted this on 2026-10-10.
 - `initData` older than an hour is refused, so an app left open for over an
   hour must be reopened (the app says so).
 - Idempotency keys are stored per user for 7 days (`app_requests`).

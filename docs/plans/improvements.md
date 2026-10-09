@@ -308,7 +308,7 @@ settings (a later decision).
 | Step | Content | Exit evidence |
 |---|---|---|
 | 5.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
-| 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | **Implemented 2026-10-10:** auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs) and views matching `/daily` and `/weekly` in `tests/miniapp/`. Keyboard launches carry no `initData`, so the persistent keyboard button is answered with an inline launch (ADR 0005) |
+| 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | **Implemented 2026-10-10:** auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs) and views matching `/daily` and `/weekly` in `tests/miniapp/`. Keyboard launches carry no `initData`, so the persistent keyboard button is answered with an inline launch (ADR 0005; two taps, accepted by the owner 2026-10-10) |
 | 5b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | **Implemented 2026-10-10:** writes reuse the chat's task change statements; 409 on stale version; replayed keys change nothing (`tests/miniapp/write-api.test.ts`); headless Chrome smoke test |
 | 5c Bulk and history | Multi-select actions, Recent | **Implemented 2026-10-10:** per-item version checks with one summary; bulk cancel bound to the exact set; Recent with Reopen/Restore |
 | 5d Release | Live smoke test on the owner's phone (iOS/Android as available), capacity check, docs | Acceptance rows added; runbook updated |
