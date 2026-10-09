@@ -2,6 +2,7 @@ import { type RunnerDeps, runDueOperations } from "../application/operation-runn
 import { materializeSeries } from "../application/series";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
+import { purgeAppRequestsStatement } from "../storage/app-requests";
 import { recordTickStatement } from "../storage/app-state";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
 import { purgeExpiredAuthStatements } from "../storage/google";
@@ -176,5 +177,6 @@ async function purge(db: D1Database, later: number): Promise<void> {
     ...purgeExpiredAuthStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeExpiredInteractionsStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeOldReminderStatements(db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
+    purgeAppRequestsStatement(db, cutoff, TICK_LIMITS.purgeRows),
   ]);
 }

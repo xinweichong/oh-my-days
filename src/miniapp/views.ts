@@ -11,7 +11,7 @@ import { dueLabel, RECENT_DAYS, sortByDeadline } from "../application/task-flow"
 import { PROJECT_TASK } from "../application/task-projection";
 import { describeRecurrence } from "../domain/recurrence";
 import { isDueOn, isOverdue, weekStart } from "../domain/schedule";
-import { addDays, type LocalDate, localDateAt } from "../domain/time";
+import { addDays, type LocalDate, localDateAt, wallPartsAt } from "../domain/time";
 import { syncSummary } from "../jobs/calendar-sync";
 import { findConnection, listStoredCalendars } from "../storage/google";
 import { reminderOverrides } from "../storage/reminders";
@@ -49,6 +49,8 @@ export interface AppTask {
     date: LocalDate | null;
     /** Instant for exact deadlines (ms). */
     at: number | null;
+    /** The exact deadline's local time (HH:MM) in the user's zone. */
+    time: string | null;
     label: string;
   };
   status: TaskRecord["status"];
@@ -74,7 +76,7 @@ export interface AppEvent {
 }
 
 /** Task IDs with a deadline marker write still queued or retrying. */
-async function pendingTaskIds(db: D1Database, userId: string): Promise<Set<string>> {
+export async function pendingTaskIds(db: D1Database, userId: string): Promise<Set<string>> {
   const { results } = await db
     .prepare(
       `SELECT DISTINCT json_extract(intent, '$.taskId') AS task_id FROM operations
@@ -107,6 +109,13 @@ export function toAppTask(
             ? localDateAt(d.at, user.timezone)
             : null,
       at: d.kind === "datetime" ? d.at : null,
+      time:
+        d.kind === "datetime"
+          ? (() => {
+              const w = wallPartsAt(d.at, user.timezone);
+              return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
+            })()
+          : null,
       label: dueLabel(d, user.timezone),
     },
     status: task.status,
@@ -161,6 +170,11 @@ async function calendarNames(deps: ReadDeps, user: UserRecord) {
   };
 }
 
+/** The snooze shortcut ends at the agenda time, as in chat. */
+export function tomorrowLabel(user: UserRecord): string {
+  return `Tomorrow at ${formatTime(Date.UTC(2000, 0, 1, user.agendaHour), "UTC")}`;
+}
+
 // --- Today ---------------------------------------------------------------------
 
 export async function todayView(deps: ReadDeps, user: UserRecord, now: number) {
@@ -183,6 +197,7 @@ export async function todayView(deps: ReadDeps, user: UserRecord, now: number) {
     overdue: tasks.overdue.map((t) => toAppTask(t, user, now, pending)),
     due: tasks.due.map((t) => toAppTask(t, user, now, pending)),
     openEnded: tasks.openEnded,
+    tomorrowLabel: tomorrowLabel(user),
   };
 }
 
@@ -221,6 +236,7 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
     lists: lists.map((l) => ({ id: l.id, name: l.name, open: l.openCount, inbox: l.isInbox })),
     recent: recent.length,
     sync: syncLine(connection?.status ?? null, sync, today.live, now),
+    tomorrowLabel: tomorrowLabel(user),
     reconnect: connection?.status !== "active",
   };
 }
@@ -326,6 +342,8 @@ export async function taskSetView(deps: ReadDeps, user: UserRecord, now: number,
   return {
     title,
     showList: set.view !== "list",
+    listId: list?.id ?? null,
+    tomorrowLabel: tomorrowLabel(user),
     tasks: sortByDeadline(chosen, user.timezone).map((t) => toAppTask(t, user, now, pending)),
     lists: lists.map((l) => ({ id: l.id, name: l.name })),
   };
@@ -371,6 +389,7 @@ export async function taskDetail(deps: ReadDeps, user: UserRecord, now: number, 
         }
       : null,
     workTime: sessions.map((s) => formatShortStart(s.fields, user.timezone)),
+    tomorrowLabel: tomorrowLabel(user),
     history: [
       ...stamp("Added", history?.created_at),
       ...stamp("Completed", history?.completed_at),

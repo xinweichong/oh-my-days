@@ -440,6 +440,50 @@ function needsProjection(task: TaskRecord, changes: TaskChanges): boolean {
  * Applies a version-checked change, queues the marker update, and replies with
  * the result and an Undo bound to the resulting version.
  */
+/**
+ * The state change itself, shared by chat and the Mini App: a version-checked
+ * update, a reminder already covered by the confirmation, and the deadline
+ * marker update. The first statement changes rows only if the task is still at
+ * `task.version`.
+ */
+export function taskChangeStatements(
+  db: D1Database,
+  ids: IdGenerator,
+  user: UserRecord,
+  task: TaskRecord,
+  changes: TaskChanges,
+  now: number,
+  guard: Guard,
+): D1PreparedStatement[] {
+  const version = task.version + 1;
+  return [
+    updateTaskStatement(db, user.id, task.id, task.version, changes, now, guard),
+    ...(changes.deadline
+      ? confirmedOnCreate(
+          db,
+          user,
+          task.id,
+          changes.deadline,
+          now,
+          `task:${task.id}:${version}`,
+          guard,
+        )
+      : []),
+    ...(needsProjection(task, changes)
+      ? [
+          projectTaskStatement(
+            db,
+            ids,
+            { ...task, title: changes.title ?? task.title },
+            version,
+            now,
+            guard,
+          ),
+        ]
+      : []),
+  ];
+}
+
 export function change(
   deps: SetupDeps,
   user: UserRecord,
@@ -467,30 +511,7 @@ export function change(
         : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
     ],
     statements: (db, guard) => [
-      updateTaskStatement(db, user.id, task.id, task.version, changes, now, guard),
-      ...(changes.deadline
-        ? confirmedOnCreate(
-            db,
-            user,
-            task.id,
-            changes.deadline,
-            now,
-            `task:${task.id}:${version}`,
-            guard,
-          )
-        : []),
-      ...(needsProjection(task, changes)
-        ? [
-            projectTaskStatement(
-              db,
-              deps.ids,
-              { ...task, title: changes.title ?? task.title },
-              version,
-              now,
-              guard,
-            ),
-          ]
-        : []),
+      ...taskChangeStatements(db, deps.ids, user, task, changes, now, guard),
       ...buttons.statements(db, guard),
     ],
   };
@@ -502,6 +523,8 @@ export interface TaskCreationExtras {
   rows?: (buttons: ActionButtons, taskId: string) => InlineKeyboardButton[][];
   /** A line appended to the result (e.g. a typing hint). */
   note?: string;
+  /** False when the caller shows its own result (the Mini App): no chat message or buttons. */
+  chat?: false;
 }
 
 export async function createTask(
@@ -538,21 +561,24 @@ export function taskCreation(
   const task = { id, userId: user.id, title };
   const buttons = new ActionButtons(ids, user.id, now);
   const text = `Task added to ${list.name}: ${title}.\n${dueLabel(deadline, user.timezone)}.${extras.note ? `\n\n${extras.note}` : ""}`;
+  const chat = extras.chat !== false;
   return {
     about: { kind: "task", taskId: id },
-    replies: [
-      keyboardMessage(
-        user,
-        text,
-        {
-          inline_keyboard: [
-            [buttons.button("Undo", "task_undo_create", { taskId: id, version: 1 })],
-            ...(extras.rows?.(buttons, id) ?? []),
-          ],
-        },
-        null,
-      ),
-    ],
+    replies: !chat
+      ? []
+      : [
+          keyboardMessage(
+            user,
+            text,
+            {
+              inline_keyboard: [
+                [buttons.button("Undo", "task_undo_create", { taskId: id, version: 1 })],
+                ...(extras.rows?.(buttons, id) ?? []),
+              ],
+            },
+            null,
+          ),
+        ],
     statements: (db, guard) => [
       insertTaskStatement(
         db,
@@ -570,7 +596,7 @@ export function taskCreation(
       ),
       ...(deadline.kind === "none" ? [] : [projectTaskStatement(db, ids, task, 1, now, guard)]),
       ...confirmedOnCreate(db, user, id, deadline, now, `task:${id}:1`, guard),
-      ...buttons.statements(db, guard),
+      ...(chat ? buttons.statements(db, guard) : []),
     ],
   };
 }
@@ -1401,7 +1427,7 @@ async function currentSeries(deps: SetupDeps, user: UserRecord, payload: Record<
     : null;
 }
 
-async function openOccurrences(
+export async function openOccurrences(
   deps: SetupDeps,
   user: UserRecord,
   seriesId: string,
@@ -1410,7 +1436,7 @@ async function openOccurrences(
 }
 
 /** Renames the series and every open occurrence (each version-checked), updating markers. */
-async function renameSeries(
+export async function renameSeries(
   deps: SetupDeps,
   user: UserRecord,
   series: SeriesRecord,
@@ -1442,7 +1468,7 @@ async function renameSeries(
  * Stops the series: occurrences from today on are cancelled (and their markers
  * removed); earlier unfinished occurrences stay open.
  */
-async function stopSeries(
+export async function stopSeries(
   deps: SetupDeps,
   user: UserRecord,
   series: SeriesRecord,

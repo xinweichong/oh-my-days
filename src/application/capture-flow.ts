@@ -197,7 +197,7 @@ async function execute(
   });
 }
 
-function toDeadline(
+export function toDeadline(
   user: UserRecord,
   due: TaskDue,
 ): { ok: true; deadline: Deadline } | { ok: false; text: string } {
@@ -211,7 +211,7 @@ function toDeadline(
   }
 }
 
-function eventFields(
+export function eventFields(
   user: UserRecord,
   title: string,
   date: LocalDate,
