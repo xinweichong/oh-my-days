@@ -31,7 +31,7 @@ when the item is approved, before implementation.
 |---|---|---|---|---|
 | A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI); spec amended | Implemented (`feature/quick-capture`) |
 | A2 | Weekday and relative dates | 1 | — | Implemented (`feature/date-grammar`) |
-| A3 | Examples and hints in `/help` | 1 | — | Approved |
+| A3 | Examples and hints in `/help` | 1 | — | Implemented (`feature/help-examples`) |
 | A4 | Cancel on guided prompts, `/cancel` | 1 | — | Approved |
 | B1 | Warn before Google access expires | 2 | — | Approved |
 | B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |

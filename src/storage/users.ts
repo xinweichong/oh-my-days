@@ -21,6 +21,8 @@ export interface UserRecord {
   setupStep: SetupStep;
   defaultCalendarId: string | null;
   taskCalendarId: string | null;
+  /** Typing hints shown after guided creations (they stop after a few). */
+  typingHintsShown: number;
 }
 
 interface UserRow {
@@ -32,6 +34,7 @@ interface UserRow {
   setup_step: SetupStep;
   default_calendar_id: string | null;
   task_calendar_id: string | null;
+  typing_hints_shown: number;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -44,11 +47,12 @@ function toRecord(row: UserRow): UserRecord {
     setupStep: row.setup_step,
     defaultCalendarId: row.default_calendar_id,
     taskCalendarId: row.task_calendar_id,
+    typingHintsShown: row.typing_hints_shown,
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
-  default_calendar_id, task_calendar_id`;
+  default_calendar_id, task_calendar_id, typing_hints_shown`;
 
 /** Creates the user on first contact, or refreshes the private chat ID. */
 export function upsertUserStatement(
@@ -136,4 +140,17 @@ export function setTimezoneStatement(
        WHERE id = ?`,
     )
     .bind(timezone, now, userId);
+}
+
+/** Counts one typing hint shown, up to `limit`. */
+export function countTypingHintStatement(
+  db: D1Database,
+  userId: string,
+  limit: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE users SET typing_hints_shown = typing_hints_shown + 1 WHERE id = ? AND typing_hints_shown < ?",
+    )
+    .bind(userId, limit);
 }

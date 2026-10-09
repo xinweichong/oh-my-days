@@ -365,6 +365,9 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   Choice buttons act once (`tests/domain/capture.test.ts`,
   `tests/flows/capture.test.ts`). "That isn't available yet" now only answers
   unknown commands.
+- A3: `/help` leads with typed examples (each checked against the grammar in
+  `tests/flows/help.test.ts`); the first three guided creations add "Next time
+  you can type: …", counted in `users.typing_hints_shown` (migration 0011).
 
 Stage 2 decisions to review:
 

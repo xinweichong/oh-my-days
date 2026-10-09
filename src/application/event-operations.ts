@@ -47,6 +47,8 @@ export interface CreateEventIntent extends EventContext {
   repeatLabel?: string;
   /** Quick capture: the task this event becomes if the user switches type. */
   switchTo?: TaskInstead;
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
 }
 
 /** A task to create in place of a removed event (quick capture's type switch). */
@@ -185,11 +187,13 @@ export const createEventHandler: OperationHandler = {
     const intent = op.intent as CreateEventIntent;
     const title = intent.fields.summary;
     switch (event.kind) {
-      case "succeeded":
-        return withRepeat(
+      case "succeeded": {
+        const text = withRepeat(
           writtenNotice("Event added", event.result as CreateResult, intent, user),
           intent,
         );
+        return intent.note ? `${text}\n\n${intent.note}` : text;
+      }
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that ${title} was added to Google Calendar. I'll check again automatically.`

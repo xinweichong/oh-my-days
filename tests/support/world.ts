@@ -179,6 +179,8 @@ export async function setUpOwner(
   await world.press("Create calendar");
   await world.press("Keep Asia/Singapore");
   await world.tick(); // start tracking and first sync
+  // Most tests check exact result text; the typing-hint test turns hints back on.
+  await world.db.prepare("UPDATE users SET typing_hints_shown = 3").run();
 }
 
 export function ownerCalendar(world: World) {

@@ -44,6 +44,7 @@ import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatShortStart, formatWallTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { dateChoiceLabel, whenQuestion } from "./choices";
+import { withTypingHint } from "./hints";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { recurrenceOf } from "./series";
 import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
@@ -524,7 +525,9 @@ async function setDeadline(
 ): Promise<Reaction> {
   if (!draft.taskId) {
     return deadline.kind === "none"
-      ? createTask(deps, user, draft, deadline)
+      ? withTypingHint(user, "task", (note) =>
+          createTask(deps, user, draft, deadline, note ? { note } : {}),
+        )
       : askRepeat(deps, user, draft, deadline);
   }
   const task = await findTask(deps.db, user.id, draft.taskId);
@@ -864,9 +867,11 @@ export async function handleTaskAction(
       return combine(
         ack(),
         done,
-        freq
-          ? await createSeries(deps, user, draft, deadline, freq)
-          : await createTask(deps, user, draft, deadline),
+        await withTypingHint(user, "task", (note) =>
+          freq
+            ? createSeries(deps, user, draft, deadline, freq, note)
+            : createTask(deps, user, draft, deadline, note ? { note } : {}),
+        ),
       );
     }
     case "series_menu": {
@@ -1185,8 +1190,10 @@ async function createSeries(
   draft: TaskDraft,
   deadline: Deadline,
   freq: Frequency,
+  note?: string,
 ): Promise<Reaction> {
-  if (deadline.kind === "none") return createTask(deps, user, draft, deadline);
+  if (deadline.kind === "none")
+    return createTask(deps, user, draft, deadline, note ? { note } : {});
   const lists = await listTaskLists(deps.db, user.id);
   const list = lists.find((l) => l.id === draft.listId) ?? lists.find((l) => l.isInbox);
   if (!list)
@@ -1209,7 +1216,7 @@ async function createSeries(
     replies: [
       keyboardMessage(
         user,
-        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(deadline, user.timezone).replace(/^Due /, "due ")}.`,
+        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(deadline, user.timezone).replace(/^Due /, "due ")}.${note ? `\n\n${note}` : ""}`,
         { inline_keyboard: [[buttons.button("Undo", "series_stop", { seriesId, version: 1 })]] },
         null,
       ),

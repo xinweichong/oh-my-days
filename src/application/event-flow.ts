@@ -40,6 +40,7 @@ import {
   PATCH_EVENT,
   type PatchEventIntent,
 } from "./event-operations";
+import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
@@ -328,6 +329,8 @@ export interface CreateOptions {
   calendarId?: string | null;
   /** Offered as "Make it a task" on the result (quick capture). */
   switchTo?: CreateEventIntent["switchTo"];
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
 }
 
 export async function create(
@@ -354,6 +357,7 @@ export async function create(
     calendarName: target.summary,
     overlapCalendarIds: overlapCalendarIds(user, calendars),
     ...(options.switchTo ? { switchTo: options.switchTo } : {}),
+    ...(options.note ? { note: options.note } : {}),
     ...(freq
       ? {
           recurrence: [toRRule(freq)],
@@ -740,7 +744,9 @@ export async function handleEventAction(
       return combine(
         answer(callback),
         removeButtons(user, callback),
-        await create(deps, user, fields, key, freq),
+        await withTypingHint(user, "event", (note) =>
+          create(deps, user, fields, key, freq, note ? { note } : {}),
+        ),
       );
     }
     case "event_date": {
