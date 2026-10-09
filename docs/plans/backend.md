@@ -476,6 +476,13 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   queries. Open app appears under the agenda, `/daily`, and `/tasks`, as
   `/app`, and as a persistent keyboard button answered with an inline launch
   (keyboard launches carry no `initData`) (`tests/miniapp/`).
+- D7 steps 5b–5c: `POST /app/api/…` task writes (complete, reopen, snooze,
+  rename, move, deadline, confirmed cancel, quick add, series rename/stop) and
+  bulk complete/snooze/move/cancel reuse the chat's task change statements,
+  check the task version (409 with the current task), and record a client key
+  in the same batch (migration 0022) so replays change nothing. The client adds
+  check-off with Undo, swipe, task actions, multi-select with Telegram's main
+  button, and quick add. Smoke-tested in headless Chrome against `wrangler dev`.
 
 Stage 2 decisions to review:
 

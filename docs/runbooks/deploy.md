@@ -45,6 +45,24 @@ The OAuth app is in Testing (verification deferred; ADR 0002), so refresh tokens
 expire after 7 days and the bot asks for reauthorization. Redirect URI:
 `https://ohmydays.xinweichong.com/oauth/callback`.
 
+## Mini App (one-time, owner)
+
+The Mini App is served at `/app` by the same Worker ([ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md)).
+After the first deploy that includes it:
+
+1. In @BotFather: `/mybots` → the bot → Bot Settings → Configure Mini App →
+   enable it with `https://ohmydays.xinweichong.com/app`. Leave the Menu Button
+   as the command list.
+2. In the chat, send `/start`: the persistent **Open app** keyboard button
+   appears. Pressing it makes the bot send an inline **Open app** button
+   (keyboard launches carry no sign-in data, so the app opens from that).
+3. Open the app from the inline button, the agenda, `/daily`, `/tasks`, and the
+   bot profile's **Open App**, on iOS, Android, and desktop as available. Check
+   Home, completing a task (and Undo), snoozing, quick add, and that the
+   ✓ marker appears in Google Calendar.
+4. If anything fails, the chat keeps working unchanged; `/app/api/*` returns
+   short error codes only (`unauthorized`, `expired`, `setup_incomplete`).
+
 ## Rollback
 
 `npx wrangler rollback` restores the previous Worker version. It does not undo

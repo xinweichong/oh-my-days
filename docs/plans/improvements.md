@@ -51,7 +51,7 @@ when the item is approved, before implementation.
 | D4 | Schedule a work session for a task | 4 | Already in §6, unbuilt | Implemented (`feature/improvements`) |
 | D5 | Quiet hours | 4 | New; spec amended | Implemented (`feature/improvements`) |
 | D6 | `/export` of tasks, lists, contacts | 4 | New; spec amended | Implemented (`feature/improvements`) |
-| D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | In progress: 5a implemented (`feature/improvements`) |
+| D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | Implemented 5a–5c (`feature/improvements`); 5d live check pending |
 
 Build the phases in order, 1 to 5; the Mini App is last because it reuses quick
 capture, date parsing, history, and the other chat operations. Within a phase,
@@ -309,8 +309,8 @@ settings (a later decision).
 |---|---|---|
 | 5.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
 | 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | **Implemented 2026-10-10:** auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs) and views matching `/daily` and `/weekly` in `tests/miniapp/`. Keyboard launches carry no `initData`, so the persistent keyboard button is answered with an inline launch (ADR 0005) |
-| 5b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | Every action matches the chat operation's result, Undo, and projection; 409 on stale version; redelivered POST idempotent |
-| 5c Bulk and history | Multi-select actions, Recent | Bulk operations atomic per item with one summary; confirmation bound to the exact set |
+| 5b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | **Implemented 2026-10-10:** writes reuse the chat's task change statements; 409 on stale version; replayed keys change nothing (`tests/miniapp/write-api.test.ts`); headless Chrome smoke test |
+| 5c Bulk and history | Multi-select actions, Recent | **Implemented 2026-10-10:** per-item version checks with one summary; bulk cancel bound to the exact set; Recent with Reopen/Restore |
 | 5d Release | Live smoke test on the owner's phone (iOS/Android as available), capacity check, docs | Acceptance rows added; runbook updated |
 
 Depends on A1/A2 (quick add and date parsing) and C5 (history operations).

@@ -70,6 +70,26 @@ plain message reads the user's lists and calendars (a few rows each) and makes
 the same writes as the guided command it replaces. Choice buttons are retired
 by primary key. Not yet measured live.
 
+## Mini App (improvement D7, not yet deployed)
+
+Local measurement (2026-10-10, test world, 20 open tasks, one calendar,
+statements counted at `prepare`):
+
+| Request | D1 statements | Google reads |
+|---|---:|---:|
+| Home (`/app/api/home`) | 12 | 1 per selected calendar |
+| Today | 7 | 1 per selected calendar |
+| Week | 7 | 1 per selected calendar |
+| Overdue, No deadline, a list | 4 | 0 |
+| Recent | 3 | 0 |
+| One task write | about 3–5 | 0 (the deadline marker follows as a queued operation) |
+
+Opening the app is three Worker requests (page, script, Home); each further
+screen or action is one. Twenty opens a day with a few screens each is well
+under 200 requests and 1,000 statements a day for one user. Each request also
+verifies `initData` (two HMACs). Live CPU and request counts are measured at
+step 5d, after a deploy the owner approves.
+
 ## Worker requests (Workers Free: 100,000 per day)
 
 The cron is 1,440 invocations a day; webhook requests are one per Telegram

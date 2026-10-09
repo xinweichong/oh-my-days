@@ -144,7 +144,10 @@ included; the approved Telegram Mini App is described below. No image-first/code
 
 Status: Layout and behavior approved by the owner on 2026-10-09 (improvement
 plan [step 5.0](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)).
-Not implemented. Three structures were compared (smart lists home, day split by
+Implemented and tested locally on 2026-10-10 (not deployed); see
+[ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md). The persistent
+keyboard button needs two taps: keyboard launches carry no sign-in data, so the
+bot answers it with an inline Open app button. Three structures were compared (smart lists home, day split by
 time of day, bottom tabs); the owner chose **smart lists home**.
 
 ### Job and outcome

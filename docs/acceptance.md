@@ -53,3 +53,16 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | 8 | Telegram usability | Callback data uses opaque tokens within 64 bytes; stale and cross-user buttons refused; pagination in lists and views; owner used the flows live. |
 | 9 | Recovery and retention | Retention purges implemented (inbox/outbox 7 days, operations and reminder log 30 days, links and state on expiry). Restore drill: see [runbook](runbooks/operations.md#restore-drill). List deletion moves tasks to Inbox after confirmation. |
 | 10 | Naming and deployment identity | Bot `@oh_my_days_bot`; Worker `oh-my-days` at `ohmydays.xinweichong.com`. |
+
+## Telegram Mini App (improvement D7)
+
+| # | Check | Status | Evidence |
+|---|---|---|---|
+| M1 | Requests without valid, fresh (≤1 hour), allowlisted `initData` get no data; another bot's signature is refused | ✓ Test | `tests/miniapp/init-data.test.ts`; `tests/miniapp/read-api.test.ts` "refuses requests…" |
+| M2 | Today and Week show the same events and tasks as `/daily` and `/weekly` | ✓ Test | `tests/miniapp/read-api.test.ts` "shows Today…", "shows the Week…" |
+| M3 | Every write uses the chat operation (✓ marker, projection, version) | ✓ Test | `tests/miniapp/write-api.test.ts` "completes a task like chat does…" |
+| M4 | Stale version → 409 with the current task; replayed key → no second change | ✓ Test | `tests/miniapp/write-api.test.ts` "refuses a stale version…", "lets only one of two concurrent changes…" |
+| M5 | Cancel (one or several) confirmed and bound to the exact set and versions | ✓ Test | `tests/miniapp/write-api.test.ts` cancel and bulk-cancel tests |
+| M6 | One user can't read or change another's tasks or lists | ✓ Test | `tests/miniapp/read-api.test.ts`, `write-api.test.ts` cross-user tests |
+| M7 | Screens render and act in a real browser | ✓ Local | Headless Chrome against `wrangler dev` (2026-10-10): Home, Overdue, Today, quick add, complete and Undo, task detail, snooze |
+| M8 | Opens and works inside Telegram on iOS, Android, desktop | **Pending** (owner, after deploy) | [Deploy runbook: Mini App](runbooks/deploy.md#mini-app-one-time-owner) |
