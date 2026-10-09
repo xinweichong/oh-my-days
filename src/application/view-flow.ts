@@ -7,6 +7,7 @@ import {
   weekStart,
 } from "../domain/schedule";
 import { addDays, type LocalDate, localDateAt, zonedInstant } from "../domain/time";
+import { appButton, appUrl } from "../miniapp/entry";
 import { findCachedEvent } from "../storage/events";
 import { listStoredCalendars } from "../storage/google";
 import {
@@ -91,7 +92,12 @@ export async function dailyView(deps: ViewFlowDeps, user: UserRecord): Promise<R
   const tasks = await tasksForDay(deps.db, user, date, now, false);
   return {
     replies: [
-      keyboardMessage(user, text, { inline_keyboard: dayButtons(buttons, tasks, user) }, null),
+      keyboardMessage(
+        user,
+        text,
+        { inline_keyboard: dayButtons(buttons, tasks, user, appUrl(deps.config)) },
+        null,
+      ),
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
@@ -105,6 +111,7 @@ export function dayButtons(
   buttons: ActionButtons,
   tasks: DayTasks,
   user: Pick<UserRecord, "agendaHour">,
+  appUrl: string | null = null,
 ): InlineKeyboardButton[][] {
   const rows = [
     [
@@ -124,6 +131,8 @@ export function dayButtons(
       ),
     ]);
   }
+  const open = appButton(appUrl);
+  if (open) rows.push([open]);
   return rows;
 }
 

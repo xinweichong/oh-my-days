@@ -51,7 +51,7 @@ when the item is approved, before implementation.
 | D4 | Schedule a work session for a task | 4 | Already in §6, unbuilt | Implemented (`feature/improvements`) |
 | D5 | Quiet hours | 4 | New; spec amended | Implemented (`feature/improvements`) |
 | D6 | `/export` of tasks, lists, contacts | 4 | New; spec amended | Implemented (`feature/improvements`) |
-| D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | Approved |
+| D7 | Telegram Mini App: tasks and day/week overview | 5 (last) | §2 exclusion amended | In progress: 5a implemented (`feature/improvements`) |
 
 Build the phases in order, 1 to 5; the Mini App is last because it reuses quick
 capture, date parsing, history, and the other chat operations. Within a phase,
@@ -300,7 +300,7 @@ settings (a later decision).
 - **Budget.** Each open is ~2–4 Worker requests and bounded D1 reads; live
   Google reads are limited to the visible range. Measured and added to
   [capacity](../capacity.md) before release.
-- **ADR 0005** records the Mini App surface, `initData` authentication, and
+- **ADR 0005** (written 2026-10-10) records the Mini App surface, `initData` authentication, and
   API conventions when step 5a starts.
 
 ### Delivery
@@ -308,7 +308,7 @@ settings (a later decision).
 | Step | Content | Exit evidence |
 |---|---|---|
 | 5.0 Design | Experience brief section and copy for the screens; layout explored with the owner (frontend design was reserved for a separate discussion) | **Done 2026-10-09:** smart lists home approved; see the [experience brief](../design/experience.md#telegram-mini-app) |
-| 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | Auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs); views match `/daily` and `/weekly` output for the same fixtures |
+| 5a Foundation | `initData` verification, `/app` shell, read API, Today and Week | **Implemented 2026-10-10:** auth tests (bad hash, stale, other bot, non-allowlisted, cross-user IDs) and views matching `/daily` and `/weekly` in `tests/miniapp/`. Keyboard launches carry no `initData`, so the persistent keyboard button is answered with an inline launch (ADR 0005) |
 | 5b Tasks | Tasks screen, detail, check-off, snooze, quick add, move, rename, deadline | Every action matches the chat operation's result, Undo, and projection; 409 on stale version; redelivered POST idempotent |
 | 5c Bulk and history | Multi-select actions, Recent | Bulk operations atomic per item with one summary; confirmation bound to the exact set |
 | 5d Release | Live smoke test on the owner's phone (iOS/Android as available), capacity check, docs | Acceptance rows added; runbook updated |

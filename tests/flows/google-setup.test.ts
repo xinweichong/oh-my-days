@@ -5,7 +5,7 @@ import { CONNECT_LINK_TTL_MS, connectedCalendar } from "../../src/application/go
 import { TASK_CALENDAR_NAME } from "../../src/application/setup";
 import { count, rows } from "../support/db";
 import { OTHER_USER, OWNER } from "../support/fakes";
-import { userIdFor } from "../support/telegram";
+import { inlineRows, userIdFor } from "../support/telegram";
 import { OWNER_ACCOUNT, World } from "../support/world";
 
 const TEAM = {
@@ -66,10 +66,9 @@ describe("Google connection and setup", () => {
     expect(world.lastText()).toContain("Choose the default calendar");
     expect(() => world.findButton(/^Team/)).not.toThrow(); // still on the older picker…
     const defaultChoices = world.telegram.calls.at(-1);
-    const labels =
-      defaultChoices && "reply_markup" in defaultChoices.params
-        ? defaultChoices.params.reply_markup?.inline_keyboard.flat().map((b) => b.text)
-        : [];
+    const labels = inlineRows(defaultChoices)
+      .flat()
+      .map((b) => b.text);
     expect(labels).toEqual(["owner@example.com", "Personal", "Create a new calendar"]); // …but read-only is not offered
 
     await world.press("owner@example.com");

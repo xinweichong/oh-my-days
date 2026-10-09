@@ -6,7 +6,16 @@ export type InlineKeyboardButton =
       /** At most 64 bytes; always an opaque server-side reference, never data to trust. */
       callback_data: string;
     }
-  | { text: string; url: string };
+  | { text: string; url: string }
+  /** Opens the Mini App with signed initData (private chats only). */
+  | { text: string; web_app: { url: string } };
+
+/** The persistent keyboard under the message box (ADR 0005: a plain text button). */
+export interface ReplyKeyboardMarkup {
+  keyboard: { text: string }[][];
+  is_persistent: true;
+  resize_keyboard: true;
+}
 
 export interface InlineKeyboardMarkup {
   inline_keyboard: InlineKeyboardButton[][];
@@ -18,7 +27,7 @@ export type TelegramCall =
       params: {
         chat_id: number;
         text: string;
-        reply_markup?: InlineKeyboardMarkup;
+        reply_markup?: InlineKeyboardMarkup | ReplyKeyboardMarkup;
         reply_parameters?: { message_id: number; allow_sending_without_reply: true };
       };
     }

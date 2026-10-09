@@ -30,6 +30,7 @@ import {
   operationRow,
   submit,
 } from "../support/operations";
+import { inlineRows } from "../support/telegram";
 
 let pressCount = 0;
 
@@ -63,10 +64,12 @@ function promptOf(result: HandlerResult): {
   if (call?.method !== "sendMessage") throw new Error("no prompt");
   return {
     text: call.params.text,
-    buttons: (call.params.reply_markup?.inline_keyboard ?? []).flat().map((b) => ({
-      text: b.text,
-      token: "callback_data" in b ? b.callback_data.replace(/^o:/, "") : "",
-    })),
+    buttons: inlineRows(call)
+      .flat()
+      .map((b) => ({
+        text: b.text,
+        token: "callback_data" in b ? b.callback_data.replace(/^o:/, "") : "",
+      })),
   };
 }
 

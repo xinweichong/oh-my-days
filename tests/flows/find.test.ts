@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { SYNC_INTERVAL_MS } from "../../src/jobs/calendar-sync";
 import { rows } from "../support/db";
 import { OTHER_USER } from "../support/fakes";
+import { inlineRows } from "../support/telegram";
 import { ownerCalendar, PRIMARY, setUpOwner, World } from "../support/world";
 
 // World time starts at Fri 25 Sep 2026, 09:00 in Singapore. Synthetic data only.
@@ -18,9 +19,9 @@ async function synced(world: World) {
 
 function labels(world: World): string[] {
   const call = [...world.telegram.calls].reverse().find((c) => "reply_markup" in c.params);
-  const keyboard =
-    call && "reply_markup" in call.params ? call.params.reply_markup?.inline_keyboard : [];
-  return (keyboard ?? []).flat().map((b) => b.text);
+  return inlineRows(call)
+    .flat()
+    .map((b) => b.text);
 }
 
 describe("/find (C3)", () => {

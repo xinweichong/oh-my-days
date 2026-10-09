@@ -1,3 +1,4 @@
+import { APP_KEYBOARD, appUrl, OPEN_APP_TEXT, openAppMessage } from "../miniapp/entry";
 import { findPendingInput, findUiAction } from "../storage/interactions";
 import type { UserRecord } from "../storage/users";
 import { BUTTON_EXPIRED, TAGLINE } from "../telegram/messages";
@@ -98,11 +99,24 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
     commands: {
       start: async (user) => {
         if (user.setupStep !== "done") return setupPrompt(deps, user);
-        return message(
-          user.privateChatId,
-          `Oh My Days\n${TAGLINE}\n\nSetup is complete. Send /help to see what I can do.`,
-        );
+        const text = `Oh My Days\n${TAGLINE}\n\nSetup is complete. Send /help to see what I can do.`;
+        return {
+          replies: [
+            {
+              method: "sendMessage",
+              params: {
+                chat_id: user.privateChatId,
+                text,
+                ...(appUrl(deps.config) ? { reply_markup: APP_KEYBOARD } : {}),
+              },
+            },
+          ],
+        };
       },
+      app: async (user) =>
+        user.setupStep === "done"
+          ? { replies: [openAppMessage(user.privateChatId, appUrl(deps.config))] }
+          : message(user.privateChatId, "Finish setup first: send /start to continue."),
       cancel: (user) => cancelCommand(deps, user),
       settings: (user) => settingsView(deps, user),
       event: (user) => eventMenu(deps, user),
@@ -119,6 +133,10 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       health: (user) => healthView(deps, user),
     },
     onText: async (user, input) => {
+      // The persistent keyboard button (keyboard launches can't sign in; ADR 0005).
+      if (input.text?.trim() === OPEN_APP_TEXT && user.setupStep === "done") {
+        return { replies: [openAppMessage(user.privateChatId, appUrl(deps.config))] };
+      }
       const pending = await findPendingInput(deps.db, user.id, deps.clock.now());
       if (pending && isInviteInput(pending.kind)) {
         return handleInviteInput(deps, user, input, pending);

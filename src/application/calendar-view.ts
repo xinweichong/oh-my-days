@@ -19,6 +19,8 @@ export interface RangeEvent {
   calendarId: string;
   eventId: string;
   fields: EventFields;
+  /** The event in Google Calendar, when read live (display only). */
+  htmlLink?: string | null;
 }
 
 export interface RangeEvents {
@@ -83,7 +85,12 @@ export async function eventsBetween(
       }
       for (const item of listed.value) {
         if (item.status === "cancelled" || item.declined || !item.fields) continue;
-        events.push({ calendarId: calendar.calendarId, eventId: item.id, fields: item.fields });
+        events.push({
+          calendarId: calendar.calendarId,
+          eventId: item.id,
+          fields: item.fields,
+          htmlLink: item.display?.htmlLink ?? null,
+        });
       }
     }
     if (complete) return { events: sortEvents(events, user.timezone), live: true };

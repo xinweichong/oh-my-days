@@ -55,6 +55,8 @@ export interface ReminderDeps {
   ids: IdGenerator;
   /** Live reads for agendas and event revalidation. */
   sourceFor: (userId: string) => Promise<ReminderSource | null>;
+  /** The Mini App, offered under the agenda (null where it can't open). */
+  appUrl?: string | null;
 }
 
 export type ReminderSource = CalendarSyncSource & Pick<CalendarPort, "getEvent">;
@@ -162,7 +164,7 @@ async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean
     .filter((t) => t.snoozedUntil !== null && t.snoozedUntil <= now)
     .map((t) => reminderKeys.snooze(t.id, t.snoozedUntil as number));
   const buttons = new ActionButtons(deps.ids, user.id, now);
-  const keyboard = dayButtons(buttons, listed, user);
+  const keyboard = dayButtons(buttons, listed, user, deps.appUrl ?? null);
   const results = await deps.db.batch([
     claimAgendaStatement(deps.db, user.id, date, claim, now),
     ...coveredSnoozes.map((key) =>

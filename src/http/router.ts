@@ -1,3 +1,5 @@
+import { handleAppApi, type MiniAppDeps } from "../miniapp/api";
+import { appPage, appScript } from "../miniapp/page";
 import type { Clock } from "../shared/clock";
 import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
 import { type ConnectRouteDeps, finishOAuth, showConnectPage, startOAuth } from "./connect-routes";
@@ -10,6 +12,7 @@ export interface HttpDeps {
   connect: () => ConnectRouteDeps;
   contactEmail: () => string | null;
   liveness: () => LivenessDeps;
+  miniApp: () => MiniAppDeps;
 }
 
 export interface LivenessDeps {
@@ -24,7 +27,12 @@ export async function route(
   ctx: ExecutionContext,
 ): Promise<Response> {
   const { pathname } = new URL(request.url);
+  if (pathname.startsWith("/app/api/")) return handleAppApi(request, deps.miniApp());
   switch (pathname) {
+    case "/app":
+      return request.method === "GET" ? appPage() : methodNotAllowed("GET");
+    case "/app/app.js":
+      return request.method === "GET" ? appScript() : methodNotAllowed("GET");
     case "/":
       return request.method === "GET" ? htmlResponse(homePage()) : methodNotAllowed("GET");
     case "/privacy":

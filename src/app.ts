@@ -20,6 +20,7 @@ import { type SyncDeps, syncDueCalendars } from "./jobs/calendar-sync";
 import { type DeliveryDeps, deliverDue } from "./jobs/delivery";
 import { type InboxDeps, processUserInbox } from "./jobs/inbox";
 import type { TickDeps } from "./jobs/tick";
+import { appUrl } from "./miniapp/entry";
 import { createTokenCipher, type TokenCipher } from "./security/token-cipher";
 import { type Clock, systemClock } from "./shared/clock";
 import { type IdGenerator, randomIds } from "./shared/ids";
@@ -164,6 +165,7 @@ export function tickDeps(s: Services): TickDeps {
       clock: s.clock,
       ids: s.ids,
       sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+      appUrl: appUrl(s.config),
     },
     expiry: { db: s.db, clock: s.clock, ids: s.ids, ttlDays: s.config.testingTokenTtlDays },
   };
@@ -203,6 +205,17 @@ export function httpDeps(services: () => Services): HttpDeps {
     liveness: () => {
       const s = services();
       return { db: s.db, clock: s.clock };
+    },
+    miniApp: () => {
+      const s = services();
+      return {
+        config: s.config,
+        db: s.db,
+        clock: s.clock,
+        ids: s.ids,
+        handlers: s.handlers,
+        sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
+      };
     },
   };
 }

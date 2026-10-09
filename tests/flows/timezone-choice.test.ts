@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { rows } from "../support/db";
 import { OTHER_USER } from "../support/fakes";
+import { inlineRows } from "../support/telegram";
 import { setUpOwner, World } from "../support/world";
 
 async function timezone(): Promise<string | undefined> {
@@ -32,9 +33,7 @@ describe("choosing a timezone (C7)", () => {
       "Timezone set to Asia/Tokyo. Existing events keep their times; new dates and reminders use Asia/Tokyo.",
     );
     await changeTimezone(world);
-    const call = world.telegram.calls.at(-1);
-    const keyboard = call && "reply_markup" in call.params ? call.params.reply_markup : undefined;
-    expect(keyboard?.inline_keyboard[0]?.[0]?.text).toBe("Singapore");
+    expect(inlineRows(world.telegram.calls.at(-1))[0]?.[0]?.text).toBe("Singapore");
   });
 
   it("accepts a typed city, and asks when the name is only a start", async () => {

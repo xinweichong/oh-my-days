@@ -4,6 +4,7 @@ import { COMMON_ZONES, matchCity, nextRecentZones, zoneLabel } from "../domain/t
 import type { AppConfig } from "../env";
 import { accessEndsAt } from "../jobs/access-expiry";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
+import { APP_KEYBOARD, appUrl } from "../miniapp/entry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
@@ -352,10 +353,20 @@ function schedulePicker(deps: SetupDeps, user: UserRecord, setting: "agenda" | "
 
 async function summary(deps: SetupDeps, user: UserRecord, heading: string): Promise<Reaction> {
   const lines = await settingsLines(deps, user);
-  return message(
-    user.privateChatId,
-    `${heading}\n\n${lines.join("\n")}\n\nType what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.`,
-  );
+  const text = `${heading}\n\n${lines.join("\n")}\n\nType what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.`;
+  // The persistent "Open app" keyboard appears once setup is done.
+  return {
+    replies: [
+      {
+        method: "sendMessage",
+        params: {
+          chat_id: user.privateChatId,
+          text,
+          ...(appUrl(deps.config) ? { reply_markup: APP_KEYBOARD } : {}),
+        },
+      },
+    ],
+  };
 }
 
 export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<Reaction> {

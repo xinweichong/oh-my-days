@@ -10,7 +10,7 @@ import { createTokenCipher } from "../../src/security/token-cipher";
 import type { InlineKeyboardButton, TelegramCall } from "../../src/telegram/api";
 import { FakeGoogle } from "./fake-google";
 import { FakeClock, FakeTelegram, OWNER, SequentialIds, testConfig, testServices } from "./fakes";
-import { callbackUpdate, textUpdate, webhookRequest } from "./telegram";
+import { callbackUpdate, inlineRows, textUpdate, webhookRequest } from "./telegram";
 
 /**
  * The whole Worker with fake Telegram and Google: messages go through the real
@@ -74,14 +74,14 @@ export class World {
   async press(label: string | RegExp, from = OWNER): Promise<string | null> {
     const button = this.findButton(label);
     if ("url" in button) return button.url;
+    if ("web_app" in button) return button.web_app.url;
     await this.webhook(callbackUpdate(from, button.callback_data));
     return null;
   }
 
   findButton(label: string | RegExp): InlineKeyboardButton {
     for (const call of [...this.telegram.calls].reverse()) {
-      const rows =
-        "reply_markup" in call.params ? call.params.reply_markup?.inline_keyboard : undefined;
+      const rows = inlineRows(call);
       const button = rows
         ?.flat()
         .find((b) => (typeof label === "string" ? b.text === label : label.test(b.text)));

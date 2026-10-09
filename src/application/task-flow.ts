@@ -16,6 +16,7 @@ import {
   wallPartsAt,
   zonedInstant,
 } from "../domain/time";
+import { appButton, appUrl } from "../miniapp/entry";
 import type { IdGenerator } from "../shared/ids";
 import type { Guard } from "../storage/guard";
 import {
@@ -180,6 +181,8 @@ async function tasksView(
   ];
   for (let i = 0; i < filters.length; i += 3) rows.push(filters.slice(i, i + 3));
   rows.push([buttons.button("Recent", "task_recent", { page: 0 })]);
+  const open = appButton(appUrl(deps.config));
+  if (open) rows.push([open]);
   if (list && !list.isInbox)
     rows.push([buttons.button(`Delete list ${list.name}`, "list_delete", { listId: list.id })]);
 
