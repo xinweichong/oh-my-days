@@ -29,7 +29,7 @@ when the item is approved, before implementation.
 
 | ID | Item | Phase | Spec | Status |
 |---|---|---|---|---|
-| A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI) | Approved |
+| A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI); spec amended | Implemented (`feature/quick-capture`) |
 | A2 | Weekday and relative dates | 1 | — | Implemented (`feature/date-grammar`) |
 | A3 | Examples and hints in `/help` | 1 | — | Approved |
 | A4 | Cancel on guided prompts, `/cancel` | 1 | — | Approved |

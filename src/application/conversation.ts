@@ -5,6 +5,7 @@ import { createUpdateHandler, type UpdateHandler } from "../telegram/router";
 import type { InboundCallback } from "../telegram/update";
 import type { SourceFor } from "./calendar-view";
 import { createCallbackHandler } from "./callbacks";
+import { handleCapture, handleCaptureAction, isCaptureAction } from "./capture-flow";
 import { handleConflictAction, isConflictAction } from "./conflict-flow";
 import {
   eventMenu,
@@ -77,6 +78,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (isConflictAction(action.action))
         return handleConflictAction(deps, user, callback, action);
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
+      if (isCaptureAction(action.action)) return handleCaptureAction(deps, user, callback, action);
       if (isFollowUpAction(action.action))
         return handleFollowUpAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
@@ -127,7 +129,8 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       // "Move it to 4pm" and similar follow-ups about one item.
       const followUp = await handleFollowUp(deps, user, input);
       if (followUp) return followUp;
-      return null;
+      // Anything else is a new event or task (quick capture), or a question.
+      return handleCapture(deps, user, input);
     },
   });
 }

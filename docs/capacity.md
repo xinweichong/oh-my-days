@@ -37,6 +37,11 @@ of its queries, so reads should fall. Recheck with `npx wrangler d1 info
 oh-my-days` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
+Quick capture (improvement A1, not yet deployed) adds no scheduled work: each
+plain message reads the user's lists and calendars (a few rows each) and makes
+the same writes as the guided command it replaces. Choice buttons are retired
+by primary key. Not yet measured live.
+
 ## Worker requests (Workers Free: 100,000 per day)
 
 The cron is 1,440 invocations a day; webhook requests are one per Telegram

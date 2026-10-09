@@ -354,6 +354,17 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   durations. Ambiguous input asks with dated buttons ("Which Friday?", "3am or
   3pm?"); follow-ups accept `make that`/`make it` (`tests/domain/parse-input.test.ts`,
   `tests/flows/typed-dates.test.ts`).
+- A1: quick capture (`src/domain/capture.ts`, `src/application/capture-flow.ts`).
+  Plain text that is not an answer or a follow-up becomes one event or task
+  through the existing create operations, or a question (dates, am/pm, task or
+  all-day event); several requests in one message are refused; unreadable text
+  gets **Add as task · Add as event · Cancel**. Results carry Undo and a type
+  switch: **Make it a task** confirms removal of the event (bound to its created
+  version) and the task is created only after the deletion is verified; **Make
+  it an event** confirms, cancels the unchanged task, then creates the event.
+  Choice buttons act once (`tests/domain/capture.test.ts`,
+  `tests/flows/capture.test.ts`). "That isn't available yet" now only answers
+  unknown commands.
 
 Stage 2 decisions to review:
 
@@ -386,8 +397,8 @@ Stage 4 decisions and gaps to review:
 
 - Guided input accepts a small fixed set of date, time, and duration forms
   (day-first numeric dates); anything else is refused and asked again.
-- New events always use the default calendar; naming another calendar arrives
-  with natural-language input (stage 9) or a later structured option.
+- New events use the default calendar; quick capture (improvement A1) accepts
+  `on <calendar>` for another writable calendar.
 - Events with guests, recurring events, and view-only calendars are shown but
   not changeable from Telegram (stages 7–8).
 - The event cache stores recurring series masters but lists and overlap checks
