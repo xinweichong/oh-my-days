@@ -13,7 +13,7 @@ import {
   isEventAction,
   isEventInput,
 } from "./event-flow";
-import { handleFollowUp } from "./follow-ups";
+import { handleFollowUp, handleFollowUpAction, isFollowUpAction } from "./follow-ups";
 import {
   handleInviteAction,
   handleInviteInput,
@@ -77,6 +77,8 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (isConflictAction(action.action))
         return handleConflictAction(deps, user, callback, action);
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
+      if (isFollowUpAction(action.action))
+        return handleFollowUpAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
       if (isViewAction(action.action)) return handleViewAction(deps, user, callback, action);
       return handleUiAction(deps, user, callback, action);

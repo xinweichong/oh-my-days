@@ -345,6 +345,16 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 9. Interpretation path | **Deferred by the owner on 2026-10-04** | Still in scope: natural-language input through Gemini with the local privacy gate. Until then, every feature works through structured commands and buttons, and no data is sent to Gemini. Acceptance rows that need it are marked Deferred in the [acceptance matrix](../acceptance.md). |
 | 10. Release hardening | Done for the structured release (2026-10-04) | [Acceptance matrix](../acceptance.md); [capacity measurements](../capacity.md) (CPU tuned from 10–22 ms to a median of 8 ms per run); restore and rollback drills and [operations runbook](../runbooks/operations.md); data-deletion SQL tested. Owner release approval pending. |
 
+Post-release improvements ([improvement plan](improvements.md)) are tracked in
+that plan's status column. Implemented so far, tested locally and not deployed:
+
+- A2: one shared date grammar (`src/domain/parse-input.ts`) for guided input,
+  follow-ups, and snoozing: weekdays, `next`/`this <weekday>`, `in N days/weeks`,
+  `next week`, `end of month`, time ranges (`7-9pm`), and number-word
+  durations. Ambiguous input asks with dated buttons ("Which Friday?", "3am or
+  3pm?"); follow-ups accept `make that`/`make it` (`tests/domain/parse-input.test.ts`,
+  `tests/flows/typed-dates.test.ts`).
+
 Stage 2 decisions to review:
 
 - Undo of a just-created event is a deletion, so it shows the standard delete
@@ -430,8 +440,9 @@ Stage 7 decisions and gaps to review:
 
 Stage 8 decisions and gaps to review:
 
-- Follow-ups are recognized from a small fixed grammar without AI; free-form
-  follow-ups ("make that Friday") arrive with interpretation in stage 9.
+- Follow-ups are recognized from a small fixed grammar without AI (`make that
+  Friday` added by improvement A2); free-form follow-ups beyond it arrive with
+  interpretation in stage 9.
 - When guests are invited, Google also emails existing guests an update; the
   preview says so.
 - The most recently discussed item stays the default target for 24 hours.

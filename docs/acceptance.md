@@ -26,7 +26,7 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | 10 | Prior recurring occurrence unfinished → next is independent | ✓ | `tests/flows/recurrence.test.ts` "keeps each occurrence independent…" |
 | 11 | Overlapping event created and flagged; task markers excluded | ✓ | `tests/flows/events.test.ts` "flags overlapping events but ignores free time, declined invitations, and task markers" |
 | 12 | Invite a saved contact → full email and preview before any notification | ✓ | `tests/flows/conversation.test.ts` "previews every recipient and sends nothing until confirmed…", "asks again if the guest list changed…" |
-| 13 | Reply `Move it to 4pm` → correct item; normal confirmation rules | ✓ (fixed grammar) | `tests/flows/conversation.test.ts` follow-ups; `tests/domain/follow-up.test.ts` |
+| 13 | Reply `Move it to 4pm` → correct item; normal confirmation rules | ✓ (fixed grammar, including `make that Friday`; ambiguous dates and hours ask) | `tests/flows/conversation.test.ts` follow-ups; `tests/flows/typed-dates.test.ts` "asks which Friday and applies the chosen one"; `tests/domain/follow-up.test.ts` |
 | 14 | Multiple instructions in one message → no partial execution | **Deferred** (structured flows take one instruction per step) | — |
 | 15 | `/weekly` or `/monthly` → current period, navigation, no AI | ✓ | `tests/flows/reminders.test.ts` views; `tests/domain/schedule.test.ts` periods |
 | 16 | Gemini quota exhausted or unsafe input → structured fallback, nothing sent | ✓ by construction (no Gemini calls exist); **Deferred** for the interpretation path | Every feature is structured |

@@ -2,7 +2,8 @@
 
 Status: Every item approved by the owner (D7 on 2026-10-08, its layout and all
 other items on 2026-10-09). Build order: Phases 1–4, then the Mini App (Phase 5)
-last. Nothing here is implemented yet.
+last. Implementation status is in the Status column below; "Implemented" means
+tested locally, not deployed.
 Source of truth: [product specification](../specs/oh-my-days.md). Builds on the
 [backend plan](backend.md), whose stages 0–8 and 10 are implemented and deployed.
 
@@ -29,7 +30,7 @@ when the item is approved, before implementation.
 | ID | Item | Phase | Spec | Status |
 |---|---|---|---|---|
 | A1 | Deterministic quick capture for free text | 1 | Extends §4 (no AI) | Approved |
-| A2 | Weekday and relative dates | 1 | — | Approved |
+| A2 | Weekday and relative dates | 1 | — | Implemented (`feature/date-grammar`) |
 | A3 | Examples and hints in `/help` | 1 | — | Approved |
 | A4 | Cancel on guided prompts, `/cancel` | 1 | — | Approved |
 | B1 | Warn before Google access expires | 2 | — | Approved |

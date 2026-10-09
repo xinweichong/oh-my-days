@@ -1,11 +1,14 @@
 import { type FollowUp, parseFollowUp } from "../domain/follow-up";
+import type { When } from "../domain/parse-input";
 import type { Deadline } from "../domain/tasks";
 import { localDateAt, wallPartsAt, zonedInstant } from "../domain/time";
 import { listStoredCalendars } from "../storage/google";
+import type { UiAction } from "../storage/interactions";
 import { type ItemRef, itemForReply } from "../storage/outbox";
 import { findTask } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
-import type { InboundMessage } from "../telegram/update";
+import type { InboundCallback, InboundMessage } from "../telegram/update";
+import { whenLabel, whenQuestion } from "./choices";
 import {
   type EventFlowDeps,
   loadEvent,
@@ -14,8 +17,9 @@ import {
   proposePatch,
   restriction,
 } from "./event-flow";
-import { message, type Reaction } from "./reactions";
+import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { change, confirmPrompt, dueLabel } from "./task-flow";
+import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /** How long the most recently discussed item stays the default target. */
 export const LAST_ITEM_TTL_MS = 24 * 60 * 60_000;
@@ -48,10 +52,60 @@ export async function handleFollowUp(
       "Which event or task do you mean? Reply to the message about it, or open it from /event or /tasks.",
     );
   }
-  const key = `msg:${input.messageId}`;
+  if (followUp.kind === "choose_move") return askWhich(deps, user, target, followUp.options);
+  return applyFollowUp(deps, user, target, followUp, `msg:${input.messageId}`);
+}
+
+function applyFollowUp(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  target: ItemRef,
+  followUp: Exclude<FollowUp, { kind: "choose_move" }>,
+  key: string,
+): Promise<Reaction> {
   return target.kind === "event"
     ? eventFollowUp(deps, user, target, followUp, key)
     : taskFollowUp(deps, user, target.taskId, followUp);
+}
+
+/** "Which Friday?" with one button per reading, bound to the same target. */
+function askWhich(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  target: ItemRef,
+  options: When[],
+): Reaction {
+  const today = localDateAt(deps.clock.now(), user.timezone);
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const row = options.map((o) =>
+    buttons.button(whenLabel(o, today), "followup_move", { target, date: o.date, time: o.time }),
+  );
+  return {
+    replies: [keyboardMessage(user, whenQuestion(options), { inline_keyboard: [row] }, null)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+export function isFollowUpAction(action: string): boolean {
+  return action.startsWith("followup_");
+}
+
+/** A chosen reading of an ambiguous follow-up: applied as if typed exactly. */
+export async function handleFollowUpAction(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  callback: InboundCallback,
+  { payload }: UiAction,
+): Promise<Reaction> {
+  const target = payload.target as ItemRef | undefined;
+  const date = typeof payload.date === "string" ? payload.date : null;
+  const time = typeof payload.time === "string" ? payload.time : null;
+  if (!target || (!date && !time)) return answer(callback, "This button is no longer valid.");
+  return combine(
+    answer(callback),
+    removeButtons(user, callback),
+    await applyFollowUp(deps, user, target, { kind: "move", date, time }, `ui:${callback.data}`),
+  );
 }
 
 async function resolveTarget(
@@ -74,7 +128,7 @@ async function eventFollowUp(
   deps: EventFlowDeps,
   user: UserRecord,
   target: { calendarId: string; eventId: string },
-  followUp: FollowUp,
+  followUp: Exclude<FollowUp, { kind: "choose_move" }>,
   key: string,
 ): Promise<Reaction> {
   const event = await loadEvent(deps, user, target.calendarId, target.eventId);
@@ -138,7 +192,7 @@ async function taskFollowUp(
   deps: EventFlowDeps,
   user: UserRecord,
   taskId: string,
-  followUp: FollowUp,
+  followUp: Exclude<FollowUp, { kind: "choose_move" }>,
 ): Promise<Reaction> {
   const task = await findTask(deps.db, user.id, taskId);
   if (!task) return message(user.privateChatId, "I can't find that task anymore.");

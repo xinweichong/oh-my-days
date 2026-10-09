@@ -1,4 +1,4 @@
-import { parseLocalDate, parseWallTime } from "../domain/parse-input";
+import { parseWhen } from "../domain/parse-input";
 import {
   DEFAULT_EVENT_REMINDER_MINUTES,
   DEFAULT_TASK_REMINDER_MINUTES,
@@ -24,6 +24,7 @@ import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { renderDay, renderPeriod, type SourceFor, viewCalendars } from "./calendar-view";
+import { whenLabel, whenQuestion } from "./choices";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
 import { dueLabel, sortByDeadline } from "./task-flow";
@@ -426,7 +427,7 @@ export async function handleViewAction(
             method: "sendMessage",
             params: {
               chat_id: user.privateChatId,
-              text: "Send a date and time, like tomorrow 9am or 9 Oct 14:00.",
+              text: "Send a date and time, like tomorrow 9am or Fri 14:00.",
             },
           },
         ],
@@ -480,15 +481,34 @@ export async function handleSnoozeInput(
   pending: PendingInput,
 ): Promise<Reaction> {
   const text = (input.text ?? "").trim();
-  const split = text.lastIndexOf(" ");
   const todayDate = localDateAt(deps.clock.now(), user.timezone);
-  const date = split === -1 ? todayDate : parseLocalDate(text.slice(0, split), todayDate);
-  const time = parseWallTime(split === -1 ? text : text.slice(split + 1));
-  if (!date || !time) {
-    return message(user.privateChatId, "I didn't recognize that. Try tomorrow 9am or 9 Oct 14:00.");
+  const taskId = String(pending.payload.taskId ?? "");
+  // A time alone means today; a date needs a time.
+  const options = parseWhen(text, todayDate)?.filter((o) => o.time !== null);
+  if (!options?.length) {
+    return message(user.privateChatId, "I didn't recognize that. Try tomorrow 9am or Fri 14:00.");
   }
-  const at = zonedInstant(date, time, user.timezone);
-  if (!at.ok)
+  const instants = options.flatMap((o) => {
+    const at = zonedInstant(o.date ?? todayDate, o.time ?? "", user.timezone);
+    return at.ok ? [{ when: o, at: at.instant }] : [];
+  });
+  if (instants.length === 0)
     return message(user.privateChatId, "That time doesn't exist (clocks change). Send another.");
-  return snooze(deps, user, String(pending.payload.taskId ?? ""), at.instant);
+  const [only] = instants;
+  if (instants.length === 1 && only) return snooze(deps, user, taskId, only.at);
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const row = instants.map((i) =>
+    buttons.button(
+      whenLabel({ date: i.when.date ?? todayDate, time: i.when.time }, todayDate),
+      "snooze_set",
+      {
+        taskId,
+        until: i.at,
+      },
+    ),
+  );
+  return {
+    replies: [keyboardMessage(user, whenQuestion(options), { inline_keyboard: [row] }, null)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
 }

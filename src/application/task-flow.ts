@@ -1,4 +1,4 @@
-import { parseLocalDate, parseWallTime } from "../domain/parse-input";
+import { parseDate, parseTime } from "../domain/parse-input";
 import { describeRecurrence, type Frequency } from "../domain/recurrence";
 import { DEFAULT_TASK_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
@@ -40,8 +40,9 @@ import {
 } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatDayLabel, formatShortStart } from "../telegram/format";
+import { formatDayLabel, formatShortStart, formatWallTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
+import { dateChoiceLabel, whenQuestion } from "./choices";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { recurrenceOf } from "./series";
 import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
@@ -320,7 +321,7 @@ function askDue(deps: SetupDeps, user: UserRecord, draft: TaskDraft): Reaction {
     user,
     "task_due_date",
     { draft },
-    `When is ${draft.title} due? Or type a date, like 9 Oct or 9/10.`,
+    `When is ${draft.title} due? Or type a date, like Fri, in 3 days, end of month, or 9 Oct.`,
     rows,
     buttons,
   );
@@ -620,6 +621,14 @@ export async function handleTaskAction(
       const draft = readDraft(payload);
       if (!draft || typeof payload.date !== "string") return ack("This button is no longer valid.");
       return combine(ack(), done, askDueTime(deps, user, { ...draft, date: payload.date }));
+    }
+    case "task_draft_time": {
+      const draft = readDraft(payload);
+      if (!draft?.date || typeof payload.time !== "string")
+        return ack("This button is no longer valid.");
+      const deadline = timedDeadline(user, draft.date, payload.time);
+      if (!deadline.ok) return combine(ack(), done, message(user.privateChatId, deadline.text));
+      return combine(ack(), done, await setDeadline(deps, user, draft, deadline.deadline));
     }
     case "task_draft_whole_day": {
       const draft = readDraft(payload);
@@ -1015,20 +1024,36 @@ export async function handleTaskInput(
       if (!draft) return expired();
       if (/^(no|none|no deadline)$/i.test(text))
         return setDeadline(deps, user, draft, { kind: "none" });
-      const date = parseLocalDate(text, today);
+      const date = parseDate(text, today);
       if (!date)
         return message(
           user.privateChatId,
-          "I didn't recognize that date. Try 9 Oct, 9/10, or 2026-10-09.",
+          "I didn't recognize that date. Try Fri, next Fri, in 3 days, 9 Oct, or 9/10.",
         );
-      return askDueTime(deps, user, { ...draft, date });
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "task_draft_date", { draft, date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "task_due_date", { draft }, question, [row], buttons);
+      }
+      return askDueTime(deps, user, { ...draft, date: date.date });
     }
     case "task_due_time": {
       if (!draft?.date) return expired();
-      const time = parseWallTime(text);
+      const time = parseTime(text);
       if (!time)
         return message(user.privateChatId, "I didn't recognize that time. Try 15:00 or 3pm.");
-      const deadline = timedDeadline(user, draft.date, time);
+      if ("choose" in time) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = time.choose.map((t) =>
+          buttons.button(formatWallTime(t), "task_draft_time", { draft, time: t }),
+        );
+        const question = whenQuestion(time.choose.map((t) => ({ date: null, time: t })));
+        return ask(deps, user, "task_due_time", { draft }, question, [row], buttons);
+      }
+      const deadline = timedDeadline(user, draft.date, time.time);
       if (!deadline.ok) return message(user.privateChatId, deadline.text);
       return setDeadline(deps, user, draft, deadline.deadline);
     }

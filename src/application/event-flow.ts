@@ -1,6 +1,6 @@
 import { isWritable } from "../calendar/port";
 import type { EventFields, EventTime } from "../domain/calendar-event";
-import { parseDuration, parseLocalDate, parseWallTime } from "../domain/parse-input";
+import { parseDate, parseDuration, parseTime, parseTimeRange } from "../domain/parse-input";
 import { describeRecurrence, type Frequency, toRRule } from "../domain/recurrence";
 import {
   addDays,
@@ -21,9 +21,15 @@ import {
 } from "../storage/interactions";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatDayLabel, formatEventRange, formatShortStart } from "../telegram/format";
+import {
+  formatDayLabel,
+  formatEventRange,
+  formatShortStart,
+  formatWallTime,
+} from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { eventsBetween, type SourceFor } from "./calendar-view";
+import { dateChoiceLabel, whenQuestion } from "./choices";
 import {
   CREATE_EVENT,
   type CreateEventIntent,
@@ -194,7 +200,7 @@ function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction 
     user,
     "event_date",
     { draft },
-    `${lead}\nOr type a date, like 9 Oct or 9/10.`,
+    `${lead}\nOr type a date, like Fri, next Fri, in 3 days, or 9 Oct.`,
     keyboard,
     buttons,
   );
@@ -208,7 +214,7 @@ function askTime(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction 
     user,
     "event_time",
     { draft },
-    `What time on ${formatDayLabel(draft.date ?? "")}? Send a time like 19:00 or 7pm.`,
+    `What time on ${formatDayLabel(draft.date ?? "")}? Send a time like 7pm, or a range like 7-9pm.`,
     keyboard,
     buttons,
   );
@@ -727,6 +733,16 @@ export async function handleEventAction(
         await afterDate(deps, user, { ...draft, date: payload.date }, key),
       );
     }
+    case "event_time": {
+      const draft = readDraft(payload);
+      if (!draft?.date || typeof payload.time !== "string")
+        return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await afterTime(deps, user, { ...draft, time: payload.time }, key),
+      );
+    }
     case "event_all_day": {
       const draft = readDraft(payload);
       if (!draft?.date) return answer(callback, "This button is no longer valid.");
@@ -768,6 +784,15 @@ async function afterDate(
   return askTime(deps, user, draft);
 }
 
+async function afterTime(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  draft: Draft,
+  key: string,
+): Promise<Reaction> {
+  return draft.move ? move(deps, user, draft, key) : askDuration(deps, user, draft);
+}
+
 async function finishTimed(
   deps: EventFlowDeps,
   user: UserRecord,
@@ -804,23 +829,45 @@ export async function handleEventInput(
       return askDate(deps, user, { title: text });
     }
     case "event_date": {
-      const date = parseLocalDate(text, today);
+      const date = parseDate(text, today);
       if (!draft) break;
       if (!date) {
         return message(
           user.privateChatId,
-          "I didn't recognize that date. Try 9 Oct, 9/10, or 2026-10-09.",
+          "I didn't recognize that date. Try Fri, next Fri, in 3 days, 9 Oct, or 9/10.",
         );
       }
-      return afterDate(deps, user, { ...draft, date }, key);
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "event_date", { draft, date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "event_date", { draft }, question, [row], buttons);
+      }
+      return afterDate(deps, user, { ...draft, date: date.date }, key);
     }
     case "event_time": {
-      const time = parseWallTime(text);
       if (!draft) break;
-      if (!time)
-        return message(user.privateChatId, "I didn't recognize that time. Try 19:00 or 7pm.");
-      const next = { ...draft, time };
-      return next.move ? move(deps, user, next, key) : askDuration(deps, user, next);
+      const range = draft.move ? null : parseTimeRange(text);
+      if (range)
+        return finishTimed(deps, user, { ...draft, time: range.start }, { endTime: range.end });
+      const time = parseTime(text);
+      if (!time) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that time. Try 7pm, 19:00, or a range like 7-9pm.",
+        );
+      }
+      if ("choose" in time) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = time.choose.map((t) =>
+          buttons.button(formatWallTime(t), "event_time", { draft, time: t }),
+        );
+        const question = whenQuestion(time.choose.map((t) => ({ date: null, time: t })));
+        return ask(deps, user, "event_time", { draft }, question, [row], buttons);
+      }
+      return afterTime(deps, user, { ...draft, time: time.time }, key);
     }
     case "event_duration": {
       const length = parseDuration(text);
