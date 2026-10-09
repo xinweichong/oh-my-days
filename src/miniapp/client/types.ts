@@ -16,6 +16,7 @@ export interface AppTask {
   overdue: boolean;
   snoozedUntil: number | null;
   snoozeLabel: string | null;
+  overdueLabel: string | null;
   pending: boolean;
   seriesId: string | null;
   closedLabel?: string;
@@ -40,7 +41,16 @@ export interface ListSummary {
 export interface Home {
   date: string;
   label: string;
+  heading: string;
   nextUp: string | null;
+  next: {
+    kind: "event" | "task";
+    time: string;
+    title: string;
+    when: string;
+    link?: string;
+    taskId?: string;
+  } | null;
   calendarClear: boolean;
   tiles: {
     today: { events: number; tasks: number };

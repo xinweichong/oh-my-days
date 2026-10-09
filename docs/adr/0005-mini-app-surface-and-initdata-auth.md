@@ -76,6 +76,12 @@ receive it.
 - `initData` older than an hour is refused, so an app left open for over an
   hour must be reopened (the app says so).
 - Idempotency keys are stored per user for 7 days (`app_requests`).
+- Amended 2026-10-10: the client bundles Motion (`motion` 13.4.4, its `mini`
+  animate and `spring`, about 12 KB minified) for spring-based gestures and
+  screen transitions. It is a devDependency compiled into `/app/app.js`, so the
+  CSP is unchanged and no framework is added. Still no React or Tailwind: the
+  copy-paste component libraries considered (beUI, Kokonut UI, Origin UI,
+  Animate UI) require them, so their patterns were rebuilt instead.
 - Each open costs a few Worker requests and bounded D1 reads; live Google reads
   are limited to the visible range. Measured in [capacity](../capacity.md)
   before release.

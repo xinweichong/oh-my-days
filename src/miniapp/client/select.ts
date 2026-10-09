@@ -1,16 +1,18 @@
+import { snoozeChoices } from "./actions";
 import { ApiError, errorText, write } from "./api";
 import { h } from "./dom";
-import { refresh } from "./nav";
+import { onBack, refresh } from "./nav";
 import type { Selection } from "./rows";
-import { telegram } from "./telegram";
+import { haptic, mainButton } from "./telegram";
 import type { AppTask, ListSummary } from "./types";
 import { confirmAction, sheet, toast } from "./ui";
 
 /**
- * Multi-select (step 5c): a long press starts it, Telegram's main button
- * completes the selection, and a bar offers Snooze, Move, and Cancel. Each
- * task changes only if still at the version shown; one summary reports the
- * result. Cancelling is confirmed for exactly the selected set.
+ * Multi-select (step 5c): a long press or the Select button starts it,
+ * Telegram's main button completes the selection, and a bar offers Snooze,
+ * Move, and Cancel. Each task changes only if still at the version shown; one
+ * summary reports the result. Cancelling is confirmed for exactly the
+ * selected set. Back or Stop selecting leaves without changing anything.
  */
 
 interface BulkResult {
@@ -19,18 +21,23 @@ interface BulkResult {
 
 let active: Controller | null = null;
 
-/** Ends any selection (on navigation). */
-export function endSelection(): void {
-  active?.end();
+/** Ends any selection; returns true if one was active. Navigation passes `redraw: false`. */
+export function endSelection(redraw = true): boolean {
+  if (!active) return false;
+  active.end(redraw);
+  return true;
 }
+
+onBack(() => endSelection());
 
 class Controller implements Selection {
   private readonly chosen = new Map<string, AppTask>();
   private on = false;
   private bar: HTMLElement | null = null;
-  private readonly mainClick = () => void this.bulk("complete");
+  private readonly completeAll = () => void this.bulk("complete");
 
   constructor(
+    private readonly tasks: AppTask[],
     private readonly lists: ListSummary[],
     private readonly tomorrowLabel: string,
   ) {}
@@ -43,31 +50,32 @@ class Controller implements Selection {
     return this.chosen.has(task.id);
   }
 
-  start(task: AppTask): void {
-    active?.end();
+  /** Starts selecting, with `task` chosen, or with nothing chosen (Select button). */
+  start(task?: AppTask): void {
+    if (active && active !== this) active.end(false);
     active = this;
     this.on = true;
-    this.chosen.set(task.id, task);
+    if (task) this.chosen.set(task.id, task);
+    document.body.classList.add("selecting");
     this.update();
   }
 
   toggle(task: AppTask): void {
     if (this.chosen.has(task.id)) this.chosen.delete(task.id);
     else this.chosen.set(task.id, task);
-    if (this.chosen.size === 0) this.end();
-    else this.update();
+    haptic("select");
+    this.update();
   }
 
-  end(): void {
+  end(redraw = true): void {
     this.on = false;
     this.chosen.clear();
     this.bar?.remove();
     this.bar = null;
-    const main = telegram()?.MainButton;
-    main?.offClick(this.mainClick);
-    main?.hide();
+    document.body.classList.remove("selecting");
+    mainButton(null);
     if (active === this) active = null;
-    refresh();
+    if (redraw) refresh();
   }
 
   private items() {
@@ -76,69 +84,83 @@ class Controller implements Selection {
 
   private update(): void {
     const n = this.chosen.size;
-    const main = telegram()?.MainButton;
-    if (main) {
-      main.setText(`Complete ${n}`);
-      main.offClick(this.mainClick);
-      main.onClick(this.mainClick);
-      main.show();
-    }
-    this.bar?.remove();
-    this.bar = h(
+    const all = n === this.tasks.length;
+    const native = n > 0 ? mainButton(`Complete ${n}`, this.completeAll) : mainButton(null);
+    const action = (label: string, onclick: () => void, kind = "secondary") =>
+      h("button", { class: `button ${kind}`, type: "button", disabled: n === 0, onclick }, label);
+    const bar = h(
       "div",
-      { class: "select-bar", role: "toolbar", "aria-label": `${n} selected` },
-      h("span", { class: "select-count" }, `${n} selected`),
-      main
-        ? null
-        : h(
-            "button",
-            { class: "button", type: "button", onclick: this.mainClick },
-            `Complete ${n}`,
-          ),
+      { class: "select-bar", role: "toolbar", "aria-label": "Selection" },
       h(
-        "button",
-        { class: "button secondary", type: "button", onclick: () => this.snooze() },
-        "Snooze",
+        "div",
+        { class: "select-head" },
+        h(
+          "span",
+          { class: "select-count", role: "status" },
+          n === 0 ? "Choose tasks" : `${n} selected`,
+        ),
+        h(
+          "button",
+          {
+            class: "text-button",
+            type: "button",
+            onclick: () => {
+              if (all) this.chosen.clear();
+              else for (const t of this.tasks) this.chosen.set(t.id, t);
+              this.update();
+            },
+          },
+          all ? "Select none" : "Select all",
+        ),
+        h(
+          "button",
+          { class: "text-button", type: "button", onclick: () => this.end() },
+          "Stop selecting",
+        ),
       ),
       h(
-        "button",
-        { class: "button secondary", type: "button", onclick: () => this.move() },
-        "Move",
+        "div",
+        { class: "select-actions" },
+        native ? null : action(`Complete ${n}`, this.completeAll, ""),
+        action("Snooze", () => this.snooze()),
+        action("Move", () => this.move()),
+        action("Cancel tasks…", () => void this.cancel(), "danger"),
       ),
-      h(
-        "button",
-        { class: "button danger", type: "button", onclick: () => void this.cancel() },
-        "Cancel",
-      ),
-      h("button", { class: "text-button", type: "button", onclick: () => this.end() }, "Done"),
     );
-    document.body.append(this.bar);
+    if (this.bar) this.bar.replaceWith(bar);
+    else document.body.append(bar);
+    this.bar = bar;
     this.paint();
   }
 
   /** Marks selected rows in place, without reloading the screen. */
   private paint(): void {
-    document.querySelectorAll<HTMLElement>(".row.task[data-id]").forEach((row) => {
-      const on = this.chosen.has(row.dataset.id ?? "");
+    for (const row of document.querySelectorAll<HTMLElement>(".row.task[data-id]")) {
+      const id = row.dataset.id ?? "";
+      const task = this.tasks.find((t) => t.id === id);
+      const on = this.chosen.has(id);
       row.classList.toggle("is-selected", on);
+      row.classList.add("in-selection");
       const target = row.querySelector<HTMLElement>(".check-target");
       target?.setAttribute("aria-pressed", String(on));
+      if (task) target?.setAttribute("aria-label", `${on ? "Deselect" : "Select"}: ${task.title}`);
       const mark = row.querySelector<HTMLElement>(".check-target .check");
       if (mark) mark.textContent = on ? "✓" : "";
-    });
+    }
   }
 
   private async bulk(action: string, extra: Record<string, unknown> = {}): Promise<void> {
+    if (this.chosen.size === 0) return;
     try {
       const result = await write<BulkResult>("tasks/bulk", {
         action,
         items: this.items(),
         ...extra,
       });
-      telegram()?.HapticFeedback?.notificationOccurred("success");
+      haptic("success");
       toast(result.summary);
     } catch (error) {
-      telegram()?.HapticFeedback?.notificationOccurred("error");
+      haptic("error");
       toast(errorText(error));
     }
     this.end();
@@ -147,49 +169,33 @@ class Controller implements Selection {
   private snooze(): void {
     const close = sheet(
       `Snooze ${this.chosen.size}`,
-      h("p", { class: "caption" }, "Moves the next reminder only; deadlines stay."),
-      h(
-        "button",
-        {
-          class: "button secondary wide",
-          type: "button",
-          onclick: () => {
-            close();
-            void this.bulk("snooze", { preset: "hour" });
-          },
-        },
-        "In 1 hour",
-      ),
-      h(
-        "button",
-        {
-          class: "button secondary wide",
-          type: "button",
-          onclick: () => {
-            close();
-            void this.bulk("snooze", { preset: "tomorrow" });
-          },
-        },
-        this.tomorrowLabel,
-      ),
+      h("p", { class: "caption" }, "Moves the next reminders only; deadlines stay."),
+      ...snoozeChoices(this.tomorrowLabel, (body) => {
+        close();
+        void this.bulk("snooze", body);
+      }),
     );
   }
 
   private move(): void {
     const close = sheet(
       `Move ${this.chosen.size} to`,
-      ...this.lists.map((l) =>
-        h(
-          "button",
-          {
-            class: "button secondary wide",
-            type: "button",
-            onclick: () => {
-              close();
-              void this.bulk("move", { listId: l.id });
+      h(
+        "div",
+        { class: "choice-stack" },
+        ...this.lists.map((l) =>
+          h(
+            "button",
+            {
+              class: "button secondary wide",
+              type: "button",
+              onclick: () => {
+                close();
+                void this.bulk("move", { listId: l.id });
+              },
             },
-          },
-          l.name,
+            l.name,
+          ),
         ),
       ),
     );
@@ -223,6 +229,10 @@ class Controller implements Selection {
   }
 }
 
-export function selection(lists: ListSummary[], tomorrowLabel: string): Selection {
-  return active?.active() ? active : new Controller(lists, tomorrowLabel);
+export interface Selector extends Selection {
+  start(task?: AppTask): void;
+}
+
+export function selection(tasks: AppTask[], lists: ListSummary[], tomorrowLabel: string): Selector {
+  return active?.active() ? active : new Controller(tasks, lists, tomorrowLabel);
 }

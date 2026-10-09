@@ -221,3 +221,35 @@ Telegram theme parameters supply every colour, so light and dark follow the
 client; system type; safe-area insets respected; tap targets at least 44px;
 reduced motion respected. No decorative emoji (✓ is functional); status is
 never shown by colour alone; copy follows the [identity](../identity/oh-my-days.md).
+
+### Phone polish (owner-approved 2026-10-10)
+
+After a critique against Apple's Human Interface Guidelines, the owner approved
+a polish pass, implemented and tested locally on 2026-10-10 (not deployed):
+
+- **Motion, amended.** Besides confirming actions, motion may now show where
+  a screen came from and follow the finger: screens slide in from the right when
+  opened and from the left on Back (240 ms), swiped rows and sheets follow the
+  finger and settle with a spring, and sheets rise from the bottom edge. Motion
+  stays short and functional; under reduced motion it becomes a brief fade.
+  The [Motion](https://motion.dev) library's small vanilla build is bundled
+  into the app script for springs (no framework; [ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md)).
+- **Completing** fills the circle at once, waits for the server, then the row
+  leaves; a refusal empties the circle and says why. On the task screen the
+  primary action (**Mark done**, Reopen, Restore) is Telegram's main button.
+- **Home**: the full weekday without the year, a Next up card with the time
+  first, Today as a wide tile with its split, and Overdue, This week, and No
+  deadline as three smaller tiles. Reconnect is a button on the banner.
+- **Rows**: overdue tasks state their age (`3 days overdue`) in the overdue
+  colour instead of a badge; rows under a day show only the time; events lead
+  with a time column; cancelled tasks show `–`.
+- **Overdue**: **Snooze all** on the main button; recurring occurrences get
+  their own group. **Select** starts multi-select without a gesture; the bar
+  offers Select all, Stop selecting, Snooze (presets or a chosen time), Move,
+  and **Cancel tasks…**.
+- **Telegram fit**: header, background, and bottom bar take the page colour;
+  Back closes a sheet, an open swipe, or a selection before leaving the screen,
+  and shows the previous screen as it was left; sheets have a grabber, close by
+  dragging down or Escape, and keep focus inside.
+- **Contrast**: Telegram's secondary text, red, and outline colours are checked
+  against every surface and replaced by the system's own when too faint.

@@ -1,6 +1,11 @@
+import type { Direction } from "./motion";
 import { telegram } from "./telegram";
 
-/** A stack of screens; Telegram's Back button pops it. */
+/**
+ * A stack of screens; Telegram's Back button pops it. Going back shows the
+ * previous screen as it was left (then refreshes it quietly), and first
+ * closes whatever is on top of the screen: a sheet, an open swipe, a selection.
+ */
 
 export type Screen =
   | { name: "home" }
@@ -10,15 +15,38 @@ export type Screen =
   | { name: "task"; id: string }
   | { name: "recent" };
 
-const stack: Screen[] = [{ name: "home" }];
-let renderer: (screen: Screen) => Promise<void> = async () => {};
+export type Mode = Direction | "refresh";
 
-export function setRenderer(render: (screen: Screen) => Promise<void>): void {
+interface Entry {
+  screen: Screen;
+  /** The screen's content when it was left, shown at once on Back. */
+  node?: Node | undefined;
+  scroll: number;
+}
+
+type Renderer = (
+  screen: Screen,
+  mode: Mode,
+  cached?: { node: Node; scroll: number },
+) => Promise<void>;
+
+const stack: Entry[] = [{ screen: { name: "home" }, scroll: 0 }];
+let renderer: Renderer = async () => {};
+let snapshot: () => Node | undefined = () => undefined;
+const overlays: (() => boolean)[] = [];
+
+export function setRenderer(render: Renderer, current: () => Node | undefined): void {
   renderer = render;
+  snapshot = current;
+}
+
+/** Registers something Back closes before leaving the screen; returns true if it closed. */
+export function onBack(close: () => boolean): void {
+  overlays.push(close);
 }
 
 export function current(): Screen {
-  return stack[stack.length - 1] as Screen;
+  return (stack[stack.length - 1] as Entry).screen;
 }
 
 export function depth(): number {
@@ -26,28 +54,54 @@ export function depth(): number {
 }
 
 export function open(screen: Screen): void {
-  stack.push(screen);
-  void show();
+  const top = stack[stack.length - 1] as Entry;
+  top.node = snapshot();
+  top.scroll = window.scrollY;
+  stack.push({ screen, scroll: 0 });
+  void show("push");
 }
 
 export function back(): void {
-  if (stack.length > 1) stack.pop();
-  void show();
+  for (const close of overlays) {
+    if (close()) {
+      syncBackButton();
+      return;
+    }
+  }
+  if (stack.length <= 1) return;
+  stack.pop();
+  const top = stack[stack.length - 1] as Entry;
+  const cached = top.node ? { node: top.node, scroll: top.scroll } : undefined;
+  top.node = undefined;
+  void show("pop", cached);
 }
 
 /** Replaces the current screen (e.g. Week's previous and next). */
 export function swap(screen: Screen): void {
-  stack[stack.length - 1] = screen;
-  void show();
+  (stack[stack.length - 1] as Entry).screen = screen;
+  void show("swap");
 }
 
+/** Redraws the current screen in place, keeping the scroll position. */
 export function refresh(): void {
-  void show();
+  void show("refresh");
 }
 
-async function show(): Promise<void> {
+let overlayCount = 0;
+
+/** Sheets report themselves so Back is offered even on Home. */
+export function overlayOpened(delta: 1 | -1): void {
+  overlayCount = Math.max(0, overlayCount + delta);
+  syncBackButton();
+}
+
+export function syncBackButton(): void {
   const tg = telegram();
-  if (stack.length > 1) tg?.BackButton.show();
+  if (stack.length > 1 || overlayCount > 0) tg?.BackButton.show();
   else tg?.BackButton.hide();
-  await renderer(current());
+}
+
+async function show(mode: Mode, cached?: { node: Node; scroll: number }): Promise<void> {
+  syncBackButton();
+  await renderer(current(), mode, cached);
 }

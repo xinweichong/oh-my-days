@@ -3,8 +3,10 @@ import {
   complete,
   editSheet,
   quickAdd,
+  reconnect,
   reopen,
   seriesChange,
+  snoozeAllSheet,
   snoozeSheet,
 } from "./actions";
 import { api } from "./api";
@@ -12,6 +14,7 @@ import { h } from "./dom";
 import { open, type Screen, swap } from "./nav";
 import { eventRow, navRow, savedCopyBanner, section, taskRow, title } from "./rows";
 import { selection } from "./select";
+import { mainButton, telegram } from "./telegram";
 import type { Home, Recent, TaskDetail, TaskSet, Today, Week } from "./types";
 import { sheet } from "./ui";
 
@@ -29,7 +32,7 @@ export async function draw(screen: Screen): Promise<Node> {
         screen.view === "list"
           ? `view=list&list=${encodeURIComponent(screen.list ?? "")}`
           : `view=${screen.view}`;
-      return taskSetScreen(await api<TaskSet>(`tasks?${query}`));
+      return taskSetScreen(await api<TaskSet>(`tasks?${query}`), screen.view);
     }
     case "task":
       return taskScreen(await api<TaskDetail>(`tasks/${encodeURIComponent(screen.id)}`));
@@ -42,14 +45,56 @@ function plural(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
+/** Next up leads Home: the time first, then what it is and how soon. */
+function nextUpCard(home: Home): Node {
+  const next = home.next;
+  if (!next) {
+    return h(
+      "p",
+      { class: "next-up quiet" },
+      home.calendarClear ? "Your calendar is clear today." : "Nothing else today.",
+    );
+  }
+  const go = () => {
+    if (next.taskId) return open({ name: "task", id: next.taskId });
+    if (!next.link) return;
+    const tg = telegram();
+    if (tg) tg.openLink(next.link);
+    else window.open(next.link, "_blank", "noopener");
+  };
+  const when = next.kind === "task" ? "Deadline" : next.when;
+  return h(
+    "button",
+    {
+      class: "next-up",
+      type: "button",
+      "aria-label": `Next up: ${next.time} ${next.title}, ${when}`,
+      onclick: go,
+    },
+    h("span", { class: "next-time" }, next.time),
+    h(
+      "span",
+      { class: "row-text" },
+      h("span", { class: "headline" }, next.title),
+      h("span", { class: "meta" }, when),
+    ),
+    h("span", { class: "chevron", "aria-hidden": "true" }, "›"),
+  );
+}
+
 function homeScreen(home: Home): Node {
-  const tile = (label: string, count: number, sub: string, screen: Screen, extra = "") =>
+  const tile = (label: string, count: number, sub: string | null, screen: Screen, extra = "") =>
     h(
       "button",
-      { class: `tile${extra}`, type: "button", onclick: () => open(screen) },
+      {
+        class: `tile${extra}`,
+        type: "button",
+        "aria-label": `${label}: ${count === 0 ? "none" : count}${sub ? `, ${sub}` : ""}`,
+        onclick: () => open(screen),
+      },
       h("span", { class: "tile-label" }, label),
       h("span", { class: "count" }, count === 0 ? "None" : String(count)),
-      h("span", { class: "caption" }, sub),
+      sub ? h("span", { class: "caption" }, sub) : null,
     );
   const today = home.tiles.today;
   return h(
@@ -57,21 +102,21 @@ function homeScreen(home: Home): Node {
     {},
     home.reconnect
       ? h(
-          "p",
-          { class: "banner", role: "status" },
-          "Google Calendar needs reconnecting. Send /health in the chat to reconnect.",
+          "section",
+          { class: "banner action", role: "status" },
+          h("p", {}, "Google Calendar needs reconnecting. Events may be out of date."),
+          h(
+            "button",
+            { class: "button", type: "button", onclick: () => void reconnect() },
+            "Reconnect",
+          ),
         )
       : null,
     h(
       "header",
       { class: "home-head" },
-      h("h1", {}, home.label),
-      h(
-        "p",
-        { class: "next-up" },
-        home.nextUp ??
-          (home.calendarClear ? "Your calendar is clear today." : "Nothing else today."),
-      ),
+      h("h1", { tabindex: "-1" }, home.heading),
+      nextUpCard(home),
     ),
     quickAdd(),
     h(
@@ -82,16 +127,17 @@ function homeScreen(home: Home): Node {
         today.events + today.tasks,
         `${plural(today.events, "event")} · ${plural(today.tasks, "task")}`,
         { name: "today" },
+        " wide",
       ),
       tile(
         "Overdue",
         home.tiles.overdue,
-        home.tiles.overdue ? "Past their deadline" : "Nothing overdue",
+        null,
         { name: "tasks", view: "overdue" },
         home.tiles.overdue ? " has-overdue" : "",
       ),
-      tile("Week", home.tiles.week, "Tasks due this week", { name: "week" }),
-      tile("No deadline", home.tiles.noDeadline, "Open tasks", {
+      tile("This week", home.tiles.week, null, { name: "week" }),
+      tile("No deadline", home.tiles.noDeadline, null, {
         name: "tasks",
         view: "no_deadline",
       }),
@@ -112,20 +158,20 @@ function homeScreen(home: Home): Node {
         name: "recent",
       }),
     ),
-    h("p", { class: "caption footer" }, home.sync),
+    home.reconnect ? null : h("p", { class: "caption footer" }, home.sync),
   );
 }
 
 function todayScreen(today: Today): Node {
   const events = [...today.allDay, ...today.timed];
   const row = (t: Today["due"][number]) =>
-    taskRow(t, { showList: true, tomorrowLabel: today.tomorrowLabel });
+    taskRow(t, { showList: true, sameDay: true, tomorrowLabel: today.tomorrowLabel });
   return h(
     "div",
     {},
     title("Today", today.label),
     savedCopyBanner(today.live),
-    section("Events", ...events.map(eventRow)) ??
+    section("Events", ...events.map((e) => eventRow(e))) ??
       h("p", { class: "empty" }, "Your calendar is clear today."),
     section(`Overdue · ${today.overdue.length}`, ...today.overdue.map(row)),
     section("Due today", ...today.due.map(row)),
@@ -136,12 +182,18 @@ function todayScreen(today: Today): Node {
 }
 
 function weekScreen(week: Week): Node {
-  const nav = (label: string, start: string) =>
+  const nav = (label: string, start: string, aria: string) =>
     h(
       "button",
-      { class: "button secondary", type: "button", onclick: () => swap({ name: "week", start }) },
+      {
+        class: "button secondary",
+        type: "button",
+        "aria-label": aria,
+        onclick: () => swap({ name: "week", start }),
+      },
       label,
     );
+  const isThisWeek = week.days.some((d) => d.today);
   // Runs of empty days fold into one line.
   const blocks: Node[] = [];
   let empty: string[] = [];
@@ -166,8 +218,8 @@ function weekScreen(week: Week): Node {
         h(
           "ul",
           { class: "group" },
-          ...day.events.map(eventRow),
-          ...day.tasks.map((t) => taskRow(t, { showList: true })),
+          ...day.events.map((e) => eventRow(e)),
+          ...day.tasks.map((t) => taskRow(t, { showList: true, sameDay: true })),
         ),
       ),
     );
@@ -178,46 +230,106 @@ function weekScreen(week: Week): Node {
     {},
     title(week.label),
     savedCopyBanner(week.live),
-    h("div", { class: "week-nav" }, nav("‹ Previous", week.previous), nav("Next ›", week.next)),
+    h(
+      "div",
+      { class: "week-nav" },
+      nav("‹ Previous", week.previous, "Previous week"),
+      isThisWeek
+        ? null
+        : h(
+            "button",
+            { class: "button plain", type: "button", onclick: () => swap({ name: "week" }) },
+            "This week",
+          ),
+      nav("Next ›", week.next, "Next week"),
+    ),
     ...blocks,
   );
 }
 
-/** Overdue (grouped per recurring task), No deadline, or one list; long press selects. */
-function taskSetScreen(set: TaskSet): Node {
-  const select = selection(set.lists, set.tomorrowLabel);
+/** Overdue (grouped per recurring task), No deadline, or one list. */
+function taskSetScreen(set: TaskSet, view: "overdue" | "no_deadline" | "list"): Node {
+  const select = selection(set.tasks, set.lists, set.tomorrowLabel);
   const options = { showList: set.showList, tomorrowLabel: set.tomorrowLabel, selection: select };
   const bySeries = new Map<string, TaskSet["tasks"]>();
   for (const t of set.tasks) {
     if (t.seriesId) bySeries.set(t.seriesId, [...(bySeries.get(t.seriesId) ?? []), t]);
   }
-  const rows: Node[] = [];
+  // Recurring occurrences gather in their own group; everything else shares one.
+  const groups: Node[] = [];
+  const loose: Node[] = [];
   const shown = new Set<string>();
   for (const t of set.tasks) {
-    const group = t.seriesId ? (bySeries.get(t.seriesId) ?? []) : [];
-    if (t.seriesId && group.length > 1) {
+    const series = t.seriesId ? (bySeries.get(t.seriesId) ?? []) : [];
+    if (t.seriesId && series.length > 1) {
       if (shown.has(t.seriesId)) continue;
       shown.add(t.seriesId);
-      rows.push(
+      groups.push(
         h(
-          "li",
-          { class: "row group-head" },
-          h("span", { class: "meta" }, `${t.title} · ${group.length} overdue`),
+          "section",
+          {},
+          h(
+            "h2",
+            { class: "label" },
+            `${t.title} · ${series.length} ${view === "overdue" ? "overdue" : "open"}`,
+          ),
+          h("ul", { class: "group" }, ...series.map((o) => taskRow(o, options))),
         ),
-        ...group.map((occurrence) => taskRow(occurrence, options)),
       );
       continue;
     }
-    rows.push(taskRow(t, options));
+    loose.push(taskRow(t, options));
   }
+  const n = set.tasks.length;
+  const snoozeAll = () => snoozeAllSheet(set.tasks, set.tomorrowLabel);
+  // The screen's main action sits under the thumb in Telegram's own button.
+  const native =
+    view === "overdue" && n > 0 && !select.active()
+      ? mainButton(n === 1 ? "Snooze" : `Snooze all ${n}`, snoozeAll)
+      : false;
+  const selectButton =
+    n > 1 && !select.active()
+      ? h(
+          "button",
+          { class: "text-button", type: "button", onclick: () => select.start() },
+          "Select",
+        )
+      : null;
   return h(
     "div",
     {},
-    title(set.title, `${set.tasks.length} open`),
+    title(set.title ?? "", n ? `${n} open` : null, ...(selectButton ? [selectButton] : [])),
     set.listId ? quickAdd(set.listId) : null,
-    rows.length ? h("ul", { class: "group" }, ...rows) : h("p", { class: "empty" }, "None"),
-    rows.length > 1
-      ? h("p", { class: "caption" }, "Press and hold a task to select several.")
+    view === "overdue" && n > 0 && !native
+      ? h(
+          "button",
+          { class: "button secondary wide", type: "button", onclick: snoozeAll },
+          n === 1 ? "Snooze" : `Snooze all ${n}`,
+        )
+      : null,
+    view === "overdue" && n > 0
+      ? h("p", { class: "caption" }, "Snoozing moves reminders only; deadlines stay.")
+      : null,
+    n === 0
+      ? h("p", { class: "empty" }, view === "overdue" ? "Nothing overdue." : "No open tasks.")
+      : null,
+    ...groups,
+    loose.length
+      ? groups.length
+        ? h(
+            "section",
+            {},
+            h("h2", { class: "label" }, "Other tasks"),
+            h("ul", { class: "group" }, ...loose),
+          )
+        : h("ul", { class: "group" }, ...loose)
+      : null,
+    n > 1
+      ? h(
+          "p",
+          { class: "caption hint" },
+          "Swipe a task left to snooze. Press and hold to select several.",
+        )
       : null,
   );
 }
@@ -234,17 +346,19 @@ function taskScreen(detail: TaskDetail): Node {
   if (t.snoozeLabel) facts.push(["Snooze", t.snoozeLabel]);
   if (detail.workTime.length) facts.push(["Work time", detail.workTime.join("; ")]);
   if (t.pending) facts.push(["Calendar", "Saving to Calendar…"]);
-  const status =
-    t.status === "completed"
+  const isOpen = t.status === "open";
+  const status = isOpen
+    ? t.overdueLabel
+      ? h("span", { class: "overdue-text" }, t.overdueLabel)
+      : null
+    : t.status === "completed"
       ? "Completed"
-      : t.status === "cancelled"
-        ? "Cancelled"
-        : t.overdue
-          ? "Overdue"
-          : "Open";
-  const open = t.status === "open";
+      : "Cancelled";
   const button = (label: string, onclick: () => void, kind = "secondary") =>
     h("button", { class: `button ${kind}`, type: "button", onclick }, label);
+  const primaryLabel = isOpen ? "Mark done" : t.status === "cancelled" ? "Restore" : "Reopen";
+  const primary = () => void (isOpen ? complete(t) : reopen(t));
+  const native = mainButton(primaryLabel, primary);
   const repeat = detail.repeat;
   return h(
     "div",
@@ -258,13 +372,13 @@ function taskScreen(detail: TaskDetail): Node {
     h(
       "div",
       { class: "actions" },
-      ...(open
+      native ? null : button(primaryLabel, primary, ""),
+      ...(isOpen
         ? [
-            button("Done", () => void complete(t), ""),
             button("Snooze", () => snoozeSheet(t, detail.tomorrowLabel)),
             button("Edit", () => editSheet(detail)),
           ]
-        : [button(t.status === "cancelled" ? "Restore" : "Reopen", () => void reopen(t), "")]),
+        : []),
     ),
     repeat?.active
       ? section(
@@ -280,11 +394,11 @@ function taskScreen(detail: TaskDetail): Node {
     detail.history.length
       ? section("History", ...detail.history.map((line) => h("li", { class: "row plain" }, line)))
       : null,
-    open
+    isOpen
       ? h(
           "div",
           { class: "actions end" },
-          button("Cancel task", () => void cancel(t), "danger"),
+          button("Cancel task…", () => void cancel(t), "danger"),
         )
       : null,
   );
@@ -295,7 +409,6 @@ function renameSeriesSheet(repeat: NonNullable<TaskDetail["repeat"]>, current: s
     type: "text",
     value: current,
     maxlength: "200",
-    "aria-label": "New title",
   }) as HTMLInputElement;
   const close = sheet(
     "Rename series",
@@ -322,6 +435,6 @@ function recentScreen(recent: Recent): Node {
     title("Recent", `Completed and cancelled, last ${recent.days} days`),
     recent.tasks.length
       ? h("ul", { class: "group" }, ...recent.tasks.map((t) => taskRow(t, { showList: true })))
-      : h("p", { class: "empty" }, "None"),
+      : h("p", { class: "empty" }, "Nothing completed or cancelled recently."),
   );
 }
