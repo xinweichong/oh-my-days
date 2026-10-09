@@ -9,6 +9,7 @@ export interface AppTask {
     kind: "none" | "date" | "datetime";
     date: string | null;
     at: number | null;
+    time: string | null;
     label: string;
   };
   status: "open" | "completed" | "cancelled";
@@ -51,6 +52,7 @@ export interface Home {
   recent: number;
   sync: string;
   reconnect: boolean;
+  tomorrowLabel: string;
 }
 
 export interface Today {
@@ -62,6 +64,7 @@ export interface Today {
   overdue: AppTask[];
   due: AppTask[];
   openEnded: number;
+  tomorrowLabel: string;
 }
 
 export interface Week {
@@ -76,6 +79,8 @@ export interface Week {
 export interface TaskSet {
   title: string;
   showList: boolean;
+  listId: string | null;
+  tomorrowLabel: string;
   tasks: AppTask[];
   lists: ListSummary[];
 }
@@ -85,6 +90,7 @@ export interface TaskDetail {
   reminder: string | null;
   repeat: { seriesId: string; version: number; label: string; active: boolean } | null;
   workTime: string[];
+  tomorrowLabel: string;
   history: string[];
   lists: ListSummary[];
 }

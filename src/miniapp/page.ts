@@ -92,7 +92,52 @@ h2.label { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing:
 .button.danger { background: none; color: var(--danger); border: 1px solid var(--danger); }
 .facts { display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; padding: 16px; margin: 16px 0 0; }
 .facts dt { color: var(--ink-muted); } .facts dd { margin: 0; overflow-wrap: anywhere; }
-button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid var(--tide); outline-offset: 2px; }
+.check-target { flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; margin-left: -10px; border: 0; background: none; padding: 0; cursor: pointer; }
+.check-target .check { margin: 0; }
+.check-target.checked .check, .is-selected .check-target .check { background: var(--tide); border-color: var(--tide); }
+.is-selected { background: var(--tide-soft); }
+.text-button { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--tide);
+  font: inherit; font-weight: 600; cursor: pointer; }
+.row.task { overflow: hidden; }
+.swipe-actions { position: absolute; top: 0; right: 0; bottom: 0; display: flex;
+  transform: translateX(100%); transition: transform 160ms ease; }
+.row.swiped .swipe-actions { transform: none; }
+.swipe-button { min-width: 72px; border: 0; background: var(--tide); color: var(--on-tide);
+  font: inherit; font-weight: 600; cursor: pointer; }
+.swipe-button.more { background: var(--surface-sunk); color: var(--ink); }
+.row.group-head { min-height: 32px; padding-top: 8px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 0; }
+.actions .button { flex: 1 1 auto; }
+.actions.end { margin-top: 24px; }
+.actions-row { gap: 8px; padding: 8px 16px; flex-wrap: wrap; }
+.wide { display: block; width: 100%; margin-top: 8px; }
+input, select { min-height: 44px; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 6px;
+  background: var(--surface); color: var(--ink); font: inherit; max-width: 100%; }
+label { display: flex; flex-direction: column; gap: 4px; color: var(--ink-muted); font-size: 14px; }
+.stack-form { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; padding-top: 12px;
+  border-top: 1px solid var(--line); }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.quick-add { margin: 0 0 16px; }
+.quick-add-row { display: flex; gap: 8px; } .quick-add-row input { flex: 1; min-width: 0; }
+.add-result p { margin: 8px 0 0; }
+.toast { position: fixed; left: 16px; right: 16px; bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + 16px);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 40rem; margin: 0 auto;
+  padding: 8px 8px 8px 16px; border-radius: 12px; background: var(--surface-raised); color: var(--ink);
+  box-shadow: var(--toast-shadow); animation: up 160ms ease; z-index: 3; }
+.toast-action { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--tide);
+  font: inherit; font-weight: 600; cursor: pointer; }
+@keyframes up { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet-backdrop { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+  background: rgba(0, 0, 0, 0.35); z-index: 4; }
+.sheet { width: 100%; max-width: 40rem; max-height: 85vh; overflow: auto; padding: 16px 16px
+  calc(var(--tg-safe-area-inset-bottom, 0px) + 16px); border-radius: 12px 12px 0 0; background: var(--surface); }
+.sheet-title { font-size: 17px; margin: 0 0 8px; }
+.select-bar { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-wrap: wrap; align-items: center;
+  gap: 8px; padding: 8px 16px calc(var(--tg-safe-area-inset-bottom, 0px) + 8px); background: var(--surface-raised);
+  border-top: 1px solid var(--line); z-index: 2; }
+.select-count { flex: 1 0 100%; font-weight: 600; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--tide); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
 `;
 
