@@ -2,6 +2,7 @@ import type {
   CalendarEvent,
   CalendarPort,
   CalendarSyncSource,
+  EventDisplay,
   EventExtras,
   EventPageResult,
   ProviderError,
@@ -21,6 +22,7 @@ export interface EventMeta {
   hasGuests?: boolean;
   organizerSelf?: boolean;
   attendees?: string[];
+  display?: EventDisplay;
 }
 
 /**
@@ -159,6 +161,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       declined: meta.declined ?? false,
       hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
       organizerSelf: meta.organizerSelf ?? true,
+      ...(meta.display ? { display: meta.display } : {}),
     };
   }
 
@@ -205,6 +208,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
         hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
         attendees: meta.attendees ?? [],
         organizerSelf: meta.organizerSelf ?? true,
+        ...(meta.display ? { display: meta.display } : {}),
       });
     });
   }

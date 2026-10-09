@@ -39,7 +39,7 @@ when the item is approved, before implementation.
 | B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Implemented (`feature/idle-ticks`); live 24 h re-measure pending deploy |
 | B5 | Late-agenda cutoff | 2 | Clarifies §8 catch-up; spec amended | Implemented (`feature/late-agenda`) |
 | C1 | Actionable agenda; snooze all overdue | 3 | — | Implemented (`feature/improvements`) |
-| C2 | Location, call link, Calendar link in event reminders | 3 | — | Approved |
+| C2 | Location, call link, Calendar link in event reminders | 3 | — | Implemented (`feature/improvements`); privacy policy updated |
 | C3 | `/find` and date jump for events | 3 | — | Approved |
 | C4 | Choose the calendar for a new event | 3 | — | Approved |
 | C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Approved |

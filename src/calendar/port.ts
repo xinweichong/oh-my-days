@@ -17,6 +17,18 @@ export type ProviderError =
 
 export type ProviderResult<T> = { ok: true; value: T } | { ok: false; error: ProviderError };
 
+/**
+ * Details shown in reminders only. Deliberately outside EventFields: they are
+ * never compared for conflicts or written back. Links are https only.
+ */
+export interface EventDisplay {
+  location: string | null;
+  /** Video-call link (Google Meet or another conference provider). */
+  callUrl: string | null;
+  /** The event in Google Calendar. */
+  htmlLink: string | null;
+}
+
 export interface CalendarEvent {
   calendarId: string;
   id: string;
@@ -34,6 +46,7 @@ export interface CalendarEvent {
   attendees?: string[];
   /** The user organizes it; only the organizer can send updates to guests. */
   organizerSelf?: boolean;
+  display?: EventDisplay;
 }
 
 /** Properties beyond the editable fields, used for task deadline markers. */
@@ -122,6 +135,7 @@ export interface SyncedEvent {
   hasGuests: boolean;
   /** The user organizes it (or it has no organizer distinct from the user). */
   organizerSelf: boolean;
+  display?: EventDisplay;
 }
 
 export type EventPageResult =

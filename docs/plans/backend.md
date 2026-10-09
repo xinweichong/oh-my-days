@@ -397,6 +397,14 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   → tomorrow 8am**: one confirmation with the count, bound to each task's
   version; deadlines never move; one Undo restores each earlier snooze unless
   the task changed since (`tests/flows/act-on-agenda.test.ts`).
+- C2: Google's `location`, video link (`hangoutLink` or a conference video
+  entry point), and `htmlLink` are read into a display-only `EventDisplay`
+  outside `EventFields` (https links only, Calendar links only from Google
+  hosts). They live with the event horizon (migration 0014, removed when the
+  occurrence leaves the ~26-hour window) and are refreshed from the live read
+  before a reminder. Single event reminders show "Where:", "Video call:", and
+  **Join call** / **Open in Calendar** URL buttons. The privacy policy now says
+  so (`tests/google/event-display.test.ts`, `tests/flows/reminders.test.ts`).
 
 Stage 2 decisions to review:
 

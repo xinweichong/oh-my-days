@@ -5,6 +5,7 @@ import type {
   CalendarListEntry,
   CalendarPort,
   CalendarSyncSource,
+  EventDisplay,
   EventExtras,
   ProviderError,
   ProviderResult,
@@ -276,6 +277,38 @@ function toTime(value: unknown): EventTime | null {
   return null;
 }
 
+const MAX_LOCATION = 200;
+const MAX_URL = 512;
+
+/** Provider content is untrusted: only https links, bounded text. */
+function httpsUrl(value: unknown, host?: (hostname: string) => boolean): string | null {
+  if (typeof value !== "string" || value.length > MAX_URL) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || (host && !host(url.hostname))) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+export function toDisplay(body: Record<string, unknown>): EventDisplay {
+  const location =
+    typeof body.location === "string" && body.location.trim()
+      ? body.location.trim().replace(/\s+/g, " ").slice(0, MAX_LOCATION)
+      : null;
+  const entryPoints =
+    isObject(body.conferenceData) && Array.isArray(body.conferenceData.entryPoints)
+      ? body.conferenceData.entryPoints.filter(isObject)
+      : [];
+  const video = entryPoints.find((e) => e.entryPointType === "video");
+  return {
+    location,
+    callUrl: httpsUrl(body.hangoutLink) ?? httpsUrl(video?.uri),
+    htmlLink: httpsUrl(body.htmlLink, (h) => h === "www.google.com" || h === "calendar.google.com"),
+  };
+}
+
 export function toEvent(calendarId: string, body: unknown): CalendarEvent | null {
   if (!isObject(body) || typeof body.id !== "string" || typeof body.etag !== "string") return null;
   const status =
@@ -298,6 +331,7 @@ export function toEvent(calendarId: string, body: unknown): CalendarEvent | null
       .filter((a) => a.self !== true && a.resource !== true && typeof a.email === "string")
       .map((a) => a.email as string),
     organizerSelf: isObject(body.organizer) ? body.organizer.self === true : true,
+    display: toDisplay(body),
     fields: {
       summary: typeof body.summary === "string" ? body.summary : "",
       start: start ?? fallback,
@@ -356,6 +390,7 @@ function toSyncedEvent(item: unknown): SyncedEvent | null {
     declined: self?.responseStatus === "declined",
     hasGuests: attendees.some((a) => a.self !== true && a.resource !== true),
     organizerSelf: organizer ? organizer.self === true : true,
+    display: toDisplay(item),
   };
 }
 

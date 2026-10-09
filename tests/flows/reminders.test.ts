@@ -191,6 +191,41 @@ describe("reminders", () => {
     expect(world.lastText()).toContain("Custom reminders\n• Dinner: 30 minutes before");
   });
 
+  it("shows where, the video call, and an Open in Calendar button (C2)", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    seedEvent(world, "planning", "Planning", 25, 14, {
+      display: {
+        location: "Room 4",
+        callUrl: "https://meet.google.com/abc-defg-hij",
+        htmlLink: "https://www.google.com/calendar/event?eid=planning",
+      },
+    });
+    await until(world, sgt(25, 12));
+    // Changed in Calendar after the horizon was read: the live value is shown.
+    const calendar = ownerCalendar(world);
+    const key = `${PRIMARY.calendarId}/planning`;
+    calendar.meta.set(key, {
+      display: {
+        location: "Room 5",
+        callUrl: "https://meet.google.com/abc-defg-hij",
+        htmlLink: "https://www.google.com/calendar/event?eid=planning",
+      },
+    });
+    await until(world, sgt(25, 13));
+    expect(world.lastText()).toBe(
+      "In 1 hour: Planning\nFri 25 Sep 2026, 2–3pm\nWhere: Room 5\nVideo call: https://meet.google.com/abc-defg-hij",
+    );
+    expect(world.findButton("Join call")).toEqual({
+      text: "Join call",
+      url: "https://meet.google.com/abc-defg-hij",
+    });
+    expect(world.findButton("Open in Calendar")).toEqual({
+      text: "Open in Calendar",
+      url: "https://www.google.com/calendar/event?eid=planning",
+    });
+  });
+
   it("revalidates before sending: a moved event is reminded at its new time", async () => {
     const world = new World(env.DB);
     await setUpOwner(world);

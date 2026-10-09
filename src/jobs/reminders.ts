@@ -2,7 +2,7 @@ import { renderDay, tasksForDay } from "../application/calendar-view";
 import { ActionButtons } from "../application/reactions";
 import { dueLabel } from "../application/task-flow";
 import { dayButtons } from "../application/view-flow";
-import type { CalendarPort, CalendarSyncSource } from "../calendar/port";
+import type { CalendarPort, CalendarSyncSource, EventDisplay } from "../calendar/port";
 import {
   agendaKind,
   DEFAULT_EVENT_REMINDER_MINUTES,
@@ -64,7 +64,14 @@ interface Due {
   kind: "event" | "task" | "snooze";
   line: string;
   /** For events: what to revalidate. */
-  event?: { calendarId: string; eventId: string; startsAt: number; text: string };
+  event?: {
+    calendarId: string;
+    eventId: string;
+    startsAt: number;
+    text: string;
+    /** Location and links, refreshed from the live read when there is one. */
+    display: EventDisplay;
+  };
   task?: TaskRecord;
   minutes?: number;
 }
@@ -180,6 +187,21 @@ function minutesLabel(minutes: number): string {
 }
 
 /** Reminders due now (not yet handled), and when the next one falls due. */
+/** An event reminder with where it is, the call link, and Open in Calendar. */
+function eventReminder(event: NonNullable<Due["event"]>): {
+  text: string;
+  keyboard: InlineKeyboardButton[][];
+} {
+  const { location, callUrl, htmlLink } = event.display;
+  const lines = [event.text];
+  if (location) lines.push(`Where: ${location}`);
+  if (callUrl) lines.push(`Video call: ${callUrl}`);
+  const row: InlineKeyboardButton[] = [];
+  if (callUrl) row.push({ text: "Join call", url: callUrl });
+  if (htmlLink) row.push({ text: "Open in Calendar", url: htmlLink });
+  return { text: lines.join("\n"), keyboard: row.length ? [row] : [] };
+}
+
 async function collectDue(
   deps: ReminderDeps,
   user: UserRecord,
@@ -222,6 +244,7 @@ async function collectDue(
         eventId: e.eventId,
         startsAt: e.startsAt,
         text: `${minutesLabel(minutes)}: ${e.summary}\n${range}`,
+        display: e.display,
       },
     });
   }
@@ -298,7 +321,12 @@ async function revalidate(
     }
     const start = current.value.fields.start;
     const moved = !("dateTime" in start) || Date.parse(start.dateTime) !== item.event.startsAt;
-    (current.value.status === "cancelled" || moved ? skip : keep).push(item);
+    if (current.value.status === "cancelled" || moved) {
+      skip.push(item);
+      continue;
+    }
+    const display = current.value.display ?? item.event.display;
+    keep.push({ ...item, event: { ...item.event, display } });
   }
   return { keep, skip };
 }
@@ -326,7 +354,7 @@ async function sendReminders(
   const single =
     keep.length === 1 && now - (keep[0]?.dueAt ?? now) < LATE_AFTER_MS ? keep[0] : null;
   if (single?.event) {
-    text = single.event.text;
+    ({ text, keyboard } = eventReminder(single.event));
   } else if (single?.task) {
     const heading =
       single.kind === "snooze"
