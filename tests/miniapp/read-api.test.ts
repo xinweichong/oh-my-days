@@ -90,7 +90,9 @@ describe("Mini App reads", () => {
     expect(status).toBe(200);
     expect(body).toMatchObject({
       label: "Fri 25 Sep 2026",
+      heading: "Friday 25 Sep",
       nextUp: "2pm Review · in 1 hr",
+      next: { kind: "event", time: "2pm", title: "Review", when: "in 1 hr" },
       calendarClear: false,
       // "Plan trip by Wed" is next week; Pay rent is overdue, not due this week.
       tiles: { today: { events: 2, tasks: 1 }, overdue: 1, week: 1, noDeadline: 1 },
@@ -110,6 +112,9 @@ describe("Mini App reads", () => {
     const names = (list: unknown) => (list as { title: string }[]).map((x) => x.title);
     expect(names(body.timed)).toEqual(["Standup", "Review"]);
     expect(names(body.overdue)).toEqual(["Pay rent"]);
+    // Overdue tasks carry their age in the user's days; others carry none.
+    expect((body.overdue as { overdueLabel: string }[])[0]?.overdueLabel).toBe("1 day overdue");
+    expect((body.due as { overdueLabel: string | null }[])[0]?.overdueLabel).toBeNull();
     expect(names(body.due)).toEqual(["Send invoice"]);
     await world.send("/daily");
     const daily = world.lastText() ?? "";

@@ -57,6 +57,8 @@ export interface AppTask {
   overdue: boolean;
   snoozedUntil: number | null;
   snoozeLabel: string | null;
+  /** How long past its deadline an open task is ("3 days overdue"); null when not overdue. */
+  overdueLabel: string | null;
   /** The deadline marker is still being written to Google Calendar. */
   pending: boolean;
   seriesId: string | null;
@@ -95,6 +97,7 @@ export function toAppTask(
 ): AppTask {
   const d = task.deadline;
   const snoozed = isSnoozed(task, now) && task.snoozedUntil !== null;
+  const overdue = task.status === "open" && isOverdue(d, now, user.timezone);
   return {
     id: task.id,
     version: task.version,
@@ -119,15 +122,40 @@ export function toAppTask(
       label: dueLabel(d, user.timezone),
     },
     status: task.status,
-    overdue: task.status === "open" && isOverdue(d, now, user.timezone),
+    overdue,
     snoozedUntil: snoozed ? task.snoozedUntil : null,
     snoozeLabel:
       snoozed && task.snoozedUntil !== null
         ? `Snoozed until ${formatDayLabel(localDateAt(task.snoozedUntil, user.timezone))} ${formatTime(task.snoozedUntil, user.timezone)}`
         : null,
+    overdueLabel: overdue ? overdueLabel(d, now, user.timezone) : null,
     pending: pending.has(task.id),
     seriesId: task.seriesId,
   };
+}
+
+/** Whole local days between two dates (b - a). */
+function daysFrom(a: LocalDate, b: LocalDate): number {
+  return Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
+}
+
+/** Age of a missed deadline in the user's days: "Overdue since 5pm", "1 day overdue". */
+function overdueLabel(d: TaskRecord["deadline"], now: number, timeZone: string): string {
+  if (d.kind === "none") return "Overdue";
+  const due = d.kind === "date" ? d.date : localDateAt(d.at, timeZone);
+  const days = daysFrom(due, localDateAt(now, timeZone));
+  if (days <= 0)
+    return d.kind === "datetime" ? `Overdue since ${formatTime(d.at, timeZone)}` : "Overdue";
+  return days === 1 ? "1 day overdue" : `${days} days overdue`;
+}
+
+/** "Saturday 10 Oct": the Home heading, without the year. */
+export function longDayLabel(date: LocalDate): string {
+  const weekdayName = new Intl.DateTimeFormat("en-GB", { weekday: "long", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`),
+  );
+  // Same day and month as everywhere else ("25 Sep"), with the weekday in full.
+  return `${weekdayName} ${formatDayLabel(date).split(" ").slice(1).join(" ")}`;
 }
 
 function dayLink(date: LocalDate): string {
@@ -222,10 +250,13 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
         return d >= today.date && d < weekEnd;
       })(),
   ).length;
+  const next = nextUp(today, now, user);
   return {
     date: today.date,
     label: today.label,
-    nextUp: nextUp(today, now, user),
+    heading: longDayLabel(today.date),
+    nextUp: next?.text ?? null,
+    next,
     calendarClear: today.allDay.length + today.timed.length === 0,
     tiles: {
       today: { events: today.allDay.length + today.timed.length, tasks: today.due.length },
@@ -245,20 +276,47 @@ function nextUp(
   today: Awaited<ReturnType<typeof todayView>>,
   now: number,
   user: UserRecord,
-): string | null {
+): NextUp | null {
   const event = today.timed.find((e) => (e.startsAt ?? 0) > now);
   if (event?.startsAt) {
     const minutes = Math.round((event.startsAt - now) / 60_000);
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
     const when = minutes < 60 ? `in ${minutes} min` : `in ${hours} hr${rest ? ` ${rest} min` : ""}`;
-    return `${formatTime(event.startsAt, user.timezone)} ${event.title} · ${when}`;
+    const time = formatTime(event.startsAt, user.timezone);
+    return {
+      kind: "event",
+      time,
+      title: event.title,
+      when,
+      link: event.link,
+      text: `${time} ${event.title} · ${when}`,
+    };
   }
   const task = today.due.find((t) => t.deadline.at !== null && t.deadline.at > now);
   if (task?.deadline.at) {
-    return `Due ${formatTime(task.deadline.at, user.timezone)}: ${task.title}`;
+    const time = formatTime(task.deadline.at, user.timezone);
+    return {
+      kind: "task",
+      time,
+      title: task.title,
+      when: "Due",
+      taskId: task.id,
+      text: `Due ${time}: ${task.title}`,
+    };
   }
   return null;
+}
+
+/** The Home "Next up" line, in parts so the time can lead. */
+export interface NextUp {
+  kind: "event" | "task";
+  time: string;
+  title: string;
+  when: string;
+  link?: string;
+  taskId?: string;
+  text: string;
 }
 
 function syncLine(

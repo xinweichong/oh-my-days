@@ -1,6 +1,7 @@
 import { eventFields, toDeadline } from "../application/capture-flow";
 import { whenQuestion } from "../application/choices";
 import { create, eventCalendars, unavailable } from "../application/event-flow";
+import { connectLink } from "../application/google-connection";
 import {
   openOccurrences,
   renameSeries,
@@ -15,7 +16,8 @@ import { addDays, isValidLocalDate, localDateAt, zonedInstant } from "../domain/
 import { sha256Hex } from "../shared/hash";
 import { logEvent } from "../shared/log";
 import { findAppRequest, recordAppRequestStatement } from "../storage/app-requests";
-import { listStoredCalendars } from "../storage/google";
+import { findConnection, listStoredCalendars } from "../storage/google";
+import { unguarded } from "../storage/guard";
 import { findSeries } from "../storage/series";
 import {
   ensureInboxStatement,
@@ -64,6 +66,7 @@ export async function handleWrite(
   if (!body) return apiError("bad_request", 400);
   const key = typeof body.key === "string" && KEY.test(body.key) ? body.key : null;
 
+  if (path === "reconnect-link") return reconnectLink(deps, user);
   if (path === "tasks") {
     if (!key) return apiError("bad_request", 400);
     return quickAdd(deps, user, body, key);
@@ -80,6 +83,18 @@ export async function handleWrite(
   m = /^series\/([A-Za-z0-9_-]{1,64})\/([a-z-]+)$/.exec(path);
   if (m?.[1] && m[2]) return seriesAction(deps, user, m[1], m[2], body, key);
   return apiError("not_found", 404);
+}
+
+/**
+ * A fresh, short-lived link to reconnect Google Calendar, the same link the
+ * chat's reconnect button carries. Only offered while the connection needs it.
+ */
+async function reconnectLink(deps: MiniAppDeps, user: UserRecord): Promise<Response> {
+  const connection = await findConnection(deps.db, user.id);
+  if (connection?.status === "active") return apiError("not_needed", 409);
+  const link = connectLink(deps, user.id, connection ? "reconnect" : "connect");
+  await deps.db.batch(link.statements?.(deps.db, unguarded) ?? []);
+  return json({ url: link.url });
 }
 
 async function appTask(deps: MiniAppDeps, user: UserRecord, taskId: string) {

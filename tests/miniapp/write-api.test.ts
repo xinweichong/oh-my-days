@@ -434,3 +434,29 @@ describe("Mini App bulk actions (D7 5c)", () => {
     expect(statuses.map((s) => s.status)).toEqual(["open"]);
   });
 });
+
+describe("Mini App reconnect", () => {
+  it("issues a fresh reconnect link only while the connection needs it, for that user", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    expect(await appApi(world, "reconnect-link", { method: "POST", body: {} })).toEqual({
+      status: 409,
+      body: { error: "not_needed" },
+    });
+    await env.DB.prepare("UPDATE google_connections SET status = 'auth_required'").run();
+    const result = await appApi(world, "reconnect-link", { method: "POST", body: {} });
+    expect(result.status).toBe(200);
+    const url = new URL(String(result.body.url));
+    expect(url.pathname).toBe("/connect");
+    const links = await rows<{ user_id: string; purpose: string }>(
+      env.DB,
+      "SELECT l.user_id, l.purpose FROM connect_links l WHERE token = ?",
+      url.searchParams.get("t"),
+    );
+    const [owner] = await rows<{ id: string }>(
+      env.DB,
+      "SELECT user_id AS id FROM google_connections",
+    );
+    expect(links).toEqual([{ user_id: owner?.id, purpose: "reconnect" }]);
+  });
+});
