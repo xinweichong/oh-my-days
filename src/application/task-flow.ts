@@ -1,5 +1,11 @@
 import { parseDate, parseTime } from "../domain/parse-input";
-import { describeRecurrence, type Frequency } from "../domain/recurrence";
+import {
+  describeRecurrence,
+  type Frequency,
+  firstOccurrence,
+  parseRepeatInterval,
+  type RepeatChoice,
+} from "../domain/recurrence";
 import { reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
 import {
@@ -47,7 +53,7 @@ import { cancelRow, guidedPrompt } from "./cancel";
 import { dateChoiceLabel, whenQuestion } from "./choices";
 import { withTypingHint } from "./hints";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { recurrenceOf } from "./series";
+import { occurrenceDeadline, recurrenceOf } from "./series";
 import type { SetupDeps } from "./setup";
 import { projectTaskStatement } from "./task-projection";
 import { answer, keyboardMessage, removeButtons } from "./ui";
@@ -904,11 +910,26 @@ export async function handleTaskAction(
       );
     }
 
+    case "task_repeat_every": {
+      const draft = readDraft(payload);
+      if (!draft || !payload.deadline) return ack("This button is no longer valid.");
+      return combine(
+        ack(),
+        done,
+        ask(
+          deps,
+          user,
+          "task_repeat_interval",
+          { draft, deadline: payload.deadline },
+          "How often? Type every 2 days, every 3 weeks, or every 6 months.",
+        ),
+      );
+    }
     case "task_repeat": {
       const draft = readDraft(payload);
       const deadline = payload.deadline as Deadline | undefined;
       if (!draft || !deadline) return ack("This button is no longer valid.");
-      const freq = typeof payload.freq === "string" ? (payload.freq as Frequency) : null;
+      const freq = readRepeat(payload);
       return combine(
         ack(),
         done,
@@ -1144,6 +1165,23 @@ export async function handleTaskInput(
         change(deps, user, task, { title: text }, { title: task.title }, `Renamed: ${text}.`),
       );
     }
+    case "task_repeat_interval": {
+      const deadline = pending.payload.deadline as Deadline | undefined;
+      if (!draft || !deadline) return expired();
+      const repeat = parseRepeatInterval(text);
+      if (!repeat) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that. Try every 2 days, every 3 weeks, or every 6 months.",
+        );
+      }
+      return combine(
+        { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
+        await withTypingHint(user, "task", (note) =>
+          createSeries(deps, user, draft, deadline, repeat, note),
+        ),
+      );
+    }
     case "series_rename": {
       if (text.length === 0 || text.length > MAX_TASK_TITLE) {
         return message(user.privateChatId, `Send a name of up to ${MAX_TASK_TITLE} characters.`);
@@ -1198,6 +1236,32 @@ export async function handleTaskInput(
 
 // --- Recurring tasks ---------------------------------------------------------------
 
+/** The repeat options shared by tasks and events. */
+export function repeatRows(
+  option: (label: string, repeat: RepeatChoice | null) => InlineKeyboardButton,
+): InlineKeyboardButton[][] {
+  const plain = (freq: Frequency): RepeatChoice => ({ freq, interval: 1 });
+  return [
+    [option("Doesn't repeat", null)],
+    [
+      option("Daily", plain("daily")),
+      option("Weekdays", { freq: "daily", interval: 1, by: "weekdays" }),
+    ],
+    [option("Weekly", plain("weekly")), option("Monthly", plain("monthly"))],
+    [
+      option("Last day of month", { freq: "monthly", interval: 1, by: "last_day" }),
+      option("Yearly", plain("yearly")),
+    ],
+  ];
+}
+
+/** A repeat choice from a button payload (older buttons carried only `freq`). */
+export function readRepeat(payload: Record<string, unknown>): RepeatChoice | null {
+  const repeat = payload.repeat as RepeatChoice | null | undefined;
+  if (repeat && typeof repeat.freq === "string") return repeat;
+  return typeof payload.freq === "string" ? { freq: payload.freq as Frequency, interval: 1 } : null;
+}
+
 function askRepeat(
   deps: SetupDeps,
   user: UserRecord,
@@ -1205,8 +1269,8 @@ function askRepeat(
   deadline: Deadline,
 ): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const option = (label: string, freq: Frequency | null) =>
-    buttons.button(label, "task_repeat", { draft, deadline, freq });
+  const option = (label: string, repeat: RepeatChoice | null) =>
+    buttons.button(label, "task_repeat", { draft, deadline, repeat });
   return {
     replies: [
       keyboardMessage(
@@ -1214,9 +1278,8 @@ function askRepeat(
         `Does ${draft.title} repeat?`,
         {
           inline_keyboard: [
-            [option("Doesn't repeat", null)],
-            [option("Daily", "daily"), option("Weekly", "weekly")],
-            [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            ...repeatRows(option),
+            [buttons.button("Every…", "task_repeat_every", { draft, deadline })],
             cancelRow(buttons, `adding the task ${draft.title}`),
           ],
         },
@@ -1235,7 +1298,7 @@ async function createSeries(
   user: UserRecord,
   draft: TaskDraft,
   deadline: Deadline,
-  freq: Frequency,
+  repeat: RepeatChoice,
   note?: string,
 ): Promise<Reaction> {
   if (deadline.kind === "none")
@@ -1245,7 +1308,7 @@ async function createSeries(
   if (!list)
     return message(user.privateChatId, "Your lists aren't ready yet. Send /task to try again.");
   const now = deps.clock.now();
-  const anchor = deadline.kind === "date" ? deadline.date : localDateAt(deadline.at, user.timezone);
+  const chosen = deadline.kind === "date" ? deadline.date : localDateAt(deadline.at, user.timezone);
   const dueTime =
     deadline.kind === "datetime"
       ? (() => {
@@ -1253,16 +1316,21 @@ async function createSeries(
           return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
         })()
       : null;
+  // A narrower rule may not include the chosen date: start at its first date.
+  const anchor = firstOccurrence({ ...repeat, anchor: chosen }) ?? chosen;
+  const first =
+    anchor === chosen ? deadline : occurrenceDeadline({ dueTime, timezone: user.timezone }, anchor);
+  const freq = repeat.freq;
   const seriesId = deps.ids.next();
   const taskId = deps.ids.next();
-  const rule = { freq, interval: 1, anchor };
+  const rule = { ...repeat, anchor };
   const buttons = new ActionButtons(deps.ids, user.id, now);
   return {
     about: { kind: "task", taskId },
     replies: [
       keyboardMessage(
         user,
-        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(deadline, user.timezone).replace(/^Due /, "due ")}.${note ? `\n\n${note}` : ""}`,
+        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(first, user.timezone).replace(/^Due /, "due ")}.${note ? `\n\n${note}` : ""}`,
         { inline_keyboard: [[buttons.button("Undo", "series_stop", { seriesId, version: 1 })]] },
         null,
       ),
@@ -1276,7 +1344,8 @@ async function createSeries(
           listId: list.id,
           title: draft.title,
           freq,
-          interval: 1,
+          interval: repeat.interval,
+          by: repeat.by ?? null,
           anchorDate: anchor,
           dueTime,
           timezone: user.timezone,
@@ -1292,7 +1361,7 @@ async function createSeries(
           userId: user.id,
           listId: list.id,
           title: draft.title,
-          deadline,
+          deadline: first,
           status: "open",
           origin: "telegram",
           occurrence: { seriesId, date: anchor },

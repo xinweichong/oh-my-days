@@ -448,6 +448,13 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   itself for the window's end; then reminders still relevant are sent as one
   "While quiet hours were on:" summary. Agenda and evening preview are not
   held (`tests/flows/quiet-hours.test.ts`).
+- D3: repeat questions for tasks and events offer Weekdays, Last day of month,
+  and **Every…** (typed "every 2 weeks"); series store the interval and a
+  `by_rule` (migration 0019) and materialize as before (ADR 0003). Events use
+  `BYDAY=MO,TU,WE,TH,FR` and `BYMONTHDAY=-1` (the plan named `BYSETPOS=-1`;
+  `BYMONTHDAY=-1` is the direct RFC 5545 form). A date outside the rule starts
+  the series at the first matching date (`tests/domain/recurrence.test.ts`,
+  `tests/flows/repeat-rules.test.ts`).
 
 Stage 2 decisions to review:
 

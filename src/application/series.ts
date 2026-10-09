@@ -19,7 +19,12 @@ export const SERIES_HORIZON_DAYS = 60;
 export const OCCURRENCES_PER_RUN = 31;
 
 export function recurrenceOf(series: SeriesRecord): Recurrence {
-  return { freq: series.freq, interval: series.interval, anchor: series.anchorDate };
+  return {
+    freq: series.freq,
+    interval: series.interval,
+    anchor: series.anchorDate,
+    by: series.by,
+  };
 }
 
 /**

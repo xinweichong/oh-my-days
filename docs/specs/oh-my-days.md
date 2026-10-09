@@ -195,7 +195,7 @@ Proposed import rule: a task created directly in the task calendar without a rec
 
 ### Recurring tasks
 
-- Support fixed daily, weekly, monthly, and yearly schedules.
+- Support fixed daily, weekly, monthly, and yearly schedules, every N days, weeks, or months, every weekday (Monday to Friday), and the last day of each month (extended 2026-10-10, [improvement D3](../plans/improvements.md#6-phase-4--further-features-d1d6)). When the chosen date doesn't fit the rule (a Saturday for weekdays), the first occurrence is the first date that does, and the result says so.
 - Each occurrence has independent completion, cancellation, deadline, and reminder state.
 - An unfinished older occurrence remains open when the next one becomes due.
 - Completing one occurrence never clears another.

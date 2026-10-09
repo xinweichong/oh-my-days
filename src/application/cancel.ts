@@ -98,6 +98,10 @@ export function describePending(kind: PendingInputKind, payload: Record<string, 
       return "choosing an event";
     case "find_query":
       return "searching";
+    case "task_repeat_interval":
+      return title ? `adding the task ${title}` : "adding a task";
+    case "event_repeat_interval":
+      return "adding an event";
   }
 }
 

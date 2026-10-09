@@ -1,13 +1,20 @@
 import { isWritable } from "../calendar/port";
 import type { EventFields, EventTime } from "../domain/calendar-event";
 import { parseDate, parseDuration, parseTime, parseTimeRange } from "../domain/parse-input";
-import { describeRecurrence, type Frequency, toRRule } from "../domain/recurrence";
+import {
+  describeRecurrence,
+  firstOccurrence,
+  parseRepeatInterval,
+  type RepeatChoice,
+  toRRule,
+} from "../domain/recurrence";
 import {
   addDays,
   type LocalDate,
   localDateAt,
   rfc3339,
   type WallTime,
+  wallPartsAt,
   zonedInstant,
 } from "../domain/time";
 import { type CachedEvent, findCachedEvent } from "../storage/events";
@@ -48,6 +55,7 @@ import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import type { SetupDeps } from "./setup";
+import { readRepeat, repeatRows } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /**
@@ -289,8 +297,8 @@ function overlapCalendarIds(user: UserRecord, calendars: StoredCalendar[]): stri
 
 function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFields): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const option = (label: string, freq: Frequency | null) =>
-    buttons.button(label, "event_repeat", { fields, freq });
+  const option = (label: string, repeat: RepeatChoice | null) =>
+    buttons.button(label, "event_repeat", { fields, repeat });
   return {
     replies: [
       keyboardMessage(
@@ -298,9 +306,8 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
         `Does ${fields.summary} repeat?`,
         {
           inline_keyboard: [
-            [option("Doesn't repeat", null)],
-            [option("Daily", "daily"), option("Weekly", "weekly")],
-            [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            ...repeatRows(option),
+            [buttons.button("Every…", "event_repeat_every", { fields })],
             cancelRow(buttons, `adding the event ${fields.summary}`),
           ],
         },
@@ -311,6 +318,33 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
       clearPendingInputStatement(db, user.id),
       ...buttons.statements(db, guard),
     ],
+  };
+}
+
+/** The same event on another date: same local start time and length. */
+function onDate(fields: EventFields, date: LocalDate): EventFields {
+  const { start, end } = fields;
+  if ("date" in start && "date" in end) {
+    return {
+      ...fields,
+      start: { date },
+      end: { date: addDays(date, daysBetween(start.date, end.date)) },
+    };
+  }
+  if (!("dateTime" in start) || !("dateTime" in end)) return fields;
+  const zone = start.timeZone ?? "UTC";
+  const length = Date.parse(end.dateTime) - Date.parse(start.dateTime);
+  const w = wallPartsAt(Date.parse(start.dateTime), zone);
+  const moved = zonedInstant(
+    date,
+    `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`,
+    zone,
+  );
+  if (!moved.ok) return fields;
+  return {
+    ...fields,
+    start: { dateTime: rfc3339(moved.instant, zone), timeZone: zone },
+    end: { dateTime: rfc3339(moved.instant + length, zone), timeZone: zone },
   };
 }
 
@@ -332,9 +366,12 @@ export async function create(
   user: UserRecord,
   fields: EventFields,
   idempotencyKey: string,
-  freq: Frequency | null = null,
+  repeat: RepeatChoice | null = null,
   options: CreateOptions = {},
 ): Promise<Reaction> {
+  // A narrower rule may not include the chosen date: the series starts on its first date.
+  const first = repeat ? firstOccurrence({ ...repeat, anchor: startDate(fields) }) : null;
+  if (repeat && first && first !== startDate(fields)) fields = onDate(fields, first);
   const { calendars, target } = await writableTarget(deps, user, options.calendarId ?? null);
   if (!target) {
     return message(
@@ -353,11 +390,11 @@ export async function create(
     ...(options.switchTo ? { switchTo: options.switchTo } : {}),
     ...(options.note ? { note: options.note } : {}),
     // One-off events can be moved to another writable calendar from the result.
-    ...(!freq && eventCalendars(user, calendars).length > 1 ? { movable: true as const } : {}),
-    ...(freq
+    ...(!repeat && eventCalendars(user, calendars).length > 1 ? { movable: true as const } : {}),
+    ...(repeat
       ? {
-          recurrence: [toRRule(freq)],
-          repeatLabel: describeRecurrence({ freq, interval: 1, anchor: startDate(fields) }),
+          recurrence: [toRRule(repeat)],
+          repeatLabel: describeRecurrence({ ...repeat, anchor: startDate(fields) }),
         }
       : {}),
   };
@@ -924,12 +961,27 @@ export async function handleEventAction(
     case "event_repeat": {
       const fields = payload.fields as EventFields | undefined;
       if (!fields) return answer(callback, "This button is no longer valid.");
-      const freq = typeof payload.freq === "string" ? (payload.freq as Frequency) : null;
+      const repeat = readRepeat(payload);
       return combine(
         answer(callback),
         removeButtons(user, callback),
         await withTypingHint(user, "event", (note) =>
-          create(deps, user, fields, key, freq, note ? { note } : {}),
+          create(deps, user, fields, key, repeat, note ? { note } : {}),
+        ),
+      );
+    }
+    case "event_repeat_every": {
+      const fields = payload.fields as EventFields | undefined;
+      if (!fields) return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        ask(
+          deps,
+          user,
+          "event_repeat_interval",
+          { fields },
+          "How often? Type every 2 days, every 3 weeks, or every 6 months.",
         ),
       );
     }
@@ -1089,6 +1141,23 @@ export async function handleEventInput(
         );
       }
       return finishTimed(deps, user, draft, length);
+    }
+    case "event_repeat_interval": {
+      const fields = pending.payload.fields as EventFields | undefined;
+      if (!fields) break;
+      const repeat = parseRepeatInterval(text);
+      if (!repeat) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that. Try every 2 days, every 3 weeks, or every 6 months.",
+        );
+      }
+      return combine(
+        clearInput(user),
+        await withTypingHint(user, "event", (note) =>
+          create(deps, user, fields, key, repeat, note ? { note } : {}),
+        ),
+      );
     }
     case "event_list_date": {
       const date = parseDate(text, today);

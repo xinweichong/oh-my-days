@@ -1,4 +1,4 @@
-import type { Frequency } from "../domain/recurrence";
+import type { Frequency, RepeatBy } from "../domain/recurrence";
 import type { Guard } from "./guard";
 
 export interface SeriesRecord {
@@ -8,6 +8,8 @@ export interface SeriesRecord {
   title: string;
   freq: Frequency;
   interval: number;
+  /** A narrower rule (weekdays, last day of the month), or null. */
+  by: RepeatBy | null;
   anchorDate: string;
   dueTime: string | null;
   timezone: string;
@@ -23,6 +25,7 @@ interface SeriesRow {
   title: string;
   freq: Frequency;
   interval: number;
+  by_rule: RepeatBy | null;
   anchor_date: string;
   due_time: string | null;
   timezone: string;
@@ -31,8 +34,8 @@ interface SeriesRow {
   version: number;
 }
 
-const COLUMNS = `id, user_id, list_id, title, freq, interval, anchor_date, due_time, timezone, status,
-  materialized_through, version`;
+const COLUMNS = `id, user_id, list_id, title, freq, interval, by_rule, anchor_date, due_time,
+  timezone, status, materialized_through, version`;
 
 function toSeries(row: SeriesRow): SeriesRecord {
   return {
@@ -42,6 +45,7 @@ function toSeries(row: SeriesRow): SeriesRecord {
     title: row.title,
     freq: row.freq,
     interval: row.interval,
+    by: row.by_rule,
     anchorDate: row.anchor_date,
     dueTime: row.due_time,
     timezone: row.timezone,
@@ -59,9 +63,9 @@ export function insertSeriesStatement(
 ): D1PreparedStatement {
   return db
     .prepare(
-      `INSERT INTO task_series (id, user_id, list_id, title, freq, interval, anchor_date, due_time,
-         timezone, status, materialized_through, created_at, updated_at)
-       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ? WHERE ${guard.sql}`,
+      `INSERT INTO task_series (id, user_id, list_id, title, freq, interval, by_rule, anchor_date,
+         due_time, timezone, status, materialized_through, created_at, updated_at)
+       SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ? WHERE ${guard.sql}`,
     )
     .bind(
       series.id,
@@ -70,6 +74,7 @@ export function insertSeriesStatement(
       series.title,
       series.freq,
       series.interval,
+      series.by,
       series.anchorDate,
       series.dueTime,
       series.timezone,
