@@ -2,7 +2,8 @@ import { secretsEqual } from "../security/compare";
 
 /**
  * Verifies Telegram Mini App `initData` (ADR 0005): HMAC-SHA256 over the sorted
- * `key=value` lines of every field except `hash` and `signature`, keyed with
+ * `key=value` lines of every received field except `hash` (including
+ * `signature`, which only the separate Ed25519 check leaves out), keyed with
  * HMAC-SHA256(bot token, "WebAppData"). Only the signed `user` field is
  * trusted; nothing from the client is used before this passes.
  */
@@ -34,10 +35,10 @@ function hex(buffer: ArrayBuffer): string {
   return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The data-check string Telegram signs, from raw `initData`. */
+/** The data-check string the bot-token hash covers: every field but `hash`, sorted. */
 export function dataCheckString(params: URLSearchParams): string {
   return [...params.entries()]
-    .filter(([key]) => key !== "hash" && key !== "signature")
+    .filter(([key]) => key !== "hash")
     .map(([key, value]) => `${key}=${value}`)
     .sort()
     .join("\n");

@@ -14,8 +14,11 @@ every query scoped to the user, and stay inside the free tier.
 Telegram's Bot API reference (checked 2026-10-10,
 <https://core.telegram.org/bots/webapps>) defines `Telegram.WebApp.initData`:
 a query string signed with `HMAC-SHA256(data_check_string, HMAC-SHA256(bot_token,
-"WebAppData"))`, where the data-check string is every field except `hash` and
-`signature`, sorted, as `key=value` lines. It also states that **initData is
+"WebAppData"))`, where the data-check string is every received field except `hash`
+(the `signature` field included), sorted, as `key=value` lines. Only the
+separate Ed25519 third-party check leaves out `signature`. (Corrected
+2026-10-10: the first implementation also left out `signature`, so real
+launches from current clients failed with `bad_hash`.) It also states that **initData is
 empty when the Mini App is launched from a keyboard button** (or inline mode).
 Inline `web_app` buttons, the main Mini App, the menu button, and direct links
 receive it.

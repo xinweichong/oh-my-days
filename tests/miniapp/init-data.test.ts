@@ -24,9 +24,37 @@ describe("initData verification (ADR 0005)", () => {
     });
   });
 
-  it("builds the data-check string from sorted fields without hash or signature", () => {
+  it("builds the data-check string from every field but hash, signature included", () => {
+    // Telegram's reference: "a chain of all received fields"; only the Ed25519
+    // third-party check leaves out signature. Current clients send one.
     const params = new URLSearchParams({ user: "u", hash: "h", auth_date: "1", signature: "s" });
-    expect(dataCheckString(params)).toBe("auth_date=1\nuser=u");
+    expect(dataCheckString(params)).toBe("auth_date=1\nsignature=s\nuser=u");
+  });
+
+  it("accepts launch data signed as Telegram documents it, signature field included", async () => {
+    // Signed independently of the code under test, straight from the reference:
+    // hex(HMAC_SHA256(data_check_string, HMAC_SHA256("WebAppData" key, bot_token))).
+    const sent = { ...fields(), signature: "c2lnbmF0dXJlLWJ5dGVz" };
+    const check = Object.entries(sent)
+      .map(([k, v]) => `${k}=${v}`)
+      .sort()
+      .join("\n");
+    const hmac = async (key: BufferSource, data: string) =>
+      crypto.subtle.sign(
+        "HMAC",
+        await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, [
+          "sign",
+        ]),
+        new TextEncoder().encode(data),
+      );
+    const secret = await hmac(new TextEncoder().encode("WebAppData"), TOKEN);
+    const hash = [...new Uint8Array(await hmac(secret, check))]
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const raw = new URLSearchParams({ ...sent, hash }).toString();
+    expect((await verifyInitData(raw, TOKEN, NOW)).ok).toBe(true);
+    const changed = raw.replace("c2lnbmF0dXJlLWJ5dGVz", "b3RoZXItYnl0ZXM");
+    expect(await verifyInitData(changed, TOKEN, NOW)).toEqual({ ok: false, reason: "bad_hash" });
   });
 
   it("refuses a changed field, another bot's signature, or a missing hash", async () => {

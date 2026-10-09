@@ -14,6 +14,8 @@ export async function initDataFor(
       auth_date: String(authDate),
       query_id: "AAH-synthetic",
       user: JSON.stringify({ id: telegramUserId, first_name: "Test" }),
+      // Current Telegram clients also send an Ed25519 signature (synthetic here).
+      signature: "c3ludGhldGljLXNpZ25hdHVyZQ",
     },
     options.token ?? testConfig.telegramBotToken,
   );
