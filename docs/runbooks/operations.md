@@ -9,7 +9,7 @@ Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1 databa
 
 - `/health` in Telegram: connection, last successful sync, failed checks,
   pending changes, and messages that may not have arrived.
-- `GET https://ohmydays.xinweichong.com/healthz` returns `ok`.
+- `GET https://ohmydays.xinweichong.com/healthz` returns `ok tick_age_s=…` with status 200. Status 503 (`stale`) means no scheduled tick has finished in 10 minutes: check Cron Triggers and `wrangler tail`. `/health` in Telegram shows the same figure.
 - Counts only (no personal data):
 
   ```sh

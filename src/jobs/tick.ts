@@ -2,6 +2,7 @@ import { type RunnerDeps, runDueOperations } from "../application/operation-runn
 import { materializeSeries } from "../application/series";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
+import { recordTickStatement } from "../storage/app-state";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
 import { purgeExpiredAuthStatements } from "../storage/google";
 import { purgeFinishedInboxStatement, usersWithInboxWork } from "../storage/inbox";
@@ -117,6 +118,8 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     syncedCalendars,
     reminders,
   };
+  // Recorded only when the tick got this far, so /healthz shows a stalled scheduler.
+  await recordTickStatement(deps.db, deps.clock.now()).run();
   logEvent("tick.finished", { ...summary, frequent: due.frequent, cleanup: due.cleanup });
   return summary;
 }

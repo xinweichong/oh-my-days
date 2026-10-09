@@ -199,5 +199,9 @@ export function httpDeps(services: () => Services): HttpDeps {
       };
     },
     contactEmail: () => services().config.contactEmail,
+    liveness: () => {
+      const s = services();
+      return { db: s.db, clock: s.clock };
+    },
   };
 }

@@ -35,7 +35,7 @@ when the item is approved, before implementation.
 | A4 | Cancel on guided prompts, `/cancel` | 1 | — | Implemented (`feature/guided-cancel`) |
 | B1 | Warn before Google access expires | 2 | — | Approved |
 | B2 | Google OAuth verification (owner action) | any | — | Approved (owner action) |
-| B3 | Scheduler liveness in `/healthz` | 2 | — | Approved |
+| B3 | Scheduler liveness in `/healthz` | 2 | — | Implemented (`feature/scheduler-liveness`) |
 | B4 | Cheaper idle ticks (CPU and D1 reads) | 2 | — | Approved |
 | B5 | Late-agenda cutoff | 2 | Clarifies §7 catch-up | Approved |
 | C1 | Actionable agenda; snooze all overdue | 3 | — | Approved |

@@ -373,6 +373,9 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   (repeat, list, "Which Friday?") have Cancel too. `/cancel` drops the open
   question and says what was abandoned. An older Cancel never closes a newer
   question (`tests/flows/cancel.test.ts`).
+- B3: each tick records its finish time in `app_state`; `/healthz` returns
+  `ok tick_age_s=N`, or 503 `stale …` when none finished in 10 minutes or none
+  has run. `/health` shows the same age (`tests/http/liveness.test.ts`).
 
 Stage 2 decisions to review:
 

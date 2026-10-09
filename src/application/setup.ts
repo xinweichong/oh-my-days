@@ -3,6 +3,7 @@ import type { AppConfig } from "../env";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
+import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
 import { deleteContactStatement, listContacts } from "../storage/contacts";
 import {
   findConnection,
@@ -309,6 +310,7 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
   const attention = count("needs_resolution");
   if (attention > 0) lines.push(`Changes needing your attention: ${attention}`);
   if ((unknown?.n ?? 0) > 0) lines.push(`Messages that may not have arrived: ${unknown?.n}`);
+  lines.push(`Scheduler: ${describeTick(await lastTickAt(deps.db), deps.clock.now())}`);
 
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const row = [buttons.button(connection ? "Reauthorize" : "Connect", "reconnect", {})];
@@ -321,6 +323,13 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+function describeTick(last: number | null, now: number): string {
+  if (last === null) return "not run yet";
+  const minutes = Math.floor((now - last) / 60_000);
+  const age = minutes < 1 ? "last run just now" : `last run ${minutes} min ago`;
+  return now - last > MAX_TICK_AGE_MS ? `${age} (delayed: reminders may be late)` : age;
 }
 
 function describeSync(sync: SyncSummary, now: number, timeZone: string): string {

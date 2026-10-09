@@ -35,7 +35,7 @@ After rotating the webhook secret, update the Worker secret and call `setWebhook
 
 ## Checks after deploying
 
-- `GET /healthz` returns `ok`; `/` and `/privacy` return 200.
+- `GET /healthz` returns `ok tick_age_s=…` once the first scheduled tick has run (503 `stale …` before that, or when no tick has finished for 10 minutes); `/` and `/privacy` return 200.
 - Send `/health` to the bot.
 - `npx wrangler tail` streams logs (identifiers and error classes only).
 
