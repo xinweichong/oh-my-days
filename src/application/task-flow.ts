@@ -10,6 +10,7 @@ import {
   wallPartsAt,
   zonedInstant,
 } from "../domain/time";
+import type { IdGenerator } from "../shared/ids";
 import type { Guard } from "../storage/guard";
 import {
   clearPendingInputStatement,
@@ -58,7 +59,7 @@ import { answer, keyboardMessage, removeButtons } from "./ui";
 const PAGE_SIZE = 8;
 
 /** A task being created, or a deadline being changed. */
-interface TaskDraft {
+export interface TaskDraft {
   title: string;
   listId?: string;
   date?: LocalDate;
@@ -436,21 +437,48 @@ export function change(
   };
 }
 
-async function createTask(
+/** Extra buttons and text for a new task's result message. */
+export interface TaskCreationExtras {
+  /** Rows added under Undo (e.g. quick capture's "Make it an event"). */
+  rows?: (buttons: ActionButtons, taskId: string) => InlineKeyboardButton[][];
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
+}
+
+export async function createTask(
   deps: SetupDeps,
   user: UserRecord,
   draft: TaskDraft,
   deadline: Deadline,
+  extras: TaskCreationExtras = {},
 ): Promise<Reaction> {
   const lists = await listTaskLists(deps.db, user.id);
   const list = lists.find((l) => l.id === draft.listId) ?? lists.find((l) => l.isInbox);
   if (!list)
     return message(user.privateChatId, "Your lists aren't ready yet. Send /task to try again.");
-  const now = deps.clock.now();
-  const id = deps.ids.next();
-  const task = { id, userId: user.id, title: draft.title };
-  const buttons = new ActionButtons(deps.ids, user.id, now);
-  const text = `Task added to ${list.name}: ${draft.title}.\n${dueLabel(deadline, user.timezone)}.`;
+  return combine(
+    { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
+    taskCreation(deps.ids, deps.clock.now(), user, list, draft.title, deadline, extras),
+  );
+}
+
+/**
+ * A new task: the row, its deadline marker, and the result with Undo. Used by
+ * guided creation, quick capture, and switching an event to a task.
+ */
+export function taskCreation(
+  ids: IdGenerator,
+  now: number,
+  user: UserRecord,
+  list: { id: string; name: string },
+  title: string,
+  deadline: Deadline,
+  extras: TaskCreationExtras = {},
+): Reaction {
+  const id = ids.next();
+  const task = { id, userId: user.id, title };
+  const buttons = new ActionButtons(ids, user.id, now);
+  const text = `Task added to ${list.name}: ${title}.\n${dueLabel(deadline, user.timezone)}.${extras.note ? `\n\n${extras.note}` : ""}`;
   return {
     about: { kind: "task", taskId: id },
     replies: [
@@ -460,20 +488,20 @@ async function createTask(
         {
           inline_keyboard: [
             [buttons.button("Undo", "task_undo_create", { taskId: id, version: 1 })],
+            ...(extras.rows?.(buttons, id) ?? []),
           ],
         },
         null,
       ),
     ],
     statements: (db, guard) => [
-      clearPendingInputStatement(db, user.id),
       insertTaskStatement(
         db,
         {
           id,
           userId: user.id,
           listId: list.id,
-          title: draft.title,
+          title,
           deadline,
           status: "open",
           origin: "telegram",
@@ -481,9 +509,7 @@ async function createTask(
         now,
         guard,
       ),
-      ...(deadline.kind === "none"
-        ? []
-        : [projectTaskStatement(db, deps.ids, task, 1, now, guard)]),
+      ...(deadline.kind === "none" ? [] : [projectTaskStatement(db, ids, task, 1, now, guard)]),
       ...confirmedOnCreate(db, user.id, id, deadline, now, `task:${id}:1`, guard),
       ...buttons.statements(db, guard),
     ],
@@ -517,7 +543,7 @@ async function setDeadline(
   );
 }
 
-function timedDeadline(
+export function timedDeadline(
   user: UserRecord,
   date: LocalDate,
   time: string,

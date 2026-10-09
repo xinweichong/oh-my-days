@@ -138,7 +138,7 @@ export async function eventMenu(deps: EventFlowDeps, user: UserRecord): Promise<
   };
 }
 
-async function unavailable(deps: EventFlowDeps, user: UserRecord): Promise<Reaction | null> {
+export async function unavailable(deps: EventFlowDeps, user: UserRecord): Promise<Reaction | null> {
   if (user.setupStep !== "done") {
     return message(user.privateChatId, "Finish setup first: send /start to continue.");
   }
@@ -181,7 +181,7 @@ function askTitle(deps: EventFlowDeps, user: UserRecord): Reaction {
   return ask(deps, user, "event_title", {}, "What's the event called?");
 }
 
-function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
+export function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
   const today = localDateAt(deps.clock.now(), user.timezone);
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const day = (offset: number) => {
@@ -236,7 +236,7 @@ function askDuration(deps: EventFlowDeps, user: UserRecord, draft: Draft): React
 }
 
 /** Builds the event's start and end in the user's timezone, refusing skipped times. */
-function timedFields(
+export function timedFields(
   user: UserRecord,
   draft: Draft,
   length: { minutes: number } | { endTime: WallTime },
@@ -270,12 +270,21 @@ function timedFields(
   };
 }
 
-async function writableDefault(deps: EventFlowDeps, user: UserRecord) {
+/** The chosen calendar (default: the user's default), if listed and writable. */
+async function writableTarget(deps: EventFlowDeps, user: UserRecord, calendarId: string | null) {
   const calendars = await listStoredCalendars(deps.db, user.id);
+  const wanted = calendarId ?? user.defaultCalendarId;
   const target = calendars.find(
-    (c) => c.calendarId === user.defaultCalendarId && c.listed && isWritable(c.accessRole),
+    (c) => c.calendarId === wanted && c.listed && isWritable(c.accessRole),
   );
   return { calendars, target };
+}
+
+/** Calendars a new event can go to: listed, writable, and not the task calendar. */
+export function eventCalendars(user: UserRecord, calendars: StoredCalendar[]): StoredCalendar[] {
+  return calendars.filter(
+    (c) => c.listed && isWritable(c.accessRole) && c.calendarId !== user.taskCalendarId,
+  );
 }
 
 function overlapCalendarIds(user: UserRecord, calendars: StoredCalendar[]): string[] {
@@ -314,18 +323,28 @@ function startDate(fields: EventFields): LocalDate {
   return "date" in fields.start ? fields.start.date : fields.start.dateTime.slice(0, 10);
 }
 
-async function create(
+export interface CreateOptions {
+  /** A calendar other than the default (quick capture's `on <calendar>`). */
+  calendarId?: string | null;
+  /** Offered as "Make it a task" on the result (quick capture). */
+  switchTo?: CreateEventIntent["switchTo"];
+}
+
+export async function create(
   deps: EventFlowDeps,
   user: UserRecord,
   fields: EventFields,
   idempotencyKey: string,
   freq: Frequency | null = null,
+  options: CreateOptions = {},
 ): Promise<Reaction> {
-  const { calendars, target } = await writableDefault(deps, user);
+  const { calendars, target } = await writableTarget(deps, user, options.calendarId ?? null);
   if (!target) {
     return message(
       user.privateChatId,
-      "Your default calendar isn't available for new events. Choose another in /settings.",
+      options.calendarId
+        ? "That calendar isn't available for new events."
+        : "Your default calendar isn't available for new events. Choose another in /settings.",
     );
   }
   const intent: CreateEventIntent = {
@@ -334,6 +353,7 @@ async function create(
     fields,
     calendarName: target.summary,
     overlapCalendarIds: overlapCalendarIds(user, calendars),
+    ...(options.switchTo ? { switchTo: options.switchTo } : {}),
     ...(freq
       ? {
           recurrence: [toRRule(freq)],

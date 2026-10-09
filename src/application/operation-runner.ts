@@ -156,19 +156,17 @@ async function commitAttempt(
       attempt = { status: "succeeded", result: outcome.result, outcomeUnknown: false };
       const settled = { ...op, status: "succeeded" as const, result: outcome.result };
       const undo = handler.inverse?.(settled, user) ?? null;
-      const keyboard = undo
-        ? {
-            inline_keyboard: [
-              [
-                {
-                  text: "Undo",
-                  callback_data: callbackData(token("undo", null, now + UNDO_TTL_MS)),
-                },
-              ],
-            ],
-          }
-        : undefined;
-      notify("result", outcome, keyboard);
+      const extra = new ActionButtons(deps.ids, user.id, now, UNDO_TTL_MS);
+      const row = [
+        ...(undo
+          ? [{ text: "Undo", callback_data: callbackData(token("undo", null, now + UNDO_TTL_MS)) }]
+          : []),
+        ...(handler.resultButtons?.(settled) ?? []).map((b) =>
+          extra.button(b.text, b.action, b.payload),
+        ),
+      ];
+      notify("result", outcome, row.length ? { inline_keyboard: [row] } : undefined);
+      statements.push(...extra.statements(deps.db, guard));
       const follow = await handler.onSucceeded?.({
         op: settled,
         user,
@@ -179,13 +177,15 @@ async function commitAttempt(
       });
       if (follow) {
         statements.push(...(follow.statements?.(deps.db, guard) ?? []));
+        const about = follow.about;
+        if (about) statements.push(rememberItemStatement(deps.db, user.id, about, now, guard));
         follow.replies.forEach((call, i) => {
           statements.push(
             enqueueStatement(
               deps.db,
               deps.ids,
               user.id,
-              { logicalKey: `op:${op.id}:after:${i}`, call },
+              { logicalKey: `op:${op.id}:after:${i}`, call, ...(about ? { about } : {}) },
               now,
               guard,
             ),

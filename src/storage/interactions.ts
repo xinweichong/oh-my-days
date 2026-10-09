@@ -47,6 +47,24 @@ export async function findUiAction(
   return row ? { action: row.action, payload: JSON.parse(row.payload) } : null;
 }
 
+/**
+ * Retires the buttons of one question, so that only the first press acts.
+ * Presses are processed one at a time per user, so a second press finds its
+ * token gone.
+ */
+export function deleteUiActionsStatement(
+  db: D1Database,
+  userId: string,
+  tokens: string[],
+): D1PreparedStatement {
+  const list = tokens.length ? tokens : [""];
+  return db
+    .prepare(
+      `DELETE FROM ui_actions WHERE user_id = ? AND token IN (${list.map(() => "?").join(", ")})`,
+    )
+    .bind(userId, ...list);
+}
+
 export const PENDING_INPUT_KINDS = [
   "new_default_calendar_name",
   "timezone",

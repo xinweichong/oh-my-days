@@ -2,9 +2,11 @@ import type { CalendarEvent, ProviderError } from "../calendar/port";
 import { type EventField, type EventFields, pickEventFields } from "../domain/calendar-event";
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
 import { DEFAULT_EVENT_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
+import type { Deadline } from "../domain/tasks";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
 import type { ItemRef } from "../storage/outbox";
 import { claimReminderStatement } from "../storage/reminders";
+import { listTaskLists } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
 import type {
@@ -14,7 +16,8 @@ import type {
   SucceededContext,
 } from "./operation-types";
 import { canCheckOverlaps, findOverlaps, type Overlap } from "./overlaps";
-import type { Reaction } from "./reactions";
+import { combine, type Reaction } from "./reactions";
+import { taskCreation } from "./task-flow";
 
 /**
  * Calendar event operations through the shared pipeline. Each attempt reads
@@ -42,6 +45,15 @@ export interface CreateEventIntent extends EventContext {
   /** For a recurring event: its rules and the interpreted schedule shown to the user. */
   recurrence?: string[];
   repeatLabel?: string;
+  /** Quick capture: the task this event becomes if the user switches type. */
+  switchTo?: TaskInstead;
+}
+
+/** A task to create in place of a removed event (quick capture's type switch). */
+export interface TaskInstead {
+  title: string;
+  deadline: Deadline;
+  listId: string | null;
 }
 
 /**
@@ -79,6 +91,8 @@ export interface DeleteEventIntent {
   /** The event as previewed; a different current event requires a new confirmation. */
   base: EventFields;
   undo?: true;
+  /** Created once the event is removed (switching a just-created event to a task). */
+  replacedBy?: TaskInstead;
 }
 
 interface WriteResult {
@@ -186,6 +200,13 @@ export const createEventHandler: OperationHandler = {
   },
 
   onSucceeded: cacheWrite,
+
+  resultButtons(op) {
+    const intent = op.intent as CreateEventIntent;
+    return intent.switchTo
+      ? [{ text: "Make it a task", action: "capture_to_task", payload: { operationId: op.id } }]
+      : [];
+  },
 
   inverse(op, user) {
     const intent = op.intent as CreateEventIntent;
@@ -351,14 +372,21 @@ export const patchEventHandler: OperationHandler = {
 export const deleteEventHandler: OperationHandler = {
   kind: DELETE_EVENT,
 
-  async onSucceeded({ op, user }) {
+  async onSucceeded({ op, user, ids, now, db }) {
     const intent = op.intent as DeleteEventIntent;
-    return {
+    const removed: Reaction = {
       replies: [],
       statements: (db, guard) => [
         deleteEventStatement(db, user.id, intent.calendarId, intent.eventId, guard),
       ],
     };
+    const task = intent.replacedBy;
+    if (!task) return removed;
+    // Switching type: the task is created only once the event is verified gone.
+    const lists = await listTaskLists(db, user.id);
+    const list = lists.find((l) => l.id === task.listId) ?? lists.find((l) => l.isInbox);
+    if (!list) return removed;
+    return combine(removed, taskCreation(ids, now, user, list, task.title, task.deadline));
   },
 
   async execute({ op, calendar, user }) {
@@ -403,6 +431,7 @@ export const deleteEventHandler: OperationHandler = {
     const title = intent.base.summary;
     switch (event.kind) {
       case "succeeded":
+        if (intent.replacedBy) return `Removed event: ${title}.`;
         if (intent.undo) return `Undone: ${title} was removed from Google Calendar.`;
         if (intent.scope === "series") {
           return `Deleted every occurrence of ${title}.${intent.notify ? `\n\n${guestsEmailed(intent.notify, "cancellation")}` : ""}`;
@@ -416,7 +445,9 @@ export const deleteEventHandler: OperationHandler = {
           : `Pending: ${title} has not been deleted from Google Calendar. I'll retry automatically.`;
       case "failed":
         if (event.errorClass === "undo_stale") {
-          return `Undo isn't available: ${title} changed in Calendar since it was added.`;
+          return intent.replacedBy
+            ? `${title} changed in Calendar since it was added, so it stays an event.`
+            : `Undo isn't available: ${title} changed in Calendar since it was added.`;
         }
         return commonNotice(title, event, "delete");
       default:

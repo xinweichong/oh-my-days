@@ -78,11 +78,19 @@ export interface OperationHandler {
    * the result notice (e.g. recording a created calendar and the next setup step).
    */
   onSucceeded?(ctx: SucceededContext): Promise<Reaction>;
+  /** Buttons shown next to Undo on the success result (UI actions, bound to the user). */
+  resultButtons?(op: OperationRecord): ResultButton[];
   /**
    * The inverse change offered as Undo after success, if any. Undo follows the
    * normal confirmation rules: an inverse that deletes still asks first.
    */
   inverse?(op: OperationRecord, user: UserRecord): Omit<Proposal, "idempotencyKey"> | null;
+}
+
+export interface ResultButton {
+  text: string;
+  action: string;
+  payload: Record<string, unknown>;
 }
 
 export type HandlerRegistry = ReadonlyMap<string, OperationHandler>;

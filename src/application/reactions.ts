@@ -56,8 +56,18 @@ export class ActionButtons {
 
   button(text: string, action: string, payload: Record<string, unknown>): InlineKeyboardButton {
     const token = this.ids.next();
-    this.pending.push({ token, action, payload });
+    this.pending.push({ token, action, payload: { ...payload } });
     return { text, callback_data: `${UI_PREFIX}${token}` };
+  }
+
+  /** Adds fields to the payload of every button made so far. */
+  annotate(fields: Record<string, unknown>): void {
+    for (const p of this.pending) Object.assign(p.payload, fields);
+  }
+
+  /** Tokens of the buttons made so far, e.g. to retire them together later. */
+  tokens(): string[] {
+    return this.pending.map((p) => p.token);
   }
 
   statements(db: D1Database, guard: Guard): D1PreparedStatement[] {
