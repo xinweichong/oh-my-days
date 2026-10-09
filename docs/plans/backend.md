@@ -417,6 +417,10 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   refuses if it changed since creation; a lost response is reconciled by
   finding the event in the destination; Undo moves it back. Quick capture also
   accepts `on <calendar>` (`tests/flows/calendar-choice.test.ts`).
+- C5: `/tasks` has **Recent**: tasks completed or cancelled in the last 30 days
+  (newest first, up to 100, 8 per page); each opens its card with the existing
+  version-bound Reopen/Restore, which re-creates a deadline marker
+  (`tests/flows/recent.test.ts`).
 
 Stage 2 decisions to review:
 

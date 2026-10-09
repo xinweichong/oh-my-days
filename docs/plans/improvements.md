@@ -42,7 +42,7 @@ when the item is approved, before implementation.
 | C2 | Location, call link, Calendar link in event reminders | 3 | — | Implemented (`feature/improvements`); privacy policy updated |
 | C3 | `/find` and date jump for events | 3 | — | Implemented (`feature/improvements`) |
 | C4 | Choose the calendar for a new event | 3 | — | Implemented (`feature/improvements`) |
-| C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Approved |
+| C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Implemented (`feature/improvements`) |
 | C6 | Restore a deleted guest-free event | 3 | — | Approved |
 | C7 | Timezone buttons and city names | 3 | — | Approved |
 | D1 | Configurable agenda time and default reminder lead | 4 | Changes fixed defaults | Approved |

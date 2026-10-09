@@ -365,6 +365,25 @@ export async function listOpenTasks(
   return results.map(toTask);
 }
 
+/** Tasks completed or cancelled since `since`, most recent first. */
+export async function listRecentTasks(
+  db: D1Database,
+  userId: string,
+  since: number,
+  limit: number,
+): Promise<(TaskRecord & { closedAt: number })[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${TASK_COLUMNS}, COALESCE(t.completed_at, t.cancelled_at) AS closed_at ${FROM}
+       WHERE t.user_id = ? AND t.status IN ('completed', 'cancelled')
+         AND COALESCE(t.completed_at, t.cancelled_at) >= ?
+       ORDER BY closed_at DESC LIMIT ?`,
+    )
+    .bind(userId, since, limit)
+    .all<TaskRow & { closed_at: number }>();
+  return results.map((r) => ({ ...toTask(r), closedAt: r.closed_at }));
+}
+
 /** `%` and `_` in user text match literally in LIKE ... ESCAPE '\'. */
 export function likePattern(text: string): string {
   return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;

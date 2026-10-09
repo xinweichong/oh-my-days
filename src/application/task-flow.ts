@@ -32,6 +32,7 @@ import {
   insertListStatement,
   insertTaskStatement,
   listOpenTasks,
+  listRecentTasks,
   listTaskLists,
   type TaskChanges,
   type TaskList,
@@ -171,11 +172,60 @@ async function tasksView(
       .map((l) => buttons.button(l.name, "task_list", { listId: l.id, page: 0 })),
   ];
   for (let i = 0; i < filters.length; i += 3) rows.push(filters.slice(i, i + 3));
+  rows.push([buttons.button("Recent", "task_recent", { page: 0 })]);
   if (list && !list.isInbox)
     rows.push([buttons.button(`Delete list ${list.name}`, "list_delete", { listId: list.id })]);
 
   const heading = list ? `${list.name}: ${total} open` : `Open tasks: ${total}`;
   const text = total === 0 ? `${heading}\n\nNothing open${list ? " in this list" : ""}.` : heading;
+  return {
+    replies: [keyboardMessage(user, text, { inline_keyboard: rows }, editMessageId)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+/** How far back the Recent view goes. */
+export const RECENT_DAYS = 30;
+const RECENT_LIMIT = 100;
+
+/** Completed and cancelled tasks from the last 30 days; each opens Reopen or Restore. */
+async function recentView(
+  deps: SetupDeps,
+  user: UserRecord,
+  page: number,
+  editMessageId: number | null,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  const all = await listRecentTasks(
+    deps.db,
+    user.id,
+    now - RECENT_DAYS * 24 * 60 * 60_000,
+    RECENT_LIMIT,
+  );
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const rows: InlineKeyboardButton[][] = all
+    .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    .map((t) => [
+      buttons.button(
+        truncate(
+          `${t.status === "completed" ? "Done" : "Cancelled"} ${formatDayLabel(localDateAt(t.closedAt, user.timezone))} · ${taskLabel(t, user, true)}`,
+          60,
+        ),
+        "task_pick",
+        { taskId: t.id },
+      ),
+    ]);
+  const nav: InlineKeyboardButton[] = [];
+  if (page > 0) nav.push(buttons.button("Previous", "task_recent", { page: page - 1 }));
+  if ((page + 1) * PAGE_SIZE < all.length) {
+    nav.push(buttons.button("More", "task_recent", { page: page + 1 }));
+  }
+  if (nav.length) rows.push(nav);
+  rows.push([buttons.button("Open tasks", "task_list", { listId: null, page: 0 })]);
+  const text =
+    all.length === 0
+      ? `Nothing completed or cancelled in the last ${RECENT_DAYS} days.`
+      : `Completed and cancelled, last ${RECENT_DAYS} days: ${all.length}`;
   return {
     replies: [keyboardMessage(user, text, { inline_keyboard: rows }, editMessageId)],
     statements: (db, guard) => buttons.statements(db, guard),
@@ -622,6 +672,11 @@ export async function handleTaskAction(
       );
     case "task_lists":
       return combine(ack(), await listsView(deps, user));
+    case "task_recent":
+      return combine(
+        ack(),
+        await recentView(deps, user, Number(payload.page ?? 0), callback.messageId),
+      );
     case "task_pick":
       return combine(ack(), await taskCard(deps, user, taskId));
 
