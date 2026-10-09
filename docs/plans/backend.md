@@ -432,6 +432,12 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   matches the runtime's IANA zones by city name (`London` → `Europe/London`),
   and a shared name or a partial name offers choices. Region/City still works
   (`tests/domain/timezones.test.ts`, `tests/flows/timezone-choice.test.ts`).
+- D1: `/settings` sets the agenda hour (6–11am, default 8) and the default
+  reminder lead for timed events and exact deadlines (10 min–2 h, default 1 h;
+  per-item overrides win). Migration 0016 adds both, with a trigger that clears
+  `next_due_at`. The agenda stays keyed by local date. "Tomorrow at …" snoozes
+  follow the agenda hour. The setup summary no longer says event and task
+  creation "arrives in a later update" (`tests/flows/schedule-settings.test.ts`).
 
 Stage 2 decisions to review:
 

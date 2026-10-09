@@ -5,7 +5,7 @@ import { addDays, type LocalDate, localDateAt, wallPartsAt, weekday, zonedInstan
 export const DEFAULT_EVENT_REMINDER_MINUTES = 60;
 /** Spec §6: exact-time deadlines are reminded one hour before. */
 export const DEFAULT_TASK_REMINDER_MINUTES = 60;
-/** Spec §7: the daily agenda at 8am in the user's timezone. */
+/** Spec §7: the daily agenda at 8am in the user's timezone, unless changed (D1). */
 export const AGENDA_HOUR = 8;
 
 /**
@@ -50,9 +50,13 @@ export const AGENDA_CATCH_UP_HOUR = 12;
 /** From this hour a missed agenda is skipped and the date counted as covered. */
 export const AGENDA_SKIP_HOUR = 20;
 
-/** The local date the agenda belongs to, if it is due (8am or later local time). */
-export function agendaDueDate(now: number, timeZone: string): LocalDate | null {
-  return wallPartsAt(now, timeZone).hour >= AGENDA_HOUR ? localDateAt(now, timeZone) : null;
+/** The local date the agenda belongs to, if it is due (its hour or later, local time). */
+export function agendaDueDate(
+  now: number,
+  timeZone: string,
+  agendaHour: number = AGENDA_HOUR,
+): LocalDate | null {
+  return wallPartsAt(now, timeZone).hour >= agendaHour ? localDateAt(now, timeZone) : null;
 }
 
 /**
@@ -60,10 +64,16 @@ export function agendaDueDate(now: number, timeZone: string): LocalDate | null {
  * (now, if that has passed), otherwise tomorrow at 8am. A skipped 8am (DST)
  * falls back to the following hour.
  */
-export function nextAgendaAt(now: number, timeZone: string, todayCovered: boolean): number {
+export function nextAgendaAt(
+  now: number,
+  timeZone: string,
+  todayCovered: boolean,
+  agendaHour: number = AGENDA_HOUR,
+): number {
   const today = localDateAt(now, timeZone);
   const date = todayCovered ? addDays(today, 1) : today;
-  for (const time of [`${String(AGENDA_HOUR).padStart(2, "0")}:00`, "09:00"]) {
+  const hour = (h: number) => `${String(h).padStart(2, "0")}:00`;
+  for (const time of [hour(agendaHour), hour(agendaHour + 1)]) {
     const at = zonedInstant(date, time, timeZone);
     if (at.ok) return todayCovered ? at.instant : Math.max(now, at.instant);
   }
@@ -77,9 +87,10 @@ export function nextAgendaAt(now: number, timeZone: string, todayCovered: boolea
 export function agendaKind(
   now: number,
   timeZone: string,
+  agendaHour: number = AGENDA_HOUR,
 ): { date: LocalDate; kind: "full" | "catch_up" | "skip" } | null {
   const hour = wallPartsAt(now, timeZone).hour;
-  if (hour < AGENDA_HOUR) return null;
+  if (hour < agendaHour) return null;
   const kind =
     hour >= AGENDA_SKIP_HOUR ? "skip" : hour >= AGENDA_CATCH_UP_HOUR ? "catch_up" : "full";
   return { date: localDateAt(now, timeZone), kind };

@@ -1,7 +1,5 @@
 import { parseWhen } from "../domain/parse-input";
 import {
-  DEFAULT_EVENT_REMINDER_MINUTES,
-  DEFAULT_TASK_REMINDER_MINUTES,
   isOverdue,
   monthStart,
   nextMonthStart,
@@ -26,7 +24,7 @@ import {
 } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatDayLabel, formatTime } from "../telegram/format";
+import { formatDayLabel, formatTime, formatWallTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import {
   type DayTasks,
@@ -92,7 +90,9 @@ export async function dailyView(deps: ViewFlowDeps, user: UserRecord): Promise<R
   const buttons = new ActionButtons(deps.ids, user.id, now);
   const tasks = await tasksForDay(deps.db, user, date, now, false);
   return {
-    replies: [keyboardMessage(user, text, { inline_keyboard: dayButtons(buttons, tasks) }, null)],
+    replies: [
+      keyboardMessage(user, text, { inline_keyboard: dayButtons(buttons, tasks, user) }, null),
+    ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
 }
@@ -101,7 +101,11 @@ export async function dailyView(deps: ViewFlowDeps, user: UserRecord): Promise<R
  * Buttons under the agenda and /daily: views, then "Act on a task" (select a
  * task, then Done · Snooze · Edit) and "Snooze all overdue" when relevant.
  */
-export function dayButtons(buttons: ActionButtons, tasks: DayTasks): InlineKeyboardButton[][] {
+export function dayButtons(
+  buttons: ActionButtons,
+  tasks: DayTasks,
+  user: Pick<UserRecord, "agendaHour">,
+): InlineKeyboardButton[][] {
   const rows = [
     [
       buttons.button("View tasks", "task_list", { listId: null, page: 0 }),
@@ -112,7 +116,13 @@ export function dayButtons(buttons: ActionButtons, tasks: DayTasks): InlineKeybo
     rows.push([buttons.button("Act on a task", "view_act", { page: 0 })]);
   }
   if (tasks.overdue.length > 0) {
-    rows.push([buttons.button("Snooze all overdue → tomorrow 8am", "snooze_overdue", {})]);
+    rows.push([
+      buttons.button(
+        `Snooze all overdue → tomorrow ${agendaTimeLabel(user)}`,
+        "snooze_overdue",
+        {},
+      ),
+    ]);
   }
   return rows;
 }
@@ -156,16 +166,25 @@ function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
-function tomorrowAt8(now: number, timeZone: string): number | null {
-  const at = zonedInstant(addDays(localDateAt(now, timeZone), 1), "08:00", timeZone);
+/** Tomorrow at the user's agenda time, so the snooze ends in the agenda. */
+function tomorrowAtAgenda(now: number, user: UserRecord): number | null {
+  const at = zonedInstant(
+    addDays(localDateAt(now, user.timezone), 1),
+    `${String(user.agendaHour).padStart(2, "0")}:00`,
+    user.timezone,
+  );
   return at.ok ? at.instant : null;
+}
+
+function agendaTimeLabel(user: Pick<UserRecord, "agendaHour">): string {
+  return formatWallTime(`${String(user.agendaHour).padStart(2, "0")}:00`);
 }
 
 /** Asks once, with the count, before snoozing every overdue task. */
 async function proposeSnoozeOverdue(deps: ViewFlowDeps, user: UserRecord): Promise<Reaction> {
   const now = deps.clock.now();
   const { overdue } = await tasksForDay(deps.db, user, today(deps, user), now, false);
-  const until = tomorrowAt8(now, user.timezone);
+  const until = tomorrowAtAgenda(now, user);
   if (overdue.length === 0 || until === null) {
     return message(user.privateChatId, "Nothing is overdue right now.");
   }
@@ -371,7 +390,7 @@ export async function remindersView(deps: ViewFlowDeps, user: UserRecord): Promi
     const key = `${e.calendarId}/${e.eventId}`;
     const minutes = eventOverrides.has(key)
       ? (eventOverrides.get(key) ?? null)
-      : DEFAULT_EVENT_REMINDER_MINUTES;
+      : user.reminderMinutes;
     if (minutes === null) continue;
     const at = e.startsAt - minutes * 60_000;
     if (at < now) continue;
@@ -387,7 +406,7 @@ export async function remindersView(deps: ViewFlowDeps, user: UserRecord): Promi
     if (t.deadline.kind !== "datetime" || t.deadline.at <= now) continue;
     const minutes = taskOverrides.has(t.id)
       ? (taskOverrides.get(t.id) ?? null)
-      : DEFAULT_TASK_REMINDER_MINUTES;
+      : user.reminderMinutes;
     if (minutes === null) continue;
     const at = t.deadline.at - minutes * 60_000;
     if (at >= now && at < now + 7 * 86_400_000) {
@@ -405,7 +424,7 @@ export async function remindersView(deps: ViewFlowDeps, user: UserRecord): Promi
       ? sorted.slice(0, 20).map((u) => `• ${when(u.at, user)} — ${u.line}`)
       : ["None in the next day."]),
   );
-  lines.push("", "Date-only deadlines are in the 8am agenda.");
+  lines.push("", `Date-only deadlines are in the ${agendaTimeLabel(user)} agenda.`);
   if (snoozed.length) lines.push("", "Snoozed", ...snoozed);
 
   const custom: string[] = [];
@@ -449,16 +468,17 @@ function when(instant: number, user: UserRecord): string {
 export function snoozeMenu(deps: SetupDeps, user: UserRecord, taskId: string): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const now = deps.clock.now();
-  const tomorrow8 = zonedInstant(
-    addDays(localDateAt(now, user.timezone), 1),
-    "08:00",
-    user.timezone,
-  );
+  const tomorrow = tomorrowAtAgenda(now, user);
   const row: InlineKeyboardButton[] = [
     buttons.button("In 1 hour", "snooze_set", { taskId, until: now + 3_600_000 }),
   ];
-  if (tomorrow8.ok)
-    row.push(buttons.button("Tomorrow at 8am", "snooze_set", { taskId, until: tomorrow8.instant }));
+  if (tomorrow !== null)
+    row.push(
+      buttons.button(`Tomorrow at ${agendaTimeLabel(user)}`, "snooze_set", {
+        taskId,
+        until: tomorrow,
+      }),
+    );
   return {
     replies: [
       keyboardMessage(

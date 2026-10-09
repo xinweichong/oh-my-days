@@ -1,7 +1,7 @@
 import type { CalendarEvent, ProviderError } from "../calendar/port";
 import { type EventField, type EventFields, pickEventFields } from "../domain/calendar-event";
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
-import { DEFAULT_EVENT_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
+import { reminderKeys } from "../domain/schedule";
 import type { Deadline } from "../domain/tasks";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
 import type { ItemRef } from "../storage/outbox";
@@ -705,9 +705,7 @@ async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<
   // Created or moved inside the reminder window: this confirmation is the
   // approaching notice, so no separate reminder follows.
   const insideWindow =
-    startsAt !== null &&
-    startsAt > now &&
-    startsAt - DEFAULT_EVENT_REMINDER_MINUTES * 60_000 <= now;
+    startsAt !== null && startsAt > now && startsAt - user.reminderMinutes * 60_000 <= now;
   return {
     replies: [],
     statements: (db, guard) => [
@@ -716,12 +714,7 @@ async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<
             claimReminderStatement(
               db,
               user.id,
-              reminderKeys.event(
-                intent.calendarId,
-                intent.eventId,
-                startsAt,
-                DEFAULT_EVENT_REMINDER_MINUTES,
-              ),
+              reminderKeys.event(intent.calendarId, intent.eventId, startsAt, user.reminderMinutes),
               "confirmed_on_create",
               op.id,
               now,

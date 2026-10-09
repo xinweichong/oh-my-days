@@ -1,6 +1,6 @@
 import { parseDate, parseTime } from "../domain/parse-input";
 import { describeRecurrence, type Frequency } from "../domain/recurrence";
-import { DEFAULT_TASK_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
+import { reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
 import {
   addDays,
@@ -390,7 +390,7 @@ function askDueTime(deps: SetupDeps, user: UserRecord, draft: TaskDraft): Reacti
  */
 function confirmedOnCreate(
   db: D1Database,
-  userId: string,
+  user: Pick<UserRecord, "id" | "reminderMinutes">,
   taskId: string,
   deadline: Deadline,
   now: number,
@@ -398,13 +398,13 @@ function confirmedOnCreate(
   guard: Guard,
 ): D1PreparedStatement[] {
   if (deadline.kind !== "datetime") return [];
-  const due = deadline.at - DEFAULT_TASK_REMINDER_MINUTES * 60_000;
+  const due = deadline.at - user.reminderMinutes * 60_000;
   if (deadline.at <= now || due > now) return [];
   return [
     claimReminderStatement(
       db,
-      userId,
-      reminderKeys.taskDue(taskId, deadline.at, DEFAULT_TASK_REMINDER_MINUTES),
+      user.id,
+      reminderKeys.taskDue(taskId, deadline.at, user.reminderMinutes),
       "confirmed_on_create",
       claimedBy,
       now,
@@ -453,7 +453,7 @@ export function change(
       ...(changes.deadline
         ? confirmedOnCreate(
             db,
-            user.id,
+            user,
             task.id,
             changes.deadline,
             now,
@@ -551,7 +551,7 @@ export function taskCreation(
         guard,
       ),
       ...(deadline.kind === "none" ? [] : [projectTaskStatement(db, ids, task, 1, now, guard)]),
-      ...confirmedOnCreate(db, user.id, id, deadline, now, `task:${id}:1`, guard),
+      ...confirmedOnCreate(db, user, id, deadline, now, `task:${id}:1`, guard),
       ...buttons.statements(db, guard),
     ],
   };

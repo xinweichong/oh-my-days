@@ -63,7 +63,8 @@ beneath every agenda entry. Individual task reminders show **Done · Snooze**
 directly. The precise task-selection mechanism for a long agenda remains an
 implementation detail; preserve an unambiguous occurrence-specific target.
 
-Snooze choices: **In 1 hour · Tomorrow at 8am · Choose date/time**. Resolve shortcuts
+Snooze choices: **In 1 hour · Tomorrow at 8am · Choose date/time** ("8am" is the
+user's agenda time, improvement D1). Resolve shortcuts
 in the user's timezone, then show the resulting date/time and unchanged deadline:
 
 > I'll remind you on Sat 26 Sep at 8am.

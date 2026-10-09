@@ -25,6 +25,10 @@ export interface UserRecord {
   typingHintsShown: number;
   /** Earlier timezones, newest first. */
   recentTimezones: string[];
+  /** Local hour of the daily agenda (6–11). */
+  agendaHour: number;
+  /** Default minutes before timed events and exact deadlines to remind. */
+  reminderMinutes: number;
 }
 
 interface UserRow {
@@ -38,6 +42,8 @@ interface UserRow {
   task_calendar_id: string | null;
   typing_hints_shown: number;
   recent_timezones: string;
+  agenda_hour: number;
+  reminder_minutes: number;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -52,11 +58,14 @@ function toRecord(row: UserRow): UserRecord {
     taskCalendarId: row.task_calendar_id,
     typingHintsShown: row.typing_hints_shown,
     recentTimezones: parseZones(row.recent_timezones),
+    agendaHour: row.agenda_hour,
+    reminderMinutes: row.reminder_minutes,
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
-  default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones`;
+  default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones, agenda_hour,
+  reminder_minutes`;
 
 function parseZones(value: string): string[] {
   try {
@@ -200,4 +209,27 @@ export function setNextDueStatement(
   return db
     .prepare("UPDATE users SET next_due_at = ? WHERE id = ? AND due_version = ?")
     .bind(at, userId, dueVersion);
+}
+
+/** Agenda hours a user can choose; outside these, the late-agenda rules would overlap. */
+export const AGENDA_HOURS = [6, 7, 8, 9, 10, 11] as const;
+/** Default reminder leads a user can choose, in minutes. */
+export const REMINDER_LEADS = [10, 30, 60, 120] as const;
+
+export function setScheduleSettingStatement(
+  db: D1Database,
+  userId: string,
+  setting: { agendaHour: number } | { reminderMinutes: number },
+  now: number,
+): D1PreparedStatement {
+  const [column, value] =
+    "agendaHour" in setting
+      ? ["agenda_hour", setting.agendaHour]
+      : ["reminder_minutes", setting.reminderMinutes];
+  return db
+    .prepare(
+      `UPDATE users SET ${column} = ?, settings_version = settings_version + 1, updated_at = ?
+       WHERE id = ?`,
+    )
+    .bind(value, now, userId);
 }

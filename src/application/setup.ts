@@ -21,14 +21,17 @@ import {
 } from "../storage/interactions";
 import { claimAgendaStatement } from "../storage/reminders";
 import {
+  AGENDA_HOURS,
   advanceSetupStatement,
+  REMINDER_LEADS,
   type SetupStep,
+  setScheduleSettingStatement,
   setTimezoneStatement,
   setUserCalendarStatement,
   type UserRecord,
 } from "../storage/users";
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from "../telegram/api";
-import { formatShortStart } from "../telegram/format";
+import { formatShortStart, formatWallTime } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
@@ -96,7 +99,7 @@ async function advance(
   const updated = { ...user, ...changes, setupStep: to };
   const next = await setupPrompt(deps, updated);
   // Setup finishing after 8am: today's agenda is covered; the first is tomorrow's.
-  const covered = to === "done" ? agendaDueDate(now, updated.timezone) : null;
+  const covered = to === "done" ? agendaDueDate(now, updated.timezone, updated.agendaHour) : null;
   return combine(
     {
       replies: [],
@@ -243,14 +246,56 @@ async function settingsLines(deps: SetupDeps, user: UserRecord): Promise<string[
     `Default for new events: ${name(user.defaultCalendarId)}`,
     `Task deadlines: ${name(user.taskCalendarId)}`,
     `Timezone: ${user.timezone}`,
+    `Daily agenda: ${hourLabel(user.agendaHour)}`,
+    `Default reminder: ${leadLabel(user.reminderMinutes)}`,
   ];
+}
+
+function hourLabel(hour: number): string {
+  return formatWallTime(`${String(hour).padStart(2, "0")}:00`);
+}
+
+/** "1 hour before", "30 minutes before". */
+export function leadLabel(minutes: number): string {
+  if (minutes % 60 === 0) return minutes === 60 ? "1 hour before" : `${minutes / 60} hours before`;
+  return `${minutes} minutes before`;
+}
+
+function schedulePicker(deps: SetupDeps, user: UserRecord, setting: "agenda" | "lead"): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const options =
+    setting === "agenda"
+      ? AGENDA_HOURS.map((hour) =>
+          buttons.button(
+            `${hour === user.agendaHour ? "✓ " : ""}${hourLabel(hour)}`,
+            "set_agenda_hour",
+            { hour },
+          ),
+        )
+      : REMINDER_LEADS.map((minutes) =>
+          buttons.button(
+            `${minutes === user.reminderMinutes ? "✓ " : ""}${leadLabel(minutes)}`,
+            "set_reminder_lead",
+            { minutes },
+          ),
+        );
+  const rows: InlineKeyboardButton[][] = [];
+  for (let i = 0; i < options.length; i += 3) rows.push(options.slice(i, i + 3));
+  const text =
+    setting === "agenda"
+      ? "When should the daily agenda arrive?"
+      : "How long before timed events and exact deadlines should I remind you? Reminders set on one item stay as they are.";
+  return {
+    replies: [keyboardMessage(user, text, { inline_keyboard: rows }, null)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
 }
 
 async function summary(deps: SetupDeps, user: UserRecord, heading: string): Promise<Reaction> {
   const lines = await settingsLines(deps, user);
   return message(
     user.privateChatId,
-    `${heading}\n\n${lines.join("\n")}\n\nAdding events and tasks arrives in a later update. Use /settings to change these.`,
+    `${heading}\n\n${lines.join("\n")}\n\nType what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.`,
   );
 }
 
@@ -272,6 +317,10 @@ export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<R
       [
         buttons.button("Timezone", "open_timezone", {}),
         buttons.button("Reconnect Google", "reconnect", {}),
+      ],
+      [
+        buttons.button("Agenda time", "open_agenda_hour", {}),
+        buttons.button("Default reminder", "open_reminder_lead", {}),
       ],
       [buttons.button("Contacts", "open_contacts", {})],
     ],
@@ -523,6 +572,44 @@ export async function handleUiAction(
       return combine(ack(), await defaultPicker(deps, user, "settings"));
     case "open_timezone":
       return combine(ack(), timezonePrompt(deps, user, "settings"));
+    case "open_agenda_hour":
+      return combine(ack(), schedulePicker(deps, user, "agenda"));
+    case "open_reminder_lead":
+      return combine(ack(), schedulePicker(deps, user, "lead"));
+    case "set_agenda_hour": {
+      const hour = Number(payload.hour);
+      if (!AGENDA_HOURS.some((h) => h === hour)) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [
+          {
+            method: "sendMessage",
+            params: {
+              chat_id: user.privateChatId,
+              text: `The daily agenda now arrives at ${hourLabel(hour)}. A day that already had its agenda won't get a second one.`,
+            },
+          },
+        ],
+        statements: (db) => [setScheduleSettingStatement(db, user.id, { agendaHour: hour }, now)],
+      });
+    }
+    case "set_reminder_lead": {
+      const minutes = Number(payload.minutes);
+      if (!REMINDER_LEADS.some((m) => m === minutes)) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [
+          {
+            method: "sendMessage",
+            params: {
+              chat_id: user.privateChatId,
+              text: `Reminders now come ${leadLabel(minutes)} timed events and exact deadlines, unless set on the item.`,
+            },
+          },
+        ],
+        statements: (db) => [
+          setScheduleSettingStatement(db, user.id, { reminderMinutes: minutes }, now),
+        ],
+      });
+    }
 
     case "force_poll": {
       const result = await requestForcePoll(deps.db, user.id, now);

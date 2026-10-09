@@ -3,13 +3,7 @@ import { ActionButtons } from "../application/reactions";
 import { dueLabel } from "../application/task-flow";
 import { dayButtons } from "../application/view-flow";
 import type { CalendarPort, CalendarSyncSource, EventDisplay } from "../calendar/port";
-import {
-  agendaKind,
-  DEFAULT_EVENT_REMINDER_MINUTES,
-  DEFAULT_TASK_REMINDER_MINUTES,
-  nextAgendaAt,
-  reminderKeys,
-} from "../domain/schedule";
+import { agendaKind, nextAgendaAt, reminderKeys } from "../domain/schedule";
 import { localDateAt } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
@@ -110,7 +104,7 @@ async function nextDue(
   const covered = await agendaSent(deps.db, user.id, localDateAt(now, user.timezone));
   const candidates = [
     now + MAX_IDLE_MS,
-    nextAgendaAt(now, user.timezone, covered),
+    nextAgendaAt(now, user.timezone, covered, user.agendaHour),
     nextReminder ?? Number.POSITIVE_INFINITY,
     (await nextSnoozeEnd(deps.db, user.id, now)) ?? Number.POSITIVE_INFINITY,
   ];
@@ -118,14 +112,15 @@ async function nextDue(
 }
 
 /**
- * One combined agenda per local date, sent at 8am or on the first tick after.
+ * One combined agenda per local date, sent at the user's agenda time (8am by
+ * default) or on the first tick after.
  * Late after downtime (spec §8): from noon only the rest of the day, and from
  * 8pm none, with the date recorded as covered. Keyed by local date, so a
  * timezone change cannot produce a second agenda for a date already covered.
  */
 async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean> {
   const now = deps.clock.now();
-  const due = agendaKind(now, user.timezone);
+  const due = agendaKind(now, user.timezone, user.agendaHour);
   if (!due || (await agendaSent(deps.db, user.id, due.date))) return false;
   const { date } = due;
   if (due.kind === "skip") {
@@ -148,7 +143,7 @@ async function sendAgenda(deps: ReminderDeps, user: UserRecord): Promise<boolean
     .filter((t) => t.snoozedUntil !== null && t.snoozedUntil <= now)
     .map((t) => reminderKeys.snooze(t.id, t.snoozedUntil as number));
   const buttons = new ActionButtons(deps.ids, user.id, now);
-  const keyboard = dayButtons(buttons, listed);
+  const keyboard = dayButtons(buttons, listed, user);
   const results = await deps.db.batch([
     claimAgendaStatement(deps.db, user.id, date, claim, now),
     ...coveredSnoozes.map((key) =>
@@ -219,7 +214,7 @@ async function collectDue(
     const targetKey = `${e.calendarId}/${e.eventId}`;
     const minutes = eventOverrides.has(targetKey)
       ? eventOverrides.get(targetKey)
-      : DEFAULT_EVENT_REMINDER_MINUTES;
+      : user.reminderMinutes;
     if (minutes === null || minutes === undefined) continue;
     const dueAt = e.startsAt - minutes * 60_000;
     if (dueAt > now) {
@@ -267,9 +262,7 @@ async function collectDue(
     }
     if (task.deadline.kind !== "datetime" || task.deadline.at <= now || isSnoozed(task, now))
       continue;
-    const minutes = taskOverrides.has(task.id)
-      ? taskOverrides.get(task.id)
-      : DEFAULT_TASK_REMINDER_MINUTES;
+    const minutes = taskOverrides.has(task.id) ? taskOverrides.get(task.id) : user.reminderMinutes;
     if (minutes === null || minutes === undefined) continue;
     const dueAt = task.deadline.at - minutes * 60_000;
     if (dueAt > now) {

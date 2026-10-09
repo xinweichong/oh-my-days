@@ -135,7 +135,7 @@ Undo must restore the prior state only when it remains valid. It must not overwr
 - Default event duration: **one hour** when no end time or duration is given.
 - Explicit end times and durations override that default.
 - Show the complete interpreted range in the result, such as Friday, 7–8pm.
-- Default Telegram reminder: **one hour before the event**.
+- Default Telegram reminder: **one hour before the event**. The user can change this default in `/settings` (amended 2026-10-10, [improvement D1](../plans/improvements.md#6-phase-4--further-features-d1d6)); it also applies to exact-time task deadlines.
 - Apply this reminder to all timed events in selected calendars, including events created outside the bot.
 - Exclude cancelled events and invitations the user has declined.
 - Permit per-event reminder overrides in natural language or structured input.
@@ -208,12 +208,14 @@ Example: September's overdue rent task remains open when October's rent task is 
 
 ### Daily agenda
 
-Send one combined message at **8am in the user's configured timezone** containing:
+Send one combined message at **8am in the user's configured timezone** (by default; the user can choose 6–11am in `/settings`, amended 2026-10-10 by improvement D1) containing:
 
 - Today's events.
 - Tasks due today.
 - Overdue tasks eligible for reminders.
 - A count of open-ended tasks, such as `6 tasks without deadlines`, with a View tasks action.
+
+References to "8am" below mean the configured agenda time. The agenda is keyed by local date, so changing the time never sends a second agenda for a date already covered.
 
 Date-only due reminders and the overdue summary are combined into this message. Do not send duplicate 8am task messages for the same items. Overdue tasks continue to appear daily until completed, cancelled, snoozed, or rescheduled.
 
