@@ -2,6 +2,8 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "oh-my-days",
   "main": "src/worker.ts",
+  // Bundles the Mini App client into src/miniapp/generated before each build (ADR 0005).
+  "build": { "command": "npm run build:app" },
   // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
   "compatibility_date": "2026-08-15",
   "observability": { "enabled": true },
