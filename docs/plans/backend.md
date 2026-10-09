@@ -461,6 +461,13 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   (migration 0020). The task card lists upcoming work time, preferring the
   synced copy (so Google moves and deletions show). The deadline never changes,
   and completing the task leaves the event (`tests/flows/work-sessions.test.ts`).
+- D6: `/export` sends one JSON document (tasks with history, lists, recurring
+  tasks, contacts; no tokens, account, or event copy), at most 1 MB, through the
+  outbox as `sendDocument` (multipart upload; never replayed after an unknown
+  outcome; the payload is cleared once sent). Migration 0021 rebuilds
+  `telegram_outbox` to allow the method, keeping rows and indexes
+  (`tests/flows/export.test.ts`, `tests/telegram/client.test.ts`,
+  `tests/storage/d1-semantics.test.ts`).
 
 Stage 2 decisions to review:
 

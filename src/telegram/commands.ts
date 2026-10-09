@@ -23,6 +23,7 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "reminders", description: "Upcoming and snoozed reminders" },
   { command: "settings", description: "Calendars, default calendar, and timezone" },
   { command: "health", description: "Google Calendar connection status" },
+  { command: "export", description: "Your tasks, lists, and contacts as a file" },
   { command: "cancel", description: "Stop the question I'm waiting on" },
   { command: "help", description: "Examples and commands" },
 ];

@@ -22,13 +22,13 @@ export function createTelegramClient(
   fetchImpl: typeof fetch = fetch,
 ): TelegramClient {
   return {
-    async call({ method, params }) {
+    async call(request) {
+      const { method } = request;
       let response: Response;
       try {
         response = await fetchImpl(`https://api.telegram.org/bot${token}/${method}`, {
           method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(params),
+          ...encode(request),
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
       } catch (error) {
@@ -38,6 +38,25 @@ export function createTelegramClient(
       return classify(response);
     },
   };
+}
+
+/** JSON for every call except file uploads, which are multipart form data. */
+function encode(request: TelegramCall | TelegramAdminCall): RequestInit {
+  if (request.method !== "sendDocument") {
+    return {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request.params),
+    };
+  }
+  const { chat_id, document, caption } = request.params;
+  const form = new FormData();
+  form.set("chat_id", String(chat_id));
+  if (caption) form.set("caption", caption);
+  form.set(
+    "document",
+    new File([document.content], document.filename, { type: document.mime_type }),
+  );
+  return { body: form };
 }
 
 async function classify(response: Response): Promise<TelegramResult> {

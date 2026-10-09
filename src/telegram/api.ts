@@ -39,6 +39,15 @@ export type TelegramCall =
   | {
       method: "answerCallbackQuery";
       params: { callback_query_id: string; text?: string };
+    }
+  | {
+      /** A small generated file (e.g. /export), uploaded as multipart form data. */
+      method: "sendDocument";
+      params: {
+        chat_id: number;
+        document: { filename: string; content: string; mime_type: string };
+        caption?: string;
+      };
     };
 
 export type TelegramMethod = TelegramCall["method"];
@@ -48,7 +57,7 @@ export type TelegramMethod = TelegramCall["method"];
  * sendMessage is visible to the user, so it is never replayed automatically.
  */
 export function isReplaySafe(method: TelegramMethod): boolean {
-  return method !== "sendMessage";
+  return method !== "sendMessage" && method !== "sendDocument";
 }
 
 /**

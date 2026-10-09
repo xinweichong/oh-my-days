@@ -54,3 +54,32 @@ describe("D1 batch semantics", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("telegram_outbox after its rebuild (migration 0021)", () => {
+  it("keeps its indexes and constraints, and accepts documents", async () => {
+    const { results } = await env.DB.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'telegram_outbox' AND name NOT LIKE 'sqlite_%' ORDER BY name",
+    ).all<{ name: string }>();
+    expect(results.map((r) => r.name)).toEqual([
+      "telegram_outbox_reply",
+      "telegram_outbox_status_due",
+      "telegram_outbox_user_status",
+    ]);
+    await env.DB.prepare(
+      "INSERT INTO users (id, telegram_user_id, private_chat_id, created_at, updated_at) VALUES ('u1', 1, 1, 0, 0)",
+    ).run();
+    const insert = (method: string) =>
+      env.DB.prepare(
+        `INSERT INTO telegram_outbox (id, user_id, logical_key, method, payload, status, due_at, created_at, updated_at, target)
+         VALUES (?, 'u1', ?, ?, '{}', 'pending', 0, 0, 0, NULL)`,
+      )
+        .bind(method, method, method)
+        .run();
+    await insert("sendDocument");
+    await expect(insert("deleteMessage")).rejects.toThrow();
+    // Sent rows still drop their payload.
+    await expect(
+      env.DB.prepare("UPDATE telegram_outbox SET status = 'sent' WHERE id = 'sendDocument'").run(),
+    ).rejects.toThrow();
+  });
+});

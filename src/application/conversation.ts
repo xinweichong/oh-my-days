@@ -15,6 +15,7 @@ import {
   isEventAction,
   isEventInput,
 } from "./event-flow";
+import { exportCommand } from "./export-flow";
 import { findCommand, handleFindAction, handleFindInput, isFindAction } from "./find-flow";
 import { handleFollowUp, handleFollowUpAction, isFollowUpAction } from "./follow-ups";
 import {
@@ -108,6 +109,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       task: (user) => taskMenu(deps, user),
       tasks: (user) => tasksCommand(deps, user),
       find: (user, input) => findCommand(deps, user, input),
+      export: (user) => exportCommand(deps, user),
       daily: (user) => dailyView(deps, user),
       weekly: (user) => weekView(deps, user, null, null, null),
       monthly: (user) => monthView(deps, user, null, null),

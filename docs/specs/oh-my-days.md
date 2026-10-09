@@ -244,6 +244,7 @@ These views and controls must work without AI:
 | `/overdue` | Unfinished tasks past their deadline |
 | `/health` | Google Calendar connection and synchronization health |
 | `/help` | Available commands and examples |
+| `/export` | A JSON file of the user's tasks (with history), lists, recurring tasks, and contacts; no Google tokens and no copy of calendar events (added 2026-10-10, [improvement D6](../plans/improvements.md#6-phase-4--further-features-d1d6)) |
 
 Weekly and monthly views use actual calendar periods, not rolling 7/30-day windows. Provide Previous/Next navigation and appropriate filtering. Natural language may request other ranges, such as the next seven days.
 
