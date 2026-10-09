@@ -129,7 +129,17 @@ interface PatchResult extends WriteResult {
 
 interface DeleteResult {
   fields: EventFields;
+  /**
+   * The deleted event had no guests and wasn't part of a series, as read just
+   * before deleting: a copy can be restored without notifying anyone.
+   */
+  restorable?: boolean;
+  /** When it was deleted, for the restore window. */
+  deletedAt?: number;
 }
+
+/** How long Restore is offered after deleting an event. */
+export const RESTORE_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Maps provider failures that need no operation-specific handling. */
 export function providerFailure(error: ProviderError): ExecutionOutcome {
@@ -420,7 +430,7 @@ export const deleteEventHandler: OperationHandler = {
     return combine(removed, taskCreation(ids, now, user, list, task.title, task.deadline));
   },
 
-  async execute({ op, calendar, user }) {
+  async execute({ op, calendar, user, now }) {
     if (!calendar) return { kind: "auth_required" };
     const intent = op.intent as DeleteEventIntent;
     const current = await calendar.getEvent(intent.calendarId, intent.eventId);
@@ -454,7 +464,25 @@ export const deleteEventHandler: OperationHandler = {
       intent.notify ? { notifyGuests: true } : undefined,
     );
     if (!deleted.ok && deleted.error.kind !== "not_found") return providerFailure(deleted.error);
-    return succeeded<DeleteResult>({ fields: intent.base });
+    const plain =
+      !intent.scope &&
+      !intent.undo &&
+      !intent.replacedBy &&
+      (current.value.attendees ?? []).length === 0 &&
+      !current.value.hasGuests &&
+      !current.value.recurring &&
+      !current.value.recurringEventId;
+    return succeeded<DeleteResult>({
+      fields: intent.base,
+      ...(plain ? { restorable: true, deletedAt: now } : {}),
+    });
+  },
+
+  resultButtons(op) {
+    const result = op.result as DeleteResult | null;
+    return result?.restorable
+      ? [{ text: "Restore", action: "event_restore", payload: { operationId: op.id } }]
+      : [];
   },
 
   notice(op, event, user) {

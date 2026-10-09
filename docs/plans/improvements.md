@@ -43,7 +43,7 @@ when the item is approved, before implementation.
 | C3 | `/find` and date jump for events | 3 | — | Implemented (`feature/improvements`) |
 | C4 | Choose the calendar for a new event | 3 | — | Implemented (`feature/improvements`) |
 | C5 | Recent completed/cancelled tasks with Reopen/Restore | 3 | — | Implemented (`feature/improvements`) |
-| C6 | Restore a deleted guest-free event | 3 | — | Approved |
+| C6 | Restore a deleted guest-free event | 3 | — | Implemented (`feature/improvements`) |
 | C7 | Timezone buttons and city names | 3 | — | Approved |
 | D1 | Configurable agenda time and default reminder lead | 4 | Changes fixed defaults | Approved |
 | D2 | Optional evening preview of tomorrow | 4 | New | Approved |

@@ -42,6 +42,7 @@ import {
   type MoveEventIntent,
   PATCH_EVENT,
   type PatchEventIntent,
+  RESTORE_WINDOW_MS,
 } from "./event-operations";
 import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
@@ -504,6 +505,35 @@ async function moveToCalendar(
   return { replies: prepared.replies, statements: prepared.statements };
 }
 
+/**
+ * Restore after deleting an event without guests: a new event (new ID) with the
+ * same title and time in the same calendar, within 24 hours. Only once.
+ */
+async function restoreDeleted(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+): Promise<Reaction> {
+  const op = await findOperation(deps.db, user.id, operationId);
+  const result = op?.result as
+    | { fields: EventFields; restorable?: boolean; deletedAt?: number }
+    | null
+    | undefined;
+  if (
+    op?.kind !== DELETE_EVENT ||
+    op.status !== "succeeded" ||
+    !result?.restorable ||
+    (result.deletedAt ?? 0) + RESTORE_WINDOW_MS <= deps.clock.now()
+  ) {
+    return message(user.privateChatId, "This event can't be restored anymore.");
+  }
+  const intent = op.intent as DeleteEventIntent;
+  return create(deps, user, result.fields, `restore:${op.id}`, null, {
+    calendarId: intent.calendarId,
+    note: "Restored as a copy: the title and time are back; a description, location, or attachments from the original are not.",
+  });
+}
+
 /** Every event on one date (past or upcoming), to choose one to change. */
 async function dayList(deps: EventFlowDeps, user: UserRecord, date: LocalDate): Promise<Reaction> {
   const { events: all } = await eventsBetween(deps, user, date, addDays(date, 1));
@@ -757,6 +787,12 @@ export async function handleEventAction(
           String(payload.calendarId ?? ""),
           key,
         ),
+      );
+    case "event_restore":
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await restoreDeleted(deps, user, String(payload.operationId ?? "")),
       );
     case "event_pick_date":
       return combine(

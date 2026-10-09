@@ -421,12 +421,19 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   (newest first, up to 100, 8 per page); each opens its card with the existing
   version-bound Reopen/Restore, which re-creates a deadline marker
   (`tests/flows/recent.test.ts`).
+- C6: deleting a one-off event that had no guests (as read just before the
+  delete) offers **Restore** for 24 hours. It creates a new event (new ID) with
+  the deleted title and time in the same calendar, through the normal create
+  operation, once, and says it is a copy without the description, location, or
+  attachments. Events with guests, series, and occurrences are excluded
+  (`tests/flows/restore-event.test.ts`).
 
 Stage 2 decisions to review:
 
 - Undo of a just-created event is a deletion, so it shows the standard delete
   confirmation (decided 2026-10-02). It is bound to the created version; any
-  later edit makes Undo unavailable. Undo of a deletion is not offered yet.
+  later edit makes Undo unavailable. Undo of a deletion is not offered; for
+  events without guests, improvement C6 offers Restore (a new copy) instead.
 - Users outside the allowlist who message the bot privately receive "This bot
   is private." as the webhook response; nothing about them is stored, and
   group chats get no reply (decided 2026-10-02).
