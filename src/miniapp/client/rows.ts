@@ -93,6 +93,7 @@ export function taskRow(
       "span",
       { class: "meta" },
       task.overdue ? h("span", { class: "badge overdue" }, "Overdue") : null,
+      task.overdue ? " " : null,
       meta(task, options.showList),
       task.pending ? h("span", { class: "pending" }, " · Saving to Calendar…") : null,
     ),
