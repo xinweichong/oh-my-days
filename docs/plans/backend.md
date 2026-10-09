@@ -405,6 +405,12 @@ that plan's status column. Implemented so far, tested locally and not deployed:
   before a reminder. Single event reminders show "Where:", "Video call:", and
   **Join call** / **Open in Calendar** URL buttons. The privacy policy now says
   so (`tests/google/event-display.test.ts`, `tests/flows/reminders.test.ts`).
+- C3: `/find <words>` lists open tasks and synced one-off events whose title
+  contains the words (SQLite `LIKE`, so case-insensitive for ASCII only; `%`
+  and `_` literal), upcoming events before past ones, plus one line per
+  recurring series from a live Google `q` search over the next year; at most 20
+  results, 8 per page; a note says when Google couldn't be searched. "Change an
+  event" gains **Pick a date** for any day (`tests/flows/find.test.ts`).
 
 Stage 2 decisions to review:
 

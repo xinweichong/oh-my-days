@@ -82,6 +82,8 @@ export const PENDING_INPUT_KINDS = [
   "series_rename",
   "event_invite",
   "event_contact_email",
+  "event_list_date",
+  "find_query",
 ] as const;
 
 export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];

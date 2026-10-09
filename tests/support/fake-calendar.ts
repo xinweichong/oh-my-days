@@ -133,6 +133,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     calendarId: string,
     timeMin: number,
     timeMax: number,
+    options?: { query?: string },
   ): Promise<ProviderResult<SyncedEvent[]>> {
     this.calls.push("list");
     if (this.inaccessible.has(calendarId)) return { ok: false, error: { kind: "not_found" } };
@@ -143,6 +144,10 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       .filter(([k]) => !this.meta.get(k)?.recurring)
       .filter(([, e]) => e.calendarId === calendarId && e.status !== "cancelled")
       .filter(([, e]) => instant(e.fields.start) < timeMax && instant(e.fields.end) > timeMin)
+      .filter(
+        ([, e]) =>
+          !options?.query || e.fields.summary.toLowerCase().includes(options.query.toLowerCase()),
+      )
       .map(([k, e]) => this.synced(k, e));
     return { ok: true, value: items };
   }

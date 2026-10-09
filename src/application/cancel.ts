@@ -94,6 +94,10 @@ export function describePending(kind: PendingInputKind, payload: Record<string, 
       return "inviting guests";
     case "event_contact_email":
       return "inviting guests";
+    case "event_list_date":
+      return "choosing an event";
+    case "find_query":
+      return "searching";
   }
 }
 

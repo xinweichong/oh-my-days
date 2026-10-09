@@ -14,6 +14,7 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "event", description: "Add, rename, move, or delete an event" },
   { command: "task", description: "Add a task, or manage lists" },
   { command: "tasks", description: "Open tasks, by list, with actions" },
+  { command: "find", description: "Search tasks and events by words" },
   { command: "daily", description: "Today's events, due and overdue tasks" },
   { command: "weekly", description: "This week, Monday to Sunday" },
   { command: "monthly", description: "This month, compactly" },

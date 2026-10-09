@@ -156,10 +156,14 @@ export interface CalendarSyncSource {
     calendarId: string,
     cursor: { syncToken: string | null; pageToken: string | null },
   ): Promise<EventPageResult>;
-  /** Event occurrences overlapping a time window, recurring instances expanded. */
+  /**
+   * Event occurrences overlapping a time window, recurring instances expanded.
+   * `query` asks Google for events matching the words (its free-text search).
+   */
   listWindow(
     calendarId: string,
     timeMin: number,
     timeMax: number,
+    options?: { query?: string },
   ): Promise<ProviderResult<SyncedEvent[]>>;
 }

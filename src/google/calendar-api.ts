@@ -156,7 +156,7 @@ export function createGoogleCalendar(
       return { ok: false, error: result.error };
     },
 
-    async listWindow(calendarId, timeMin, timeMax) {
+    async listWindow(calendarId, timeMin, timeMax, options) {
       const items: SyncedEvent[] = [];
       let pageToken: string | null = null;
       for (let page = 0; page < MAX_LIST_PAGES; page++) {
@@ -168,6 +168,7 @@ export function createGoogleCalendar(
           timeMax: new Date(timeMax).toISOString(),
         };
         if (pageToken) query.pageToken = pageToken;
+        if (options?.query) query.q = options.query;
         const result = await request(
           "read",
           "GET",

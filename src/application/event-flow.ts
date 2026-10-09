@@ -382,11 +382,22 @@ async function eventList(
   const { events: all } = await eventsBetween(deps, user, today, addDays(today, UPCOMING_DAYS));
   const events = all.filter((e) => eventEndsAfter(e.fields, now, user.timezone));
 
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const pickDate = [buttons.button("Pick a date", "event_pick_date", {})];
   if (events.length === 0) {
-    return message(user.privateChatId, `No upcoming events in the next ${UPCOMING_DAYS} days.`);
+    return {
+      replies: [
+        keyboardMessage(
+          user,
+          `No upcoming events in the next ${UPCOMING_DAYS} days.`,
+          { inline_keyboard: [pickDate] },
+          null,
+        ),
+      ],
+      statements: (db, guard) => buttons.statements(db, guard),
+    };
   }
   const shown = events.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const buttons = new ActionButtons(deps.ids, user.id, now);
   const rows = shown.map((e) => [
     buttons.button(
       truncate(`${formatShortStart(e.fields, user.timezone)} · ${e.fields.summary}`, 60),
@@ -400,17 +411,49 @@ async function eventList(
     nav.push(buttons.button("More", "event_list", { page: page + 1 }));
   }
   if (nav.length) rows.push(nav);
+  rows.push(pickDate);
   return {
     replies: [
       keyboardMessage(
         user,
-        `Choose an event (next ${UPCOMING_DAYS} days).`,
+        `Choose an event (next ${UPCOMING_DAYS} days), or pick a date.`,
         { inline_keyboard: rows },
         editMessageId,
       ),
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+/** Every event on one date (past or upcoming), to choose one to change. */
+async function dayList(deps: EventFlowDeps, user: UserRecord, date: LocalDate): Promise<Reaction> {
+  const { events: all } = await eventsBetween(deps, user, date, addDays(date, 1));
+  const events = all.slice(0, 2 * PAGE_SIZE);
+  if (events.length === 0) {
+    return combine(
+      clearInput(user),
+      message(user.privateChatId, `No events on ${formatDayLabel(date)}.`),
+    );
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const rows = events.map((e) => [
+    buttons.button(
+      truncate(`${formatShortStart(e.fields, user.timezone)} · ${e.fields.summary}`, 60),
+      "event_pick",
+      { calendarId: e.calendarId, eventId: e.eventId },
+    ),
+  ]);
+  return combine(clearInput(user), {
+    replies: [
+      keyboardMessage(
+        user,
+        `Events on ${formatDayLabel(date)} ${date.slice(0, 4)}:`,
+        { inline_keyboard: rows },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  });
 }
 
 function eventEndsAfter(fields: EventFields, now: number, timeZone: string): boolean {
@@ -618,6 +661,25 @@ export async function handleEventAction(
           Number(payload.page ?? 0),
           Number(payload.page ?? 0) > 0 ? callback.messageId : null,
         ),
+      );
+    case "event_pick_date":
+      return combine(
+        answer(callback),
+        ask(
+          deps,
+          user,
+          "event_list_date",
+          {},
+          "Which day? Type a date, like Fri, 9 Oct, or 9/10/2025.",
+        ),
+      );
+    case "event_day":
+      if (typeof payload.date !== "string")
+        return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await dayList(deps, user, payload.date),
       );
     case "event_pick": {
       const { calendarId, eventId } = target();
@@ -895,6 +957,24 @@ export async function handleEventInput(
         );
       }
       return finishTimed(deps, user, draft, length);
+    }
+    case "event_list_date": {
+      const date = parseDate(text, today);
+      if (!date) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that date. Try Fri, 9 Oct, or 9/10/2025.",
+        );
+      }
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "event_day", { date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "event_list_date", {}, question, [row], buttons);
+      }
+      return dayList(deps, user, date.date);
     }
     case "event_rename": {
       if (text.length === 0 || text.length > MAX_TITLE_LENGTH) {

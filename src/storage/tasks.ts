@@ -365,6 +365,32 @@ export async function listOpenTasks(
   return results.map(toTask);
 }
 
+/** `%` and `_` in user text match literally in LIKE ... ESCAPE '\'. */
+export function likePattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Open tasks whose title contains `text` (case-insensitive for ASCII letters,
+ * as SQLite's LIKE is), earliest created first.
+ */
+export async function searchOpenTasks(
+  db: D1Database,
+  userId: string,
+  text: string,
+  limit: number,
+): Promise<TaskRecord[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${TASK_COLUMNS} ${FROM}
+       WHERE t.user_id = ? AND t.status = 'open' AND t.title LIKE ? ESCAPE '\\'
+       ORDER BY t.created_at LIMIT ?`,
+    )
+    .bind(userId, likePattern(text), limit)
+    .all<TaskRow>();
+  return results.map(toTask);
+}
+
 /** Moves the next reminder; never changes the deadline or the task's version. */
 export function setSnoozeStatement(
   db: D1Database,

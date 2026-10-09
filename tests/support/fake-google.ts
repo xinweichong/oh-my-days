@@ -149,7 +149,8 @@ export class FakeGoogle {
         if (!account) return { ok: false, error: { kind: "auth_required" } };
         return account.events.listEventPage(c, cursor);
       },
-      listWindow: (c, min, max) => withAccount((a) => a.events.listWindow(c, min, max)),
+      listWindow: (c, min, max, options) =>
+        withAccount((a) => a.events.listWindow(c, min, max, options)),
       listCalendars: () => withAccount(async (a) => ({ ok: true, value: [...a.calendars] })),
       createCalendar: (summary) =>
         withAccount(async (a) => {
