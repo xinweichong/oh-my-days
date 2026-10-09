@@ -51,15 +51,21 @@ export async function authenticate(
   const header = request.headers.get("authorization") ?? "";
   const raw = header.startsWith("tma ") ? header.slice(4) : null;
   const check = await verifyInitData(raw, deps.config.telegramBotToken, deps.clock.now());
+  // The reason is a short code with no user data, shown to help fix the launch.
+  const refuse = (reason: string) => {
+    logEvent("miniapp.auth_refused", { reason });
+    return { response: json({ error: "unauthorized", reason }, 401) };
+  };
   if (!check.ok) {
-    logEvent("miniapp.auth_refused", { reason: check.reason });
-    return { response: apiError(check.reason === "stale" ? "expired" : "unauthorized", 401) };
+    if (check.reason === "stale") {
+      logEvent("miniapp.auth_refused", { reason: "stale" });
+      return { response: apiError("expired", 401) };
+    }
+    return refuse(check.reason);
   }
-  if (!deps.config.allowedTelegramUserIds.has(check.telegramUserId)) {
-    return { response: apiError("unauthorized", 401) };
-  }
+  if (!deps.config.allowedTelegramUserIds.has(check.telegramUserId)) return refuse("not_allowed");
   const user = await findUserByTelegramId(deps.db, check.telegramUserId);
-  if (user?.status !== "active") return { response: apiError("unauthorized", 401) };
+  if (user?.status !== "active") return refuse("no_account");
   if (user.setupStep !== "done") return { response: apiError("setup_incomplete", 409) };
   return { user };
 }

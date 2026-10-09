@@ -90,7 +90,11 @@ function start(): void {
       h(
         "section",
         { class: "banner", role: "alert" },
-        h("p", {}, "Open the app with the Open app button in the chat."),
+        h(
+          "p",
+          {},
+          "Telegram didn't pass sign-in data to this page. Open it from an Open app button under a bot message, from /app, or from the bot's profile.",
+        ),
       ),
     );
     return;

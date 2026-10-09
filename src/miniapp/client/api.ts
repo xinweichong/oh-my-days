@@ -58,8 +58,13 @@ export function errorText(error: unknown): string {
   switch (code) {
     case "expired":
       return "This window has been open for over an hour. Close it and open the app again from the chat.";
-    case "unauthorized":
-      return "Open the app with the Open app button in the chat.";
+    case "unauthorized": {
+      const reason =
+        error instanceof ApiError && typeof error.body?.reason === "string"
+          ? error.body.reason
+          : "unknown";
+      return `Sign-in was refused (${reason}). Close this and open the app again from the chat; if it repeats, send this code to the bot's owner.`;
+    }
     case "setup_incomplete":
       return "Finish setup in the chat first.";
     case "network":

@@ -43,7 +43,7 @@ describe("Mini App sign-in (ADR 0005)", () => {
     await setUpOwner(world);
     const missing = await world.request("/app/api/home");
     expect(missing.status).toBe(401);
-    expect(await missing.json()).toEqual({ error: "unauthorized" });
+    expect(await missing.json()).toEqual({ error: "unauthorized", reason: "missing" });
 
     const otherBot = await initDataFor(world, undefined, { token: "another-bot-token" });
     expect((await appApi(world, "home", { initData: otherBot })).status).toBe(401);
