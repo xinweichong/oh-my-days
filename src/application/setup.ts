@@ -13,7 +13,6 @@ import {
 import {
   clearPendingInputStatement,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import {
@@ -28,13 +27,14 @@ import { formatShortStart } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
+import { guidedPrompt } from "./cancel";
 import { connectMessage } from "./google-connection";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 export const TASK_CALENDAR_NAME = "Tasks - Oh My Days";
-export const PENDING_INPUT_TTL_MS = 10 * 60_000;
+
 /** Bounds picker size well inside Telegram's keyboard limits. */
 const MAX_PICKER_CALENDARS = 24;
 
@@ -575,20 +575,11 @@ export async function handleUiAction(
 // --- Typed answers -----------------------------------------------------------
 
 function askFor(deps: SetupDeps, user: UserRecord, kind: PendingInputKind): Reaction {
-  const now = deps.clock.now();
   const prompt =
     kind === "timezone"
       ? "Send your timezone as Region/City, for example Europe/London."
       : "Send a name for the new calendar.";
-  return combine(
-    {
-      replies: [],
-      statements: (db) => [
-        setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now),
-      ],
-    },
-    message(user.privateChatId, prompt),
-  );
+  return guidedPrompt(deps, user, kind, {}, prompt);
 }
 
 /** Handles a text message answering a pending question. */

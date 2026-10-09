@@ -16,7 +16,6 @@ import {
   clearPendingInputStatement,
   type PendingInput,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import type { UserRecord } from "../storage/users";
@@ -29,6 +28,7 @@ import {
 } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { eventsBetween, type SourceFor } from "./calendar-view";
+import { cancelRow, guidedPrompt } from "./cancel";
 import { dateChoiceLabel, whenQuestion } from "./choices";
 import {
   CREATE_EVENT,
@@ -43,7 +43,7 @@ import {
 import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import type { SetupDeps } from "./setup";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /**
@@ -164,18 +164,7 @@ function ask(
   keyboard: InlineKeyboardButton[][] = [],
   buttons?: ActionButtons,
 ): Reaction {
-  const now = deps.clock.now();
-  return {
-    replies: [
-      keyboard.length
-        ? keyboardMessage(user, text, { inline_keyboard: keyboard }, null)
-        : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
-    ],
-    statements: (db, guard) => [
-      setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now, payload),
-      ...(buttons?.statements(db, guard) ?? []),
-    ],
-  };
+  return guidedPrompt(deps, user, kind, payload, text, keyboard, buttons);
 }
 
 function askTitle(deps: EventFlowDeps, user: UserRecord): Reaction {
@@ -308,6 +297,7 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
             [option("Doesn't repeat", null)],
             [option("Daily", "daily"), option("Weekly", "weekly")],
             [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            cancelRow(buttons, `adding the event ${fields.summary}`),
           ],
         },
         null,

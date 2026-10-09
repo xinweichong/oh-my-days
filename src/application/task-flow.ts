@@ -16,7 +16,6 @@ import {
   clearPendingInputStatement,
   type PendingInput,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import { claimReminderStatement } from "../storage/reminders";
@@ -43,11 +42,12 @@ import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatShortStart, formatWallTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
+import { cancelRow, guidedPrompt } from "./cancel";
 import { dateChoiceLabel, whenQuestion } from "./choices";
 import { withTypingHint } from "./hints";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { recurrenceOf } from "./series";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import type { SetupDeps } from "./setup";
 import { projectTaskStatement } from "./task-projection";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
@@ -275,25 +275,15 @@ function ask(
   rows: InlineKeyboardButton[][] = [],
   buttons?: ActionButtons,
 ): Reaction {
-  const now = deps.clock.now();
-  return {
-    replies: [
-      rows.length
-        ? keyboardMessage(user, text, { inline_keyboard: rows }, null)
-        : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
-    ],
-    statements: (db, guard) => [
-      setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now, payload),
-      ...(buttons?.statements(db, guard) ?? []),
-    ],
-  };
+  return guidedPrompt(deps, user, kind, payload, text, rows, buttons);
 }
 
 function askList(deps: SetupDeps, user: UserRecord, draft: TaskDraft, lists: TaskList[]): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const rows = lists.map((l) => [
-    buttons.button(l.name, "task_draft_list", { draft, listId: l.id }),
-  ]);
+  const rows = [
+    ...lists.map((l) => [buttons.button(l.name, "task_draft_list", { draft, listId: l.id })]),
+    cancelRow(buttons, `adding the task ${draft.title}`),
+  ];
   return {
     replies: [
       keyboardMessage(user, `Which list is ${draft.title} in?`, { inline_keyboard: rows }, null),
@@ -1172,6 +1162,7 @@ function askRepeat(
             [option("Doesn't repeat", null)],
             [option("Daily", "daily"), option("Weekly", "weekly")],
             [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            cancelRow(buttons, `adding the task ${draft.title}`),
           ],
         },
         null,

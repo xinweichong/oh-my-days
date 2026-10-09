@@ -8,6 +8,7 @@ import { type ItemRef, itemForReply } from "../storage/outbox";
 import { findTask } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
+import { cancelRow } from "./cancel";
 import { whenLabel, whenQuestion } from "./choices";
 import {
   type EventFlowDeps,
@@ -80,8 +81,11 @@ function askWhich(
   const row = options.map((o) =>
     buttons.button(whenLabel(o, today), "followup_move", { target, date: o.date, time: o.time }),
   );
+  const cancel = cancelRow(buttons, "the change");
   return {
-    replies: [keyboardMessage(user, whenQuestion(options), { inline_keyboard: [row] }, null)],
+    replies: [
+      keyboardMessage(user, whenQuestion(options), { inline_keyboard: [row, cancel] }, null),
+    ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
 }

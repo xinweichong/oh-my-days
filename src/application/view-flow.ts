@@ -14,7 +14,6 @@ import { listStoredCalendars } from "../storage/google";
 import {
   clearPendingInputStatement,
   type PendingInput,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import { horizonEvents, reminderOverrides, setOverrideStatement } from "../storage/reminders";
@@ -24,9 +23,10 @@ import type { InlineKeyboardButton } from "../telegram/api";
 import { formatDayLabel, formatTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { renderDay, renderPeriod, type SourceFor, viewCalendars } from "./calendar-view";
+import { guidedPrompt } from "./cancel";
 import { whenLabel, whenQuestion } from "./choices";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import type { SetupDeps } from "./setup";
 import { dueLabel, sortByDeadline } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
@@ -419,25 +419,18 @@ export async function handleViewAction(
         removeButtons(user, callback),
         await snooze(deps, user, taskId, Number(payload.until)),
       );
-    case "snooze_pick": {
-      const now = deps.clock.now();
-      return combine(ack(), removeButtons(user, callback), {
-        replies: [
-          {
-            method: "sendMessage",
-            params: {
-              chat_id: user.privateChatId,
-              text: "Send a date and time, like tomorrow 9am or Fri 14:00.",
-            },
-          },
-        ],
-        statements: (db) => [
-          setPendingInputStatement(db, user.id, "task_snooze", now + PENDING_INPUT_TTL_MS, now, {
-            taskId,
-          }),
-        ],
-      });
-    }
+    case "snooze_pick":
+      return combine(
+        ack(),
+        removeButtons(user, callback),
+        guidedPrompt(
+          deps,
+          user,
+          "task_snooze",
+          { taskId },
+          "Send a date and time, like tomorrow 9am or Fri 14:00.",
+        ),
+      );
     case "reminder_menu":
       return combine(
         ack(),

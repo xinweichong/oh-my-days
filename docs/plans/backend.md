@@ -368,6 +368,11 @@ that plan's status column. Implemented so far, tested locally and not deployed:
 - A3: `/help` leads with typed examples (each checked against the grammar in
   `tests/flows/help.test.ts`); the first three guided creations add "Next time
   you can type: …", counted in `users.typing_hints_shown` (migration 0011).
+- A4: every question waiting for typed input is built by one helper
+  (`src/application/cancel.ts`) that adds **Cancel**; button-only questions
+  (repeat, list, "Which Friday?") have Cancel too. `/cancel` drops the open
+  question and says what was abandoned. An older Cancel never closes a newer
+  question (`tests/flows/cancel.test.ts`).
 
 Stage 2 decisions to review:
 

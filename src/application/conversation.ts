@@ -5,6 +5,7 @@ import { createUpdateHandler, type UpdateHandler } from "../telegram/router";
 import type { InboundCallback } from "../telegram/update";
 import type { SourceFor } from "./calendar-view";
 import { createCallbackHandler } from "./callbacks";
+import { cancelCommand, handleCancelAction, isCancelAction } from "./cancel";
 import { handleCapture, handleCaptureAction, isCaptureAction } from "./capture-flow";
 import { handleConflictAction, isConflictAction } from "./conflict-flow";
 import {
@@ -74,6 +75,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
           ],
         };
       }
+      if (isCancelAction(action.action)) return handleCancelAction(deps, user, callback, action);
       if (isInviteAction(action.action)) return handleInviteAction(deps, user, callback, action);
       if (isConflictAction(action.action))
         return handleConflictAction(deps, user, callback, action);
@@ -98,6 +100,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
           `Oh My Days\n${TAGLINE}\n\nSetup is complete. Send /help to see what I can do.`,
         );
       },
+      cancel: (user) => cancelCommand(deps, user),
       settings: (user) => settingsView(deps, user),
       event: (user) => eventMenu(deps, user),
       task: (user) => taskMenu(deps, user),
