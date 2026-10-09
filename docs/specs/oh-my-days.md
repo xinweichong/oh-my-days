@@ -81,6 +81,36 @@ For a message containing multiple independent instructions, explain the limit an
 - If intent, date, time, calendar, or target is materially ambiguous, ask a focused clarification.
 - Confirmation messages clearly label the result as an event or task and show the interpreted date/time.
 
+### Quick capture without AI
+
+Approved 2026-10-09 ([improvement A1](../plans/improvements.md#a1-deterministic-quick-capture)).
+Until natural-language interpretation is available, and as its local first step
+afterwards, a plain message that is not a command, an answer to an open
+question, or a follow-up is read with a fixed local grammar. Nothing is sent to
+any external service.
+
+- Two or more dates or times joined by commas, semicolons, `and`, or line breaks
+  are multiple instructions: nothing is created and the user is asked to send
+  them separately.
+- Task language (`task`, `todo`, `remind me to`, or `by`/`due` before a date or
+  time) creates a task; its date is the deadline.
+- A time or time range without task language creates an event, one hour long
+  unless a range or duration is given.
+- Text without a date or time creates an open-ended Inbox task.
+- A date without a time or task language is materially ambiguous: ask whether it
+  is a task due that day or an all-day event.
+- `on <calendar>` and `to`/`in <list>` apply only when they name an existing
+  writable calendar or list (ignoring case); otherwise the words stay in the
+  title. Nothing is created by inference.
+- Ambiguous dates or hours ask with dated choices, as in guided input.
+- Text it cannot read offers **Add as task**, **Add as event**, and **Cancel**.
+
+Quick capture only creates. The result shows the interpretation with Undo and a
+switch between task and event; the switch removes the first item (bound to its
+version and confirmed like any removal) and then creates the other. Editing,
+deleting, or targeting existing items stays with follow-ups and their
+confirmation rules.
+
 ### Follow-ups
 
 Support corrections such as `Move it to 4pm` and `Actually, make that Friday`.
