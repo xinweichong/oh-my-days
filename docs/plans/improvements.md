@@ -2,8 +2,8 @@
 
 Status: Every item approved by the owner (D7 on 2026-10-08, its layout and all
 other items on 2026-10-09). Build order: Phases 1–4, then the Mini App (Phase 5)
-last. Implementation status is in the Status column below; "Implemented" means
-tested locally, not deployed.
+last. Every item is implemented, deployed (2026-10-10), and released in 2.0.0
+(2026-10-14); the Status column records how each was verified.
 Source of truth: [product specification](../specs/oh-my-days.md). Builds on the
 [backend plan](backend.md), whose stages 0–8 and 10 are implemented and deployed.
 

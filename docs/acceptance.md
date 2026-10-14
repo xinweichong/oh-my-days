@@ -1,6 +1,6 @@
 # Acceptance matrix
 
-Status as of 2026-10-09 (local tests for improvement-plan items; not yet deployed). Maps every acceptance scenario in the
+Status as of 2026-10-14 (release 2.0.0; everything listed is deployed). Maps every acceptance scenario in the
 [specification](specs/oh-my-days.md) §12 to its evidence, and every validation
 item in §13 to its result. "Test" evidence runs in `npm test` (Workers runtime,
 local D1, fake Google and Telegram); "Live" evidence was observed on the
@@ -65,4 +65,4 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | M5 | Cancel (one or several) confirmed and bound to the exact set and versions | ✓ Test | `tests/miniapp/write-api.test.ts` cancel and bulk-cancel tests |
 | M6 | One user can't read or change another's tasks or lists | ✓ Test | `tests/miniapp/read-api.test.ts`, `write-api.test.ts` cross-user tests |
 | M7 | Screens render and act in a real browser | ✓ Local | Headless Chrome against `wrangler dev` (2026-10-10): Home, Overdue, Today, quick add, complete and Undo, task detail, snooze |
-| M8 | Opens and works inside Telegram on iOS, Android, desktop | **Pending** (owner, after deploy) | [Deploy runbook: Mini App](runbooks/deploy.md#mini-app-one-time-owner) |
+| M8 | Opens and works inside Telegram on iOS, Android, desktop | **Partial**: the owner used it in Telegram on 2026-10-10 (one client, not recorded); the iOS, Android, and desktop matrix is not recorded | [Deploy runbook: Mini App](runbooks/deploy.md#mini-app-one-time-owner) |

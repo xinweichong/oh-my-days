@@ -1,6 +1,6 @@
 # Oh My Days — experience brief
 
-Status: Interview brief and connection-page layout approved. No interface implemented.
+Status: Approved and implemented: Telegram flows, connection pages, and the Mini App (released in 2.0.0, 2026-10-14).
 
 Date: 2026-09-25
 
@@ -144,7 +144,7 @@ included; the approved Telegram Mini App is described below. No image-first/code
 
 Status: Layout and behavior approved by the owner on 2026-10-09 (improvement
 plan [step 5.0](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)).
-Implemented and tested locally on 2026-10-10 (not deployed); see
+Implemented and deployed on 2026-10-10; see
 [ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md). The persistent
 keyboard button needs two taps: keyboard launches carry no sign-in data, so the
 bot answers it with an inline Open app button. Three structures were compared (smart lists home, day split by
@@ -225,7 +225,7 @@ never shown by colour alone; copy follows the [identity](../identity/oh-my-days.
 ### Phone polish (owner-approved 2026-10-10)
 
 After a critique against Apple's Human Interface Guidelines, the owner approved
-a polish pass, implemented and tested locally on 2026-10-10 (not deployed):
+a polish pass, implemented and deployed on 2026-10-10:
 
 - **Motion, amended.** Besides confirming actions, motion may now show where
   a screen came from and follow the finger: screens slide in from the right when

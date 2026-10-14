@@ -1,6 +1,6 @@
 # Oh My Days — Product and implementation specification
 
-Status: Agreed product scope; implementation proposal ready for validation  
+Status: Agreed product scope. Implemented and released as 2.0.0 on 2026-10-14, except natural-language input through Gemini, deferred by the owner on 2026-10-04 (see the [backend plan §10](../plans/backend.md#10-implementation-status)).  
 Date: 2026-09-16  
 Working application name: **Oh My Days**
 

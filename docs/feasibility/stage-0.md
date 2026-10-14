@@ -1,7 +1,10 @@
 # Stage 0 feasibility — status
 
-Date: 2026-09-27. Distinguishes checks done locally from checks that need real
-accounts or explicit authorization. Nothing has been provisioned or deployed.
+Date: 2026-09-27. Historical: the state before anything was provisioned. The
+account-dependent checks were later done on the deployed Worker; see the
+[acceptance matrix](../acceptance.md) and [capacity measurements](../capacity.md).
+Distinguishes checks done locally from checks that need real accounts or
+explicit authorization.
 
 | Item (backend plan stage 0) | Status | Evidence / next step |
 |---|---|---|

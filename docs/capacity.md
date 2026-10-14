@@ -37,7 +37,7 @@ of its queries, so reads should fall. Recheck with `npx wrangler d1 info
 oh-my-days` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
-## Idle reminder pass (improvement B4, not yet deployed)
+## Idle reminder pass (improvement B4, deployed 2026-10-10)
 
 The reminder pass now visits a user only when their `next_due_at` has passed
 ([ADR 0004](adr/0004-next-due-time-by-trigger.md)); an idle user is visited
@@ -56,7 +56,7 @@ the plan's 24-hour `wrangler d1 info` and `wrangler tail` measurement needs the
 change deployed, which awaits the owner's approval. Do that before adding a
 second user.
 
-Scheduler liveness (improvement B3, not yet deployed) writes one `app_state`
+Scheduler liveness (improvement B3, deployed 2026-10-10) writes one `app_state`
 row per tick: about 1,440 rows written a day, under 3% of the operating target.
 
 The access-expiry warning (B1) adds one indexed read of `google_connections`
@@ -65,12 +65,12 @@ to frequent maintenance (every 5 minutes) and one write per user per week.
 The evening preview (D2), when turned on, adds one live Google read of the
 next day per user per evening, like the agenda.
 
-Quick capture (improvement A1, not yet deployed) adds no scheduled work: each
+Quick capture (improvement A1, deployed 2026-10-10) adds no scheduled work: each
 plain message reads the user's lists and calendars (a few rows each) and makes
 the same writes as the guided command it replaces. Choice buttons are retired
 by primary key. Not yet measured live.
 
-## Mini App (improvement D7, not yet deployed)
+## Mini App (improvement D7, deployed 2026-10-10)
 
 Local measurement (2026-10-10, test world, 20 open tasks, one calendar,
 statements counted at `prepare`):

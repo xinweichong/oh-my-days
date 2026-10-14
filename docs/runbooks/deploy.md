@@ -63,6 +63,21 @@ After the first deploy that includes it:
 4. If anything fails, the chat keeps working unchanged; `/app/api/*` returns
    short error codes only (`unauthorized`, `expired`, `setup_incomplete`).
 
+## Release a version
+
+Releases follow [Semantic Versioning](https://semver.org) and are recorded in
+[CHANGELOG.md](../../CHANGELOG.md).
+
+1. On a `release/<version>` branch from the integrated work: set `version` in
+   `package.json` (and the lockfile with `npm install --package-lock-only`), move
+   the changelog entries under the new version and date, and update the README's
+   version and test-count badges.
+2. `npm run check`, then merge into `develop`, then `develop` into `main`, each by
+   pull request.
+3. Tag the merge commit on `main` (`git tag -a v2.0.0 -m "Oh My Days v2.0.0"`),
+   push the tag, and create the GitHub release from the changelog entry.
+4. Deploy from `main` as above.
+
 ## Rollback
 
 `npx wrangler rollback` restores the previous Worker version. It does not undo

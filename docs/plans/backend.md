@@ -1,8 +1,9 @@
 # Oh My Days — backend architecture and delivery plan
 
-Status: Stages 1–2 implemented and tested locally (see §10); later stages proposed.
-Nothing provisioned or deployed.  
-Date: 2026-09-25; status updated 2026-09-27  
+Status: Stages 1–8 and 10 implemented, deployed, and released (2.0.0, 2026-10-14);
+stage 9 (Gemini interpretation) deferred. §10 has the per-stage record. The
+earlier sections are the plan as written and are kept for reference.  
+Date: 2026-09-25; status updated 2026-10-14  
 Source of truth: [product specification](../specs/oh-my-days.md).
 
 ## 1. Outcome and constraints
@@ -346,7 +347,9 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 10. Release hardening | Done for the structured release (2026-10-04) | [Acceptance matrix](../acceptance.md); [capacity measurements](../capacity.md) (CPU tuned from 10–22 ms to a median of 8 ms per run); restore and rollback drills and [operations runbook](../runbooks/operations.md); data-deletion SQL tested. Owner release approval pending. |
 
 Post-release improvements ([improvement plan](improvements.md)) are tracked in
-that plan's status column. Implemented so far, tested locally and not deployed:
+that plan's status column. All of them were deployed on 2026-10-10 and released
+in 2.0.0 on 2026-10-14. The stage table above keeps the wording recorded when
+each stage was built ("not yet deployed" there is historical). Implemented:
 
 - A2: one shared date grammar (`src/domain/parse-input.ts`) for guided input,
   follow-ups, and snoozing: weekdays, `next`/`this <weekday>`, `in N days/weeks`,
