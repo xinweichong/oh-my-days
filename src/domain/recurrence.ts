@@ -7,11 +7,52 @@ import { addDays, isValidLocalDate, type LocalDate } from "./time";
  */
 export type Frequency = "daily" | "weekly" | "monthly" | "yearly";
 
+/**
+ * A narrower rule: "weekdays" (with daily: Monday to Friday) or "last_day"
+ * (with monthly: the last day of each month, RFC 5545 BYMONTHDAY=-1).
+ */
+export type RepeatBy = "weekdays" | "last_day";
+
 export interface Recurrence {
   freq: Frequency;
   interval: number;
   /** The first occurrence; monthly and yearly rules repeat its day (and month). */
   anchor: LocalDate;
+  by?: RepeatBy | null;
+}
+
+/** What the user chose, before it is anchored to a date. */
+export interface RepeatChoice {
+  freq: Frequency;
+  interval: number;
+  by?: RepeatBy | null;
+}
+
+/** Largest "every N" accepted for days, weeks, or months. */
+export const MAX_INTERVAL = 99;
+
+/** "every 2 weeks", "3 days", "every 6 months" → a choice; anything else null. */
+export function parseRepeatInterval(input: string): RepeatChoice | null {
+  const m = /^(?:every\s+)?(\d{1,2})\s*(day|days|week|weeks|month|months)$/i.exec(input.trim());
+  if (!m) return null;
+  const interval = Number(m[1]);
+  if (interval < 1 || interval > MAX_INTERVAL) return null;
+  const unit = (m[2] ?? "").toLowerCase();
+  const freq: Frequency = unit.startsWith("day")
+    ? "daily"
+    : unit.startsWith("week")
+      ? "weekly"
+      : "monthly";
+  return { freq, interval };
+}
+
+function lastDayOf(y: number, m: number): LocalDate {
+  return addDays(m === 12 ? iso(y + 1, 1, 1) : iso(y, m + 1, 1), -1);
+}
+
+/** The first date on or after the anchor that the rule produces (the anchor itself for plain rules). */
+export function firstOccurrence(rule: Recurrence): LocalDate | null {
+  return occurrencesBetween(rule, rule.anchor, addDays(rule.anchor, 400), 1)[0] ?? null;
 }
 
 function parts(date: LocalDate): [number, number, number] {
@@ -36,6 +77,26 @@ export function occurrencesBetween(
   const [ay, am, ad] = parts(rule.anchor);
   const start = from > rule.anchor ? from : rule.anchor;
   const step = Math.max(1, Math.floor(rule.interval));
+
+  if (rule.by === "weekdays") {
+    // Monday to Friday, every day (the interval doesn't apply).
+    for (let date = start; date <= to && out.length < limit; date = addDays(date, 1)) {
+      const day = new Date(`${date}T00:00:00Z`).getUTCDay();
+      if (day !== 0 && day !== 6) out.push(date);
+    }
+    return out;
+  }
+  if (rule.by === "last_day") {
+    const [sy, sm] = parts(start);
+    let k = Math.max(0, Math.floor(((sy - ay) * 12 + (sm - am)) / step));
+    for (let scanned = 0; out.length < limit && scanned < 400; k++, scanned++) {
+      const total = am - 1 + k * step;
+      const candidate = lastDayOf(ay + Math.floor(total / 12), (total % 12) + 1);
+      if (candidate > to) break;
+      if (candidate >= start) out.push(candidate);
+    }
+    return out;
+  }
 
   if (rule.freq === "daily" || rule.freq === "weekly") {
     const days = rule.freq === "daily" ? step : step * 7;
@@ -95,6 +156,12 @@ const MONTHS = [
 
 /** The interpreted schedule, stated plainly, including any skipped dates. */
 export function describeRecurrence(rule: Recurrence): string {
+  if (rule.by === "weekdays") return "Every weekday (Monday to Friday)";
+  if (rule.by === "last_day") {
+    return rule.interval === 1
+      ? "Every month on its last day"
+      : `Every ${rule.interval} months on the last day`;
+  }
   const [, m, d] = parts(rule.anchor);
   const weekday = WEEKDAYS[new Date(`${rule.anchor}T00:00:00Z`).getUTCDay()];
   switch (rule.freq) {
@@ -119,7 +186,12 @@ export function describeRecurrence(rule: Recurrence): string {
 }
 
 /** RRULE for a native recurring Google event with the same meaning. */
-export function toRRule(freq: Frequency, interval = 1): string {
-  const name = { daily: "DAILY", weekly: "WEEKLY", monthly: "MONTHLY", yearly: "YEARLY" }[freq];
-  return interval > 1 ? `RRULE:FREQ=${name};INTERVAL=${interval}` : `RRULE:FREQ=${name}`;
+export function toRRule(choice: RepeatChoice): string {
+  if (choice.by === "weekdays") return "RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR";
+  const name = { daily: "DAILY", weekly: "WEEKLY", monthly: "MONTHLY", yearly: "YEARLY" }[
+    choice.freq
+  ];
+  const interval = choice.interval > 1 ? `;INTERVAL=${choice.interval}` : "";
+  const last = choice.by === "last_day" ? ";BYMONTHDAY=-1" : "";
+  return `RRULE:FREQ=${name}${interval}${last}`;
 }

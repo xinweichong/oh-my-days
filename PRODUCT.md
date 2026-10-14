@@ -6,17 +6,17 @@
 
 web
 
-The custom interface consists of minimal browser-based Google authorization pages.
 The main experience is a Telegram bot, using Telegram's native presentation.
-Google Calendar provides the visual calendar interface. There is no separate
-calendar or task-management web application in the agreed scope.
+Google Calendar provides the visual calendar interface. Custom web surfaces are
+the Google connection pages and a Telegram Mini App for tasks and a read-only
+day/week overview. There is no separate calendar web application.
 
 ## Stack
 
-Backend proposal: TypeScript on Cloudflare Workers, D1, and scheduled work.
-The connection-page plan proposes small Worker-rendered HTML templates and shared
-CSS; no frontend framework has been selected or implemented. The user requested
-a written plan and explicitly declined a prototype.
+TypeScript on Cloudflare Workers, D1, and a per-minute scheduled tick.
+Connection pages are Worker-rendered HTML. The Mini App is vanilla TypeScript
+bundled with esbuild, with Motion's small vanilla build for springs; no frontend
+framework ([ADR 0005](docs/adr/0005-mini-app-surface-and-initdata-auth.md)).
 
 ## Users
 
@@ -58,9 +58,11 @@ guilt. Logo design deferred. See [identity](docs/identity/oh-my-days.md).
 
 ## Evidence on Hand
 
-Product specification, backend proposal, and user-confirmed interview decisions in
-[the experience brief](docs/design/experience.md). No running application, final
-logo, approved visual mockup, or measured user outcomes exist. Examples are synthetic.
+Released as 2.0.0 (2026-10-14) and in daily use by the owner. Product
+specification, backend plan and its implementation record, the approved logo and
+design system, the [experience brief](docs/design/experience.md), the
+[acceptance matrix](docs/acceptance.md), and [capacity measurements](docs/capacity.md).
+No measured outcomes from other users. Examples are synthetic.
 
 ## Product Principles
 
@@ -72,7 +74,9 @@ logo, approved visual mockup, or measured user outcomes exist. Examples are synt
 
 ## Open Decisions
 
-Exact visual tokens and logo remain open. A narrow single-column connection layout
+Logo and design system approved 2026-10-09. A narrow single-column connection layout
 and explicit Continue in Telegram action are approved; no automatic return. See
 [the connection-page plan](docs/plans/connection-pages.md) for implementation details.
-Do not infer a separate web app from this platform record.
+Do not infer a separate web app from this platform record. The one approved
+exception is a Telegram Mini App for tasks and a read-only day/week overview
+(owner, 2026-10-08; [improvement plan](docs/plans/improvements.md)).

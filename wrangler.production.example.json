@@ -1,0 +1,9 @@
+{
+  "routes": [{ "pattern": "calendar.example.com", "custom_domain": true }],
+  "database_id": "your-d1-database-id",
+  "vars": {
+    "PUBLIC_BASE_URL": "https://calendar.example.com",
+    "TELEGRAM_BOT_USERNAME": "your_bot_username",
+    "CONTACT_EMAIL": "privacy@example.com"
+  }
+}

@@ -1,6 +1,6 @@
 # Oh My Days — experience brief
 
-Status: Interview brief and connection-page layout approved. No interface implemented.
+Status: Approved and implemented: Telegram flows, connection pages, and the Mini App (released in 2.0.0, 2026-10-14).
 
 Date: 2026-09-25
 
@@ -63,7 +63,8 @@ beneath every agenda entry. Individual task reminders show **Done · Snooze**
 directly. The precise task-selection mechanism for a long agenda remains an
 implementation detail; preserve an unambiguous occurrence-specific target.
 
-Snooze choices: **In 1 hour · Tomorrow at 8am · Choose date/time**. Resolve shortcuts
+Snooze choices: **In 1 hour · Tomorrow at 8am · Choose date/time** ("8am" is the
+user's agenda time, improvement D1). Resolve shortcuts
 in the user's timezone, then show the resulting date/time and unchanged deadline:
 
 > I'll remind you on Sat 26 Sep at 8am.
@@ -136,5 +137,119 @@ Telegram styling remains intact. Logo design is deferred.
 The user requested a written implementation plan instead of a prototype. Follow
 the [connection-page plan](../plans/connection-pages.md) for layout, states, build
 order, and acceptance checks. Exact visual tokens remain implementation details
-within the approved minimal direction. No logo or separate calendar/task web app
-is included. No image-first/code-first workflow preference was selected.
+within the approved minimal direction. No logo or separate calendar web app is
+included; the approved Telegram Mini App is described below. No image-first/code-first workflow preference was selected.
+
+## Telegram Mini App
+
+Status: Layout and behavior approved by the owner on 2026-10-09 (improvement
+plan [step 5.0](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)).
+Implemented and deployed on 2026-10-10; see
+[ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md). The persistent
+keyboard button needs two taps: keyboard launches carry no sign-in data, so the
+bot answers it with an inline Open app button. Three structures were compared (smart lists home, day split by
+time of day, bottom tabs); the owner chose **smart lists home**.
+
+### Job and outcome
+
+The main moment is the morning check: what is next, and what is slipping. The
+second is quick task work during the day. This is an Operate surface: scanability
+and native phone controls outrank expression. Within a second of opening, the
+user can see what is next and how many items are due or overdue, and can complete
+or snooze anything in one or two taps, with the same results as chat (Undo, the
+✓ marker in Calendar, pending status).
+
+### Home
+
+Top to bottom:
+
+1. Local date and a **Next up** line: the next event (`09:00 Standup · in 25 min`)
+   or the next timed deadline (`Due 3pm: Send invoice`). With no events today:
+   “Your calendar is clear today.”, which refers only to events.
+2. **Quick add**, using the same quick-capture rules as typing in chat.
+3. Four smart-list tiles with counts: **Today** (sub-line such as
+   `3 events · 2 tasks`), **Overdue**, **Week**, **No deadline**.
+4. **My lists** (Inbox and user lists, with open counts), then **Recent**.
+5. One-line sync status at the foot.
+
+The Next up line and the Today count are the focal point: the day is readable
+without a tap. Today's count includes events and tasks, split on the sub-line.
+
+### Screens
+
+| Screen | Content |
+|---|---|
+| Today | All-day events, timed events in order, overdue then due tasks; events read-only, tapping opens Google Calendar |
+| Week | Monday–Sunday sections, previous/next week, today highlighted, empty days folded into one line |
+| Overdue | Grouped per task; recurring occurrences grouped (`Rent · 2 overdue`) with per-occurrence actions; **Snooze all**, never moving deadlines |
+| No deadline, List | Open tasks in that set |
+| Task detail | Title, deadline, list, reminder, repeat rule, history; rename, change or remove deadline, move, cancel or restore, series actions |
+| Recent | Completed and cancelled in the last 30 days; Reopen, Restore |
+
+Out of scope: event editing, time or month grids, settings, offline use, widgets.
+
+### Interaction
+
+- Telegram's Back button navigates; no custom back control.
+- Task rows: check circle, title, list label on smart lists, deadline, snooze
+  badge (`Snoozed until Mon 8am`).
+- Completing shows ✓ and a short Undo toast, then the row leaves the list.
+- Swipe left for **Snooze · More**; long-press starts multi-select, and
+  Telegram's main button carries the action (`Complete 3`). Cancelling requires
+  confirmation, as in chat.
+- Pending projections show `Saving to Calendar…`; a task changed elsewhere
+  refreshes in place with a short notice instead of overwriting.
+
+### States and ranges
+
+Today 0–20 items, Overdue 0–50, 1–20 lists, a few hundred tasks in total.
+States: loading; Google unreachable (`Showing saved copy`); reconnect required
+(banner with **Reconnect**); setup incomplete (`Finish setup in the chat`);
+empty tiles show `None`; pending; changed elsewhere.
+
+### Entry points
+
+The chat Menu button stays the command list. The app opens from a persistent
+keyboard button under the message box, the bot's main Mini App (**Open App** on
+its profile and in the chat list, configured in BotFather), and **Open app**
+buttons on the 8am agenda, `/daily`, and `/tasks`. Verify each on iOS, Android,
+and desktop clients during the build.
+
+### Presentation
+
+Telegram theme parameters supply every colour, so light and dark follow the
+client; system type; safe-area insets respected; tap targets at least 44px;
+reduced motion respected. No decorative emoji (✓ is functional); status is
+never shown by colour alone; copy follows the [identity](../identity/oh-my-days.md).
+
+### Phone polish (owner-approved 2026-10-10)
+
+After a critique against Apple's Human Interface Guidelines, the owner approved
+a polish pass, implemented and deployed on 2026-10-10:
+
+- **Motion, amended.** Besides confirming actions, motion may now show where
+  a screen came from and follow the finger: screens slide in from the right when
+  opened and from the left on Back (240 ms), swiped rows and sheets follow the
+  finger and settle with a spring, and sheets rise from the bottom edge. Motion
+  stays short and functional; under reduced motion it becomes a brief fade.
+  The [Motion](https://motion.dev) library's small vanilla build is bundled
+  into the app script for springs (no framework; [ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md)).
+- **Completing** fills the circle at once, waits for the server, then the row
+  leaves; a refusal empties the circle and says why. On the task screen the
+  primary action (**Mark done**, Reopen, Restore) is Telegram's main button.
+- **Home**: the full weekday without the year, a Next up card with the time
+  first, Today as a wide tile with its split, and Overdue, This week, and No
+  deadline as three smaller tiles. Reconnect is a button on the banner.
+- **Rows**: overdue tasks state their age (`3 days overdue`) in the overdue
+  colour instead of a badge; rows under a day show only the time; events lead
+  with a time column; cancelled tasks show `–`.
+- **Overdue**: **Snooze all** on the main button; recurring occurrences get
+  their own group. **Select** starts multi-select without a gesture; the bar
+  offers Select all, Stop selecting, Snooze (presets or a chosen time), Move,
+  and **Cancel tasks…**.
+- **Telegram fit**: header, background, and bottom bar take the page colour;
+  Back closes a sheet, an open swipe, or a selection before leaving the screen,
+  and shows the previous screen as it was left; sheets have a grabber, close by
+  dragging down or Escape, and keep focus inside.
+- **Contrast**: Telegram's secondary text, red, and outline colours are checked
+  against every surface and replaced by the system's own when too faint.

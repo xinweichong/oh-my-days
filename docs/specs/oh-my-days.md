@@ -1,6 +1,6 @@
 # Oh My Days — Product and implementation specification
 
-Status: Agreed product scope; implementation proposal ready for validation  
+Status: Agreed product scope. Implemented and released as 2.0.0 on 2026-10-14, except natural-language input through Gemini, deferred by the owner on 2026-10-04 (see the [backend plan §10](../plans/backend.md#10-implementation-status)).  
 Date: 2026-09-16  
 Working application name: **Oh My Days**
 
@@ -36,7 +36,7 @@ This document records the completed design interview. Sections describing propos
 - Voice notes, screenshots, image interpretation, and multi-instruction messages.
 - Completion-relative recurrence, such as three months after the previous completion.
 - Gmail email integration and Google Contacts integration.
-- A separate calendar or task-management frontend. Minimal Google authorization pages may be needed.
+- A separate calendar frontend. Minimal Google authorization pages may be needed. Exception: a Telegram Mini App for tasks and a read-only day/week overview, approved 2026-10-08 (see [improvement plan](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)); it does not edit events or replace Google Calendar.
 - Paid infrastructure, paid AI fallback, and automatic upgrades.
 
 ## 3. User setup and settings
@@ -81,6 +81,36 @@ For a message containing multiple independent instructions, explain the limit an
 - If intent, date, time, calendar, or target is materially ambiguous, ask a focused clarification.
 - Confirmation messages clearly label the result as an event or task and show the interpreted date/time.
 
+### Quick capture without AI
+
+Approved 2026-10-09 ([improvement A1](../plans/improvements.md#a1-deterministic-quick-capture)).
+Until natural-language interpretation is available, and as its local first step
+afterwards, a plain message that is not a command, an answer to an open
+question, or a follow-up is read with a fixed local grammar. Nothing is sent to
+any external service.
+
+- Two or more dates or times joined by commas, semicolons, `and`, or line breaks
+  are multiple instructions: nothing is created and the user is asked to send
+  them separately.
+- Task language (`task`, `todo`, `remind me to`, or `by`/`due` before a date or
+  time) creates a task; its date is the deadline.
+- A time or time range without task language creates an event, one hour long
+  unless a range or duration is given.
+- Text without a date or time creates an open-ended Inbox task.
+- A date without a time or task language is materially ambiguous: ask whether it
+  is a task due that day or an all-day event.
+- `on <calendar>` and `to`/`in <list>` apply only when they name an existing
+  writable calendar or list (ignoring case); otherwise the words stay in the
+  title. Nothing is created by inference.
+- Ambiguous dates or hours ask with dated choices, as in guided input.
+- Text it cannot read offers **Add as task**, **Add as event**, and **Cancel**.
+
+Quick capture only creates. The result shows the interpretation with Undo and a
+switch between task and event; the switch removes the first item (bound to its
+version and confirmed like any removal) and then creates the other. Editing,
+deleting, or targeting existing items stays with follow-ups and their
+confirmation rules.
+
 ### Follow-ups
 
 Support corrections such as `Move it to 4pm` and `Actually, make that Friday`.
@@ -105,7 +135,7 @@ Undo must restore the prior state only when it remains valid. It must not overwr
 - Default event duration: **one hour** when no end time or duration is given.
 - Explicit end times and durations override that default.
 - Show the complete interpreted range in the result, such as Friday, 7–8pm.
-- Default Telegram reminder: **one hour before the event**.
+- Default Telegram reminder: **one hour before the event**. The user can change this default in `/settings` (amended 2026-10-10, [improvement D1](../plans/improvements.md#6-phase-4--further-features-d1d6)); it also applies to exact-time task deadlines.
 - Apply this reminder to all timed events in selected calendars, including events created outside the bot.
 - Exclude cancelled events and invitations the user has declined.
 - Permit per-event reminder overrides in natural language or structured input.
@@ -165,7 +195,7 @@ Proposed import rule: a task created directly in the task calendar without a rec
 
 ### Recurring tasks
 
-- Support fixed daily, weekly, monthly, and yearly schedules.
+- Support fixed daily, weekly, monthly, and yearly schedules, every N days, weeks, or months, every weekday (Monday to Friday), and the last day of each month (extended 2026-10-10, [improvement D3](../plans/improvements.md#6-phase-4--further-features-d1d6)). When the chosen date doesn't fit the rule (a Saturday for weekdays), the first occurrence is the first date that does, and the result says so.
 - Each occurrence has independent completion, cancellation, deadline, and reminder state.
 - An unfinished older occurrence remains open when the next one becomes due.
 - Completing one occurrence never clears another.
@@ -178,16 +208,26 @@ Example: September's overdue rent task remains open when October's rent task is 
 
 ### Daily agenda
 
-Send one combined message at **8am in the user's configured timezone** containing:
+Send one combined message at **8am in the user's configured timezone** (by default; the user can choose 6–11am in `/settings`, amended 2026-10-10 by improvement D1) containing:
 
 - Today's events.
 - Tasks due today.
 - Overdue tasks eligible for reminders.
 - A count of open-ended tasks, such as `6 tasks without deadlines`, with a View tasks action.
 
+References to "8am" below mean the configured agenda time. The agenda is keyed by local date, so changing the time never sends a second agenda for a date already covered.
+
 Date-only due reminders and the overdue summary are combined into this message. Do not send duplicate 8am task messages for the same items. Overdue tasks continue to appear daily until completed, cancelled, snoozed, or rescheduled.
 
 Event reminders and exact-time task reminders remain separate one-hour-before notifications. Reminder overrides must be shown in `/reminders`.
+
+### Evening preview
+
+Optional and off by default (added 2026-10-10, [improvement D2](../plans/improvements.md#6-phase-4--further-features-d1d6)). The user can turn on a short **Tomorrow** message at a chosen evening hour (6–10pm in their timezone) in `/settings`. It uses the agenda's rendering for the next day (events, tasks due, count without deadlines), is sent at most once per date, and is skipped rather than sent late after midnight. It does not replace or change the morning agenda.
+
+### Quiet hours
+
+Optional and off by default (added 2026-10-10, [improvement D5](../plans/improvements.md#6-phase-4--further-features-d1d6)). The user can choose a nightly window in `/settings` (for example 10pm–7am in their timezone). Event, deadline, and snooze reminders that fall due inside it are held and sent once, as a single summary, when it ends; reminders that are no longer relevant by then (an event that has started, a deadline that has passed) are not sent, and overdue tasks still appear in the agenda. The daily agenda and evening preview are sent at their chosen times regardless.
 
 ### Slash commands
 
@@ -204,6 +244,7 @@ These views and controls must work without AI:
 | `/overdue` | Unfinished tasks past their deadline |
 | `/health` | Google Calendar connection and synchronization health |
 | `/help` | Available commands and examples |
+| `/export` | A JSON file of the user's tasks (with history), lists, recurring tasks, and contacts; no Google tokens and no copy of calendar events (added 2026-10-10, [improvement D6](../plans/improvements.md#6-phase-4--further-features-d1d6)) |
 
 Weekly and monthly views use actual calendar periods, not rolling 7/30-day windows. Provide Previous/Next navigation and appropriate filtering. Natural language may request other ranges, such as the next seven days.
 
@@ -266,6 +307,8 @@ Proposed implementation definition: count failures of completed sync attempts, n
 
 After bot downtime, send one catch-up summary for overdue tasks and still-upcoming events whose reminders were missed. Do not send a burst of stale alerts. Skip old one-hour-before event warnings once the events have started.
 
+A late daily agenda (clarified 2026-10-09, [improvement B5](../plans/improvements.md#b5-late-agenda-cutoff)): if the agenda has not gone out by 12:00 local time, send it as **Catch-up: today so far** with only events that have not ended and the still-open tasks; after 20:00, skip it and count the date as covered. When setup finishes after 08:00, the first agenda is the next day's.
+
 Do not imply that a Google sync outage, an AI outage, and a full hosting/database outage have identical effects. AI loss should not stop deterministic features. When hosting or storage is unavailable, reminders or health messages can themselves be delayed until recovery.
 
 ## 9. Language interpretation and data boundaries
@@ -301,7 +344,7 @@ Daily agendas, reminders, task actions, views, health controls, and synchronizat
 
 | Component | Proposed service | Responsibility |
 |---|---|---|
-| Telegram bot backend | Cloudflare Workers Free, served at `ohmydays.xinweichong.com` | Webhooks, commands, validation, authorization callbacks, provider calls |
+| Telegram bot backend | Cloudflare Workers Free, served at a custom domain | Webhooks, commands, validation, authorization callbacks, provider calls |
 | Durable application state | Cloudflare D1 Free | Users, tasks, lists, contacts, sync state, pending operations, reminder state |
 | Scheduled work | Cloudflare Cron Triggers | Due reminders, agendas, retries, synchronization maintenance |
 | Language interpretation | Gemini API Free | Sanitized text-to-intent interpretation only |
@@ -311,7 +354,7 @@ This is a deployment proposal. No infrastructure has been provisioned and no mod
 
 ### Cloudflare account capacity
 
-The Cloudflare account also holds DNS for `xinweichong.com`. The owner confirmed on 2026-10-02 that the other application runs on Oracle Cloud and uses no Workers, D1, or Cron Triggers in this account, so the earlier even split is unnecessary. Keep the half-allowance figures as **operating targets** to leave headroom for retries, recovery, and later features:
+The Cloudflare account also holds DNS for the owner's personal domain. The owner confirmed on 2026-10-02 that the other application runs on Oracle Cloud and uses no Workers, D1, or Cron Triggers in this account, so the earlier even split is unnecessary. Keep the half-allowance figures as **operating targets** to leave headroom for retries, recovery, and later features:
 
 | Resource | Documented account allowance | Operating target |
 |---|---:|---:|

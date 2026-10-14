@@ -1,26 +1,32 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
+  // Shared configuration for local development, tests, and deploys. It holds no
+  // production values: the host, D1 database ID, bot username, and contact address
+  // live in the untracked wrangler.production.local.json, which `npm run deploy`
+  // merges in (scripts/production-config.mjs). Deploy only through that script; a
+  // plain `wrangler deploy` with this file fails on the placeholder database ID.
   "name": "oh-my-days",
   "main": "src/worker.ts",
+  // Bundles the Mini App client into src/miniapp/generated before each build (ADR 0005).
+  "build": { "command": "npm run build:app" },
   // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
   "compatibility_date": "2026-08-15",
   "observability": { "enabled": true },
-  // Served only from the custom domain (ADR 0002); no workers.dev hostname.
+  // Served only from a custom domain (ADR 0002), set in the production file; no workers.dev hostname.
   "workers_dev": false,
-  "routes": [{ "pattern": "ohmydays.xinweichong.com", "custom_domain": true }],
-  // Non-secret settings. .dev.vars overrides PUBLIC_BASE_URL for local development.
+  // Non-secret settings. Local development sets PUBLIC_BASE_URL, TELEGRAM_BOT_USERNAME,
+  // and CONTACT_EMAIL in .dev.vars; production sets them in the production file.
   "vars": {
-    "PUBLIC_BASE_URL": "https://ohmydays.xinweichong.com",
-    "TELEGRAM_BOT_USERNAME": "oh_my_days_bot",
-    "CONTACT_EMAIL": "xwchong@gmail.com"
+    // Google access lasts 7 days while the OAuth app is in Testing; remove once verified.
+    "TESTING_TOKEN_TTL_DAYS": "7"
   },
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "oh-my-days",
-      // Remote database created 2026-10-02 (APAC). Local development and tests
-      // use a local copy keyed by this ID; they never touch the remote database.
-      "database_id": "2c1bd8db-c3bb-4928-9eb4-5af25c8d02c0",
+      // Placeholder. Local development and tests use a local copy keyed by this ID
+      // and never touch a remote database; the real ID is in the production file.
+      "database_id": "00000000-0000-0000-0000-000000000000",
       "migrations_dir": "migrations"
     }
   ],

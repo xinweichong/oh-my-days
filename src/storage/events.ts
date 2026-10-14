@@ -1,6 +1,7 @@
 import type { SyncedEvent } from "../calendar/port";
 import type { EventFields, EventTime } from "../domain/calendar-event";
 import type { Guard } from "./guard";
+import { likePattern } from "./tasks";
 
 export interface CachedEvent {
   calendarId: string;
@@ -70,6 +71,12 @@ function timeColumns(
 export function eventEndsAt(fields: EventFields): number {
   const [, endsAt, , endDate] = timeColumns(fields);
   return endsAt ?? Date.parse(`${endDate}T23:59:59Z`) + 14 * 3_600_000;
+}
+
+/** An approximate start instant for ordering (all-day events at UTC midnight). */
+function eventStartsAt(fields: EventFields): number {
+  const [startsAt, , startDate] = timeColumns(fields);
+  return startsAt ?? Date.parse(`${startDate}T00:00:00Z`);
 }
 
 export function upsertEventStatement(
@@ -188,6 +195,42 @@ export async function listCachedEvents(
     .bind(userId, ...calendarIds, range.to, range.from, range.toDate, range.fromDate, limit)
     .all<CachedRow>();
   return results.map(toCached);
+}
+
+/** Upper bound on rows read for one search. */
+const SEARCH_SCAN = 200;
+
+/**
+ * Synced one-off events (not occurrences of a series, which the caller finds
+ * live) in the given calendars whose title contains `text`
+ * (ASCII case-insensitive), upcoming first, then the most recent past ones.
+ */
+export async function searchCachedEvents(
+  db: D1Database,
+  userId: string,
+  calendarIds: readonly string[],
+  text: string,
+  now: number,
+  limit: number,
+): Promise<CachedEvent[]> {
+  if (calendarIds.length === 0) return [];
+  const placeholders = calendarIds.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(
+      `SELECT ${COLUMNS} FROM event_cache
+       WHERE user_id = ? AND calendar_id IN (${placeholders}) AND recurring = 0
+         AND recurring_event_id IS NULL AND declined = 0 AND summary LIKE ? ESCAPE '\\'
+       LIMIT ?`,
+    )
+    .bind(userId, ...calendarIds, likePattern(text), SEARCH_SCAN)
+    .all<CachedRow>();
+  const found = results.map(toCached);
+  const upcoming = found.filter((e) => eventEndsAt(e.fields) > now);
+  const past = found.filter((e) => eventEndsAt(e.fields) <= now);
+  const start = (e: CachedEvent) => eventStartsAt(e.fields);
+  upcoming.sort((a, b) => start(a) - start(b));
+  past.sort((a, b) => start(b) - start(a));
+  return [...upcoming, ...past].slice(0, limit);
 }
 
 /**

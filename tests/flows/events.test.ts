@@ -75,7 +75,7 @@ describe("/event: creating events", () => {
     await world.send("/event");
     await world.press("New event");
     await world.send("Dinner");
-    await world.send("next friday");
+    await world.send("someday");
     expect(world.lastText()).toContain("I didn't recognize that date");
     await world.send("26 Sep");
     await world.send("seven");

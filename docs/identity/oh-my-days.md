@@ -1,6 +1,6 @@
 # Oh My Days — identity
 
-Status: Name, voice, and minimal presentation direction confirmed in the design interview. Logo and detailed visual system deferred.
+Status: Name, voice, and presentation direction confirmed in the design interview; logo and design system approved 2026-10-09; repository banner approved 2026-10-14.
 
 Date: 2026-09-25
 
@@ -77,10 +77,24 @@ buttons on connection pages. No illustrations, gradients, or decorative animatio
 Use readable type, clear hierarchy, and explicit action labels. Telegram retains
 its native fonts, colors, and message/button appearance.
 
-Logo design is on hold. No symbol, mascot, or logo concept is approved. The earlier
-calendar/sun concept and palette were exploratory and are not binding. Exact colors,
-typefaces, spacing tokens, and dark-mode behavior remain undecided. Validate contrast
-and keyboard/focus behavior when building web pages; never use color alone for status.
+Logo and design system approved by the owner on 2026-10-09. The mark is the
+**eight o'clock sunrise**: a marigold half-sun clearing a tide horizon line, for
+the agenda that arrives with the morning. Palette: **Tide and marigold** (tide
+`#0b6b62` as the one brand colour; marigold `#f2a32c` only in the logo). The
+wordmark is Figtree 620 (SIL Open Font License), outlined. Files are in
+[`logo/`](logo/); the full system (palette for light and dark, type, spacing,
+Telegram theme mapping, Mini App components) is the
+[Oh My Days design system](https://claude.ai/artifact/EH362aUFHoyzMkpJJ2GqQ6).
+It keeps the rules above: system type in the product, one brand colour,
+functional symbols only, status never by colour alone. Superseded concepts
+(the open ring) are archived in [`logo/archive/`](logo/archive/) for reference.
+
+The repository banner (`logo/oh-my-days-banner.svg`, with a `-dark` version for
+dark backgrounds; PNG renders beside them) is the horizontal lockup centred over
+the tagline, flat on the light or dark surface colour. On the banner only, "Day"
+in the wordmark takes the tide colour to emphasise the day; the "s" and the rest
+of the name stay ink. Approved by the owner on 2026-10-14. Other lockups keep the
+one-colour wordmark.
 
 ## Related decisions
 

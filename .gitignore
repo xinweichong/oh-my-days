@@ -9,6 +9,10 @@ coverage/
 # Wrangler local state (local D1, caches, temporary bundles)
 .wrangler/
 
+# Production values and the deploy config generated from them (commit the example only)
+wrangler.production.local.json
+wrangler.production.jsonc
+
 # Secrets and local environment (commit *.example templates only)
 .dev.vars
 .dev.vars.*

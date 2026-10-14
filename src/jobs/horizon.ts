@@ -11,6 +11,8 @@ export const HORIZON_REFRESH_MS = 10 * 60_000;
 /** Covers the longest built-in reminder (1 day) plus the agenda's day. */
 export const HORIZON_AHEAD_MS = 26 * 60 * 60_000;
 
+const NO_DISPLAY = { location: null, callUrl: null, htmlLink: null };
+
 export interface HorizonDeps {
   db: D1Database;
   clock: Clock;
@@ -58,6 +60,7 @@ export async function refreshHorizons(deps: HorizonDeps, limit: number): Promise
           startsAt: Date.parse(fields.start.dateTime),
           endsAt: Date.parse(fields.end.dateTime),
           declined: item.declined,
+          display: item.display ?? NO_DISPLAY,
         });
       }
     }

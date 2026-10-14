@@ -6,7 +6,7 @@ export interface Env {
   TELEGRAM_ALLOWED_USER_IDS: string;
   /** Bot username without @, used for "Continue in Telegram" links. */
   TELEGRAM_BOT_USERNAME: string;
-  /** Origin the Worker is reached at, e.g. https://ohmydays.xinweichong.com. */
+  /** Origin the Worker is reached at, e.g. https://calendar.example.com. */
   PUBLIC_BASE_URL: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -14,6 +14,11 @@ export interface Env {
   TOKEN_ENCRYPTION_KEY: string;
   /** Optional contact address shown in the privacy policy. */
   CONTACT_EMAIL?: string;
+  /**
+   * Days Google access lasts while the OAuth app is in Testing (7). Unset once
+   * the app is verified; it only drives the advance warning.
+   */
+  TESTING_TOKEN_TTL_DAYS?: string;
 }
 
 export interface AppConfig {
@@ -26,6 +31,8 @@ export interface AppConfig {
   googleClientSecret: string;
   tokenEncryptionKey: string;
   contactEmail: string | null;
+  /** Null when Google access doesn't expire on a schedule (verified app). */
+  testingTokenTtlDays: number | null;
 }
 
 export class ConfigError extends Error {
@@ -63,7 +70,17 @@ export function readConfig(env: Env): AppConfig {
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     tokenEncryptionKey: env.TOKEN_ENCRYPTION_KEY,
     contactEmail: env.CONTACT_EMAIL?.includes("@") ? env.CONTACT_EMAIL : null,
+    testingTokenTtlDays: parseTtlDays(env.TESTING_TOKEN_TTL_DAYS),
   };
+}
+
+function parseTtlDays(value: string | undefined): number | null {
+  if (value === undefined || value.trim() === "") return null;
+  const days = Number(value);
+  if (!Number.isInteger(days) || days < 2 || days > 365) {
+    throw new ConfigError("TESTING_TOKEN_TTL_DAYS must be a whole number of days (2-365)");
+  }
+  return days;
 }
 
 /** HTTPS origins only, except plain-HTTP localhost for development. */

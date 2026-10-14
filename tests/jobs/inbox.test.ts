@@ -30,7 +30,7 @@ describe("inbox processing", () => {
     expect(await processUserInbox(d, owner, 10)).toBe(2);
 
     const texts = await outboxTexts(owner);
-    expect(texts[0]).toContain("Available commands");
+    expect(texts[0]).toContain("Type what you want to add");
     expect(texts[1]).toContain("A little less to keep in your head.");
     expect(await count(env.DB, "telegram_inbox", "payload IS NOT NULL")).toBe(0);
   });

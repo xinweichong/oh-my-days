@@ -365,6 +365,51 @@ export async function listOpenTasks(
   return results.map(toTask);
 }
 
+/** Tasks completed or cancelled since `since`, most recent first. */
+export async function listRecentTasks(
+  db: D1Database,
+  userId: string,
+  since: number,
+  limit: number,
+): Promise<(TaskRecord & { closedAt: number })[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${TASK_COLUMNS}, COALESCE(t.completed_at, t.cancelled_at) AS closed_at ${FROM}
+       WHERE t.user_id = ? AND t.status IN ('completed', 'cancelled')
+         AND COALESCE(t.completed_at, t.cancelled_at) >= ?
+       ORDER BY closed_at DESC LIMIT ?`,
+    )
+    .bind(userId, since, limit)
+    .all<TaskRow & { closed_at: number }>();
+  return results.map((r) => ({ ...toTask(r), closedAt: r.closed_at }));
+}
+
+/** `%` and `_` in user text match literally in LIKE ... ESCAPE '\'. */
+export function likePattern(text: string): string {
+  return `%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * Open tasks whose title contains `text` (case-insensitive for ASCII letters,
+ * as SQLite's LIKE is), earliest created first.
+ */
+export async function searchOpenTasks(
+  db: D1Database,
+  userId: string,
+  text: string,
+  limit: number,
+): Promise<TaskRecord[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${TASK_COLUMNS} ${FROM}
+       WHERE t.user_id = ? AND t.status = 'open' AND t.title LIKE ? ESCAPE '\\'
+       ORDER BY t.created_at LIMIT ?`,
+    )
+    .bind(userId, likePattern(text), limit)
+    .all<TaskRow>();
+  return results.map(toTask);
+}
+
 /** Moves the next reminder; never changes the deadline or the task's version. */
 export function setSnoozeStatement(
   db: D1Database,
@@ -378,6 +423,44 @@ export function setSnoozeStatement(
     .bind(until, now, taskId, userId);
 }
 
+/**
+ * Snoozes one task only if it is still open at `version` (a bulk snooze bound
+ * to the confirmed set). The deadline is never touched.
+ */
+export function snoozeIfUnchangedStatement(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  version: number,
+  until: number,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE tasks SET snoozed_until = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND version = ? AND status = 'open'`,
+    )
+    .bind(until, now, taskId, userId, version);
+}
+
+/** Puts back an earlier snooze, only if the bulk snooze is still in place unchanged. */
+export function unsnoozeIfUnchangedStatement(
+  db: D1Database,
+  userId: string,
+  taskId: string,
+  version: number,
+  snoozedBy: number,
+  previous: number | null,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE tasks SET snoozed_until = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND version = ? AND snoozed_until = ?`,
+    )
+    .bind(previous, now, taskId, userId, version, snoozedBy);
+}
+
 /** Whether a task is currently snoozed (and so left out of automatic summaries). */
 export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): boolean {
   return task.snoozedUntil !== null && task.snoozedUntil > now;
@@ -387,6 +470,21 @@ export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): 
  * Open tasks that could need a reminder now: exact deadlines within the next
  * 25 hours (longest built-in offer is one day), and snoozes that just ended.
  */
+/** The earliest snooze still to end, for scheduling the reminder pass. */
+export async function nextSnoozeEnd(
+  db: D1Database,
+  userId: string,
+  now: number,
+): Promise<number | null> {
+  const row = await db
+    .prepare(
+      "SELECT MIN(snoozed_until) AS at FROM tasks WHERE user_id = ? AND status = 'open' AND snoozed_until > ?",
+    )
+    .bind(userId, now)
+    .first<{ at: number | null }>();
+  return row?.at ?? null;
+}
+
 export async function reminderCandidateTasks(
   db: D1Database,
   userId: string,

@@ -2,16 +2,16 @@ import { findContact, isEmailAddress, saveContactStatement } from "../storage/co
 import {
   clearPendingInputStatement,
   type PendingInput,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import type { UserRecord } from "../storage/users";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import type { SourceFor } from "./calendar-view";
+import { guidedPrompt } from "./cancel";
 import { guestChangePreview, PATCH_EVENT, type PatchEventIntent } from "./event-operations";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import type { SetupDeps } from "./setup";
 import { answer, keyboardMessage } from "./ui";
 
 /**
@@ -57,24 +57,16 @@ export async function handleInviteAction(
       statements: (db) => [saveContactStatement(db, user.id, { name, email }, deps.clock.now())],
     });
   }
-  const now = deps.clock.now();
-  return combine(answer(callback), {
-    replies: [
-      {
-        method: "sendMessage",
-        params: {
-          chat_id: user.privateChatId,
-          text: "Who should I invite? Send email addresses or saved contact names, separated by commas.",
-        },
-      },
-    ],
-    statements: (db) => [
-      setPendingInputStatement(db, user.id, "event_invite", now + PENDING_INPUT_TTL_MS, now, {
-        calendarId: payload.calendarId,
-        eventId: payload.eventId,
-      }),
-    ],
-  });
+  return combine(
+    answer(callback),
+    guidedPrompt(
+      deps,
+      user,
+      "event_invite",
+      { calendarId: payload.calendarId, eventId: payload.eventId },
+      "Who should I invite? Send email addresses or saved contact names, separated by commas.",
+    ),
+  );
 }
 
 export async function handleInviteInput(
@@ -168,30 +160,15 @@ async function next(
   state: InviteState,
   messageId: number,
 ): Promise<Reaction> {
-  const now = deps.clock.now();
   const name = state.unknown[0];
   if (name) {
-    return {
-      replies: [
-        {
-          method: "sendMessage",
-          params: {
-            chat_id: user.privateChatId,
-            text: `I don't have an email address for ${name}. Send it, and I'll offer to save it.`,
-          },
-        },
-      ],
-      statements: (db) => [
-        setPendingInputStatement(
-          db,
-          user.id,
-          "event_contact_email",
-          now + PENDING_INPUT_TTL_MS,
-          now,
-          { ...state },
-        ),
-      ],
-    };
+    return guidedPrompt(
+      deps,
+      user,
+      "event_contact_email",
+      { ...state },
+      `I don't have an email address for ${name}. Send it, and I'll offer to save it.`,
+    );
   }
 
   const source = await deps.sourceFor(user.id);

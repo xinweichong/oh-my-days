@@ -21,6 +21,18 @@ export interface UserRecord {
   setupStep: SetupStep;
   defaultCalendarId: string | null;
   taskCalendarId: string | null;
+  /** Typing hints shown after guided creations (they stop after a few). */
+  typingHintsShown: number;
+  /** Earlier timezones, newest first. */
+  recentTimezones: string[];
+  /** Local hour of the daily agenda (6–11). */
+  agendaHour: number;
+  /** Default minutes before timed events and exact deadlines to remind. */
+  reminderMinutes: number;
+  /** Local hour of the evening preview of tomorrow, or null when off. */
+  eveningHour: number | null;
+  /** Nightly quiet hours (local start and end hours), or null when off. */
+  quietHours: { start: number; end: number } | null;
 }
 
 interface UserRow {
@@ -32,6 +44,13 @@ interface UserRow {
   setup_step: SetupStep;
   default_calendar_id: string | null;
   task_calendar_id: string | null;
+  typing_hints_shown: number;
+  recent_timezones: string;
+  agenda_hour: number;
+  reminder_minutes: number;
+  evening_hour: number | null;
+  quiet_start: number | null;
+  quiet_end: number | null;
 }
 
 function toRecord(row: UserRow): UserRecord {
@@ -44,11 +63,30 @@ function toRecord(row: UserRow): UserRecord {
     setupStep: row.setup_step,
     defaultCalendarId: row.default_calendar_id,
     taskCalendarId: row.task_calendar_id,
+    typingHintsShown: row.typing_hints_shown,
+    recentTimezones: parseZones(row.recent_timezones),
+    agendaHour: row.agenda_hour,
+    reminderMinutes: row.reminder_minutes,
+    eveningHour: row.evening_hour,
+    quietHours:
+      row.quiet_start === null || row.quiet_end === null
+        ? null
+        : { start: row.quiet_start, end: row.quiet_end },
   };
 }
 
 const COLUMNS = `id, telegram_user_id, private_chat_id, timezone, status, setup_step,
-  default_calendar_id, task_calendar_id`;
+  default_calendar_id, task_calendar_id, typing_hints_shown, recent_timezones, agenda_hour,
+  reminder_minutes, evening_hour, quiet_start, quiet_end`;
+
+function parseZones(value: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.filter((z): z is string => typeof z === "string") : [];
+  } catch {
+    return [];
+  }
+}
 
 /** Creates the user on first contact, or refreshes the private chat ID. */
 export function upsertUserStatement(
@@ -129,11 +167,107 @@ export function setTimezoneStatement(
   userId: string,
   timezone: string,
   now: number,
+  recent: readonly string[] = [],
 ): D1PreparedStatement {
   return db
     .prepare(
-      `UPDATE users SET timezone = ?, settings_version = settings_version + 1, updated_at = ?
+      `UPDATE users SET timezone = ?, recent_timezones = ?, settings_version = settings_version + 1,
+         updated_at = ? WHERE id = ?`,
+    )
+    .bind(timezone, JSON.stringify(recent), now, userId);
+}
+
+/** Counts one typing hint shown, up to `limit`. */
+export function countTypingHintStatement(
+  db: D1Database,
+  userId: string,
+  limit: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      "UPDATE users SET typing_hints_shown = typing_hints_shown + 1 WHERE id = ? AND typing_hints_shown < ?",
+    )
+    .bind(userId, limit);
+}
+
+/** Users whose reminders or agenda may be due, earliest first. */
+export async function usersDueForReminders(
+  db: D1Database,
+  now: number,
+  limit: number,
+): Promise<{ id: string; dueVersion: number }[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT id, due_version FROM users
+       WHERE setup_step = 'done' AND status = 'active'
+         AND (next_due_at IS NULL OR next_due_at <= ?)
+       ORDER BY COALESCE(next_due_at, 0) LIMIT ?`,
+    )
+    .bind(now, limit)
+    .all<{ id: string; due_version: number }>();
+  return results.map((r) => ({ id: r.id, dueVersion: r.due_version }));
+}
+
+/**
+ * Stores when the user next needs the reminder pass, unless something changed
+ * since `dueVersion` was read (that change cleared it, and must win).
+ */
+export function setNextDueStatement(
+  db: D1Database,
+  userId: string,
+  at: number,
+  dueVersion: number,
+): D1PreparedStatement {
+  return db
+    .prepare("UPDATE users SET next_due_at = ? WHERE id = ? AND due_version = ?")
+    .bind(at, userId, dueVersion);
+}
+
+/** Agenda hours a user can choose; outside these, the late-agenda rules would overlap. */
+export const AGENDA_HOURS = [6, 7, 8, 9, 10, 11] as const;
+/** Evening preview hours a user can choose. */
+export const EVENING_HOURS = [18, 19, 20, 21, 22] as const;
+/** Quiet-hour windows a user can choose (local start and end hours). */
+export const QUIET_HOURS = [
+  { start: 22, end: 7 },
+  { start: 23, end: 7 },
+  { start: 22, end: 8 },
+  { start: 23, end: 8 },
+] as const;
+
+export function setQuietHoursStatement(
+  db: D1Database,
+  userId: string,
+  quiet: { start: number; end: number } | null,
+  now: number,
+): D1PreparedStatement {
+  return db
+    .prepare(
+      `UPDATE users SET quiet_start = ?, quiet_end = ?, settings_version = settings_version + 1,
+         updated_at = ? WHERE id = ?`,
+    )
+    .bind(quiet?.start ?? null, quiet?.end ?? null, now, userId);
+}
+
+/** Default reminder leads a user can choose, in minutes. */
+export const REMINDER_LEADS = [10, 30, 60, 120] as const;
+
+export function setScheduleSettingStatement(
+  db: D1Database,
+  userId: string,
+  setting: { agendaHour: number } | { reminderMinutes: number } | { eveningHour: number | null },
+  now: number,
+): D1PreparedStatement {
+  const [column, value] =
+    "agendaHour" in setting
+      ? ["agenda_hour", setting.agendaHour]
+      : "reminderMinutes" in setting
+        ? ["reminder_minutes", setting.reminderMinutes]
+        : ["evening_hour", setting.eveningHour];
+  return db
+    .prepare(
+      `UPDATE users SET ${column} = ?, settings_version = settings_version + 1, updated_at = ?
        WHERE id = ?`,
     )
-    .bind(timezone, now, userId);
+    .bind(value, now, userId);
 }

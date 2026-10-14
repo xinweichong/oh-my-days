@@ -1,6 +1,12 @@
-import { parseLocalDate, parseWallTime } from "../domain/parse-input";
-import { describeRecurrence, type Frequency } from "../domain/recurrence";
-import { DEFAULT_TASK_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
+import { parseDate, parseTime } from "../domain/parse-input";
+import {
+  describeRecurrence,
+  type Frequency,
+  firstOccurrence,
+  parseRepeatInterval,
+  type RepeatChoice,
+} from "../domain/recurrence";
+import { reminderKeys } from "../domain/schedule";
 import { type Deadline, MAX_LIST_NAME, MAX_TASK_TITLE, normalizeListName } from "../domain/tasks";
 import {
   addDays,
@@ -10,12 +16,13 @@ import {
   wallPartsAt,
   zonedInstant,
 } from "../domain/time";
+import { appButton, appUrl } from "../miniapp/entry";
+import type { IdGenerator } from "../shared/ids";
 import type { Guard } from "../storage/guard";
 import {
   clearPendingInputStatement,
   type PendingInput,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
 import { claimReminderStatement } from "../storage/reminders";
@@ -25,6 +32,7 @@ import {
   type SeriesRecord,
   updateSeriesStatement,
 } from "../storage/series";
+import { upcomingSessions } from "../storage/sessions";
 import {
   deleteListStatements,
   ensureInboxStatement,
@@ -32,6 +40,7 @@ import {
   insertListStatement,
   insertTaskStatement,
   listOpenTasks,
+  listRecentTasks,
   listTaskLists,
   type TaskChanges,
   type TaskList,
@@ -40,11 +49,14 @@ import {
 } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatDayLabel, formatShortStart } from "../telegram/format";
+import { formatDayLabel, formatShortStart, formatWallTime } from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
+import { cancelRow, guidedPrompt } from "./cancel";
+import { dateChoiceLabel, whenQuestion } from "./choices";
+import { withTypingHint } from "./hints";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { recurrenceOf } from "./series";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import { occurrenceDeadline, recurrenceOf } from "./series";
+import type { SetupDeps } from "./setup";
 import { projectTaskStatement } from "./task-projection";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
@@ -57,7 +69,7 @@ import { answer, keyboardMessage, removeButtons } from "./ui";
 const PAGE_SIZE = 8;
 
 /** A task being created, or a deadline being changed. */
-interface TaskDraft {
+export interface TaskDraft {
   title: string;
   listId?: string;
   date?: LocalDate;
@@ -168,11 +180,62 @@ async function tasksView(
       .map((l) => buttons.button(l.name, "task_list", { listId: l.id, page: 0 })),
   ];
   for (let i = 0; i < filters.length; i += 3) rows.push(filters.slice(i, i + 3));
+  rows.push([buttons.button("Recent", "task_recent", { page: 0 })]);
+  const open = appButton(appUrl(deps.config));
+  if (open) rows.push([open]);
   if (list && !list.isInbox)
     rows.push([buttons.button(`Delete list ${list.name}`, "list_delete", { listId: list.id })]);
 
   const heading = list ? `${list.name}: ${total} open` : `Open tasks: ${total}`;
   const text = total === 0 ? `${heading}\n\nNothing open${list ? " in this list" : ""}.` : heading;
+  return {
+    replies: [keyboardMessage(user, text, { inline_keyboard: rows }, editMessageId)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+/** How far back the Recent view goes. */
+export const RECENT_DAYS = 30;
+const RECENT_LIMIT = 100;
+
+/** Completed and cancelled tasks from the last 30 days; each opens Reopen or Restore. */
+async function recentView(
+  deps: SetupDeps,
+  user: UserRecord,
+  page: number,
+  editMessageId: number | null,
+): Promise<Reaction> {
+  const now = deps.clock.now();
+  const all = await listRecentTasks(
+    deps.db,
+    user.id,
+    now - RECENT_DAYS * 24 * 60 * 60_000,
+    RECENT_LIMIT,
+  );
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const rows: InlineKeyboardButton[][] = all
+    .slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
+    .map((t) => [
+      buttons.button(
+        truncate(
+          `${t.status === "completed" ? "Done" : "Cancelled"} ${formatDayLabel(localDateAt(t.closedAt, user.timezone))} · ${taskLabel(t, user, true)}`,
+          60,
+        ),
+        "task_pick",
+        { taskId: t.id },
+      ),
+    ]);
+  const nav: InlineKeyboardButton[] = [];
+  if (page > 0) nav.push(buttons.button("Previous", "task_recent", { page: page - 1 }));
+  if ((page + 1) * PAGE_SIZE < all.length) {
+    nav.push(buttons.button("More", "task_recent", { page: page + 1 }));
+  }
+  if (nav.length) rows.push(nav);
+  rows.push([buttons.button("Open tasks", "task_list", { listId: null, page: 0 })]);
+  const text =
+    all.length === 0
+      ? `Nothing completed or cancelled in the last ${RECENT_DAYS} days.`
+      : `Completed and cancelled, last ${RECENT_DAYS} days: ${all.length}`;
   return {
     replies: [keyboardMessage(user, text, { inline_keyboard: rows }, editMessageId)],
     statements: (db, guard) => buttons.statements(db, guard),
@@ -195,7 +258,7 @@ export function sortByDeadline(tasks: TaskRecord[], timeZone: string): TaskRecor
   return [...tasks].sort((a, b) => key(a) - key(b));
 }
 
-function taskLabel(task: TaskRecord, user: UserRecord, withList: boolean): string {
+export function taskLabel(task: TaskRecord, user: UserRecord, withList: boolean): string {
   const list = withList ? `[${task.listName}] ` : "";
   const due =
     task.deadline.kind === "none"
@@ -213,7 +276,14 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
   const repeats = series
     ? `\nRepeats: ${describeRecurrence(recurrenceOf(series))}${series.status === "stopped" ? " (stopped)" : ""}`
     : "";
-  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${repeats}${status}`;
+  const sessions =
+    task.status === "open"
+      ? await upcomingSessions(deps.db, user.id, task.id, deps.clock.now(), 3)
+      : [];
+  const work = sessions.length
+    ? `\nWork time: ${sessions.map((s) => formatShortStart(s.fields, user.timezone)).join("; ")}`
+    : "";
+  const text = `${task.title}\n${task.listName} · ${dueLabel(task.deadline, user.timezone)}${repeats}${work}${status}`;
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const ref = { taskId: task.id, version: task.version };
   const rows: InlineKeyboardButton[][] =
@@ -234,6 +304,7 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
                   }),
                 ]
               : []),
+            buttons.button("Schedule time", "event_session_new", { taskId: task.id }),
             buttons.button("Cancel task", "task_cancel", ref),
           ],
         ]
@@ -272,25 +343,15 @@ function ask(
   rows: InlineKeyboardButton[][] = [],
   buttons?: ActionButtons,
 ): Reaction {
-  const now = deps.clock.now();
-  return {
-    replies: [
-      rows.length
-        ? keyboardMessage(user, text, { inline_keyboard: rows }, null)
-        : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
-    ],
-    statements: (db, guard) => [
-      setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now, payload),
-      ...(buttons?.statements(db, guard) ?? []),
-    ],
-  };
+  return guidedPrompt(deps, user, kind, payload, text, rows, buttons);
 }
 
 function askList(deps: SetupDeps, user: UserRecord, draft: TaskDraft, lists: TaskList[]): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const rows = lists.map((l) => [
-    buttons.button(l.name, "task_draft_list", { draft, listId: l.id }),
-  ]);
+  const rows = [
+    ...lists.map((l) => [buttons.button(l.name, "task_draft_list", { draft, listId: l.id })]),
+    cancelRow(buttons, `adding the task ${draft.title}`),
+  ];
   return {
     replies: [
       keyboardMessage(user, `Which list is ${draft.title} in?`, { inline_keyboard: rows }, null),
@@ -320,7 +381,7 @@ function askDue(deps: SetupDeps, user: UserRecord, draft: TaskDraft): Reaction {
     user,
     "task_due_date",
     { draft },
-    `When is ${draft.title} due? Or type a date, like 9 Oct or 9/10.`,
+    `When is ${draft.title} due? Or type a date, like Fri, in 3 days, end of month, or 9 Oct.`,
     rows,
     buttons,
   );
@@ -347,7 +408,7 @@ function askDueTime(deps: SetupDeps, user: UserRecord, draft: TaskDraft): Reacti
  */
 function confirmedOnCreate(
   db: D1Database,
-  userId: string,
+  user: Pick<UserRecord, "id" | "reminderMinutes">,
   taskId: string,
   deadline: Deadline,
   now: number,
@@ -355,13 +416,13 @@ function confirmedOnCreate(
   guard: Guard,
 ): D1PreparedStatement[] {
   if (deadline.kind !== "datetime") return [];
-  const due = deadline.at - DEFAULT_TASK_REMINDER_MINUTES * 60_000;
+  const due = deadline.at - user.reminderMinutes * 60_000;
   if (deadline.at <= now || due > now) return [];
   return [
     claimReminderStatement(
       db,
-      userId,
-      reminderKeys.taskDue(taskId, deadline.at, DEFAULT_TASK_REMINDER_MINUTES),
+      user.id,
+      reminderKeys.taskDue(taskId, deadline.at, user.reminderMinutes),
       "confirmed_on_create",
       claimedBy,
       now,
@@ -379,6 +440,50 @@ function needsProjection(task: TaskRecord, changes: TaskChanges): boolean {
  * Applies a version-checked change, queues the marker update, and replies with
  * the result and an Undo bound to the resulting version.
  */
+/**
+ * The state change itself, shared by chat and the Mini App: a version-checked
+ * update, a reminder already covered by the confirmation, and the deadline
+ * marker update. The first statement changes rows only if the task is still at
+ * `task.version`.
+ */
+export function taskChangeStatements(
+  db: D1Database,
+  ids: IdGenerator,
+  user: UserRecord,
+  task: TaskRecord,
+  changes: TaskChanges,
+  now: number,
+  guard: Guard,
+): D1PreparedStatement[] {
+  const version = task.version + 1;
+  return [
+    updateTaskStatement(db, user.id, task.id, task.version, changes, now, guard),
+    ...(changes.deadline
+      ? confirmedOnCreate(
+          db,
+          user,
+          task.id,
+          changes.deadline,
+          now,
+          `task:${task.id}:${version}`,
+          guard,
+        )
+      : []),
+    ...(needsProjection(task, changes)
+      ? [
+          projectTaskStatement(
+            db,
+            ids,
+            { ...task, title: changes.title ?? task.title },
+            version,
+            now,
+            guard,
+          ),
+        ]
+      : []),
+  ];
+}
+
 export function change(
   deps: SetupDeps,
   user: UserRecord,
@@ -406,73 +511,82 @@ export function change(
         : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
     ],
     statements: (db, guard) => [
-      updateTaskStatement(db, user.id, task.id, task.version, changes, now, guard),
-      ...(changes.deadline
-        ? confirmedOnCreate(
-            db,
-            user.id,
-            task.id,
-            changes.deadline,
-            now,
-            `task:${task.id}:${version}`,
-            guard,
-          )
-        : []),
-      ...(needsProjection(task, changes)
-        ? [
-            projectTaskStatement(
-              db,
-              deps.ids,
-              { ...task, title: changes.title ?? task.title },
-              version,
-              now,
-              guard,
-            ),
-          ]
-        : []),
+      ...taskChangeStatements(db, deps.ids, user, task, changes, now, guard),
       ...buttons.statements(db, guard),
     ],
   };
 }
 
-async function createTask(
+/** Extra buttons and text for a new task's result message. */
+export interface TaskCreationExtras {
+  /** Rows added under Undo (e.g. quick capture's "Make it an event"). */
+  rows?: (buttons: ActionButtons, taskId: string) => InlineKeyboardButton[][];
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
+  /** False when the caller shows its own result (the Mini App): no chat message or buttons. */
+  chat?: false;
+}
+
+export async function createTask(
   deps: SetupDeps,
   user: UserRecord,
   draft: TaskDraft,
   deadline: Deadline,
+  extras: TaskCreationExtras = {},
 ): Promise<Reaction> {
   const lists = await listTaskLists(deps.db, user.id);
   const list = lists.find((l) => l.id === draft.listId) ?? lists.find((l) => l.isInbox);
   if (!list)
     return message(user.privateChatId, "Your lists aren't ready yet. Send /task to try again.");
-  const now = deps.clock.now();
-  const id = deps.ids.next();
-  const task = { id, userId: user.id, title: draft.title };
-  const buttons = new ActionButtons(deps.ids, user.id, now);
-  const text = `Task added to ${list.name}: ${draft.title}.\n${dueLabel(deadline, user.timezone)}.`;
+  return combine(
+    { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
+    taskCreation(deps.ids, deps.clock.now(), user, list, draft.title, deadline, extras),
+  );
+}
+
+/**
+ * A new task: the row, its deadline marker, and the result with Undo. Used by
+ * guided creation, quick capture, and switching an event to a task.
+ */
+export function taskCreation(
+  ids: IdGenerator,
+  now: number,
+  user: UserRecord,
+  list: { id: string; name: string },
+  title: string,
+  deadline: Deadline,
+  extras: TaskCreationExtras = {},
+): Reaction {
+  const id = ids.next();
+  const task = { id, userId: user.id, title };
+  const buttons = new ActionButtons(ids, user.id, now);
+  const text = `Task added to ${list.name}: ${title}.\n${dueLabel(deadline, user.timezone)}.${extras.note ? `\n\n${extras.note}` : ""}`;
+  const chat = extras.chat !== false;
   return {
     about: { kind: "task", taskId: id },
-    replies: [
-      keyboardMessage(
-        user,
-        text,
-        {
-          inline_keyboard: [
-            [buttons.button("Undo", "task_undo_create", { taskId: id, version: 1 })],
-          ],
-        },
-        null,
-      ),
-    ],
+    replies: !chat
+      ? []
+      : [
+          keyboardMessage(
+            user,
+            text,
+            {
+              inline_keyboard: [
+                [buttons.button("Undo", "task_undo_create", { taskId: id, version: 1 })],
+                ...(extras.rows?.(buttons, id) ?? []),
+              ],
+            },
+            null,
+          ),
+        ],
     statements: (db, guard) => [
-      clearPendingInputStatement(db, user.id),
       insertTaskStatement(
         db,
         {
           id,
           userId: user.id,
           listId: list.id,
-          title: draft.title,
+          title,
           deadline,
           status: "open",
           origin: "telegram",
@@ -480,11 +594,9 @@ async function createTask(
         now,
         guard,
       ),
-      ...(deadline.kind === "none"
-        ? []
-        : [projectTaskStatement(db, deps.ids, task, 1, now, guard)]),
-      ...confirmedOnCreate(db, user.id, id, deadline, now, `task:${id}:1`, guard),
-      ...buttons.statements(db, guard),
+      ...(deadline.kind === "none" ? [] : [projectTaskStatement(db, ids, task, 1, now, guard)]),
+      ...confirmedOnCreate(db, user, id, deadline, now, `task:${id}:1`, guard),
+      ...(chat ? buttons.statements(db, guard) : []),
     ],
   };
 }
@@ -497,7 +609,9 @@ async function setDeadline(
 ): Promise<Reaction> {
   if (!draft.taskId) {
     return deadline.kind === "none"
-      ? createTask(deps, user, draft, deadline)
+      ? withTypingHint(user, "task", (note) =>
+          createTask(deps, user, draft, deadline, note ? { note } : {}),
+        )
       : askRepeat(deps, user, draft, deadline);
   }
   const task = await findTask(deps.db, user.id, draft.taskId);
@@ -516,7 +630,7 @@ async function setDeadline(
   );
 }
 
-function timedDeadline(
+export function timedDeadline(
   user: UserRecord,
   date: LocalDate,
   time: string,
@@ -602,6 +716,11 @@ export async function handleTaskAction(
       );
     case "task_lists":
       return combine(ack(), await listsView(deps, user));
+    case "task_recent":
+      return combine(
+        ack(),
+        await recentView(deps, user, Number(payload.page ?? 0), callback.messageId),
+      );
     case "task_pick":
       return combine(ack(), await taskCard(deps, user, taskId));
 
@@ -620,6 +739,14 @@ export async function handleTaskAction(
       const draft = readDraft(payload);
       if (!draft || typeof payload.date !== "string") return ack("This button is no longer valid.");
       return combine(ack(), done, askDueTime(deps, user, { ...draft, date: payload.date }));
+    }
+    case "task_draft_time": {
+      const draft = readDraft(payload);
+      if (!draft?.date || typeof payload.time !== "string")
+        return ack("This button is no longer valid.");
+      const deadline = timedDeadline(user, draft.date, payload.time);
+      if (!deadline.ok) return combine(ack(), done, message(user.privateChatId, deadline.text));
+      return combine(ack(), done, await setDeadline(deps, user, draft, deadline.deadline));
     }
     case "task_draft_whole_day": {
       const draft = readDraft(payload);
@@ -821,17 +948,34 @@ export async function handleTaskAction(
       );
     }
 
+    case "task_repeat_every": {
+      const draft = readDraft(payload);
+      if (!draft || !payload.deadline) return ack("This button is no longer valid.");
+      return combine(
+        ack(),
+        done,
+        ask(
+          deps,
+          user,
+          "task_repeat_interval",
+          { draft, deadline: payload.deadline },
+          "How often? Type every 2 days, every 3 weeks, or every 6 months.",
+        ),
+      );
+    }
     case "task_repeat": {
       const draft = readDraft(payload);
       const deadline = payload.deadline as Deadline | undefined;
       if (!draft || !deadline) return ack("This button is no longer valid.");
-      const freq = typeof payload.freq === "string" ? (payload.freq as Frequency) : null;
+      const freq = readRepeat(payload);
       return combine(
         ack(),
         done,
-        freq
-          ? await createSeries(deps, user, draft, deadline, freq)
-          : await createTask(deps, user, draft, deadline),
+        await withTypingHint(user, "task", (note) =>
+          freq
+            ? createSeries(deps, user, draft, deadline, freq, note)
+            : createTask(deps, user, draft, deadline, note ? { note } : {}),
+        ),
       );
     }
     case "series_menu": {
@@ -1015,20 +1159,36 @@ export async function handleTaskInput(
       if (!draft) return expired();
       if (/^(no|none|no deadline)$/i.test(text))
         return setDeadline(deps, user, draft, { kind: "none" });
-      const date = parseLocalDate(text, today);
+      const date = parseDate(text, today);
       if (!date)
         return message(
           user.privateChatId,
-          "I didn't recognize that date. Try 9 Oct, 9/10, or 2026-10-09.",
+          "I didn't recognize that date. Try Fri, next Fri, in 3 days, 9 Oct, or 9/10.",
         );
-      return askDueTime(deps, user, { ...draft, date });
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "task_draft_date", { draft, date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "task_due_date", { draft }, question, [row], buttons);
+      }
+      return askDueTime(deps, user, { ...draft, date: date.date });
     }
     case "task_due_time": {
       if (!draft?.date) return expired();
-      const time = parseWallTime(text);
+      const time = parseTime(text);
       if (!time)
         return message(user.privateChatId, "I didn't recognize that time. Try 15:00 or 3pm.");
-      const deadline = timedDeadline(user, draft.date, time);
+      if ("choose" in time) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = time.choose.map((t) =>
+          buttons.button(formatWallTime(t), "task_draft_time", { draft, time: t }),
+        );
+        const question = whenQuestion(time.choose.map((t) => ({ date: null, time: t })));
+        return ask(deps, user, "task_due_time", { draft }, question, [row], buttons);
+      }
+      const deadline = timedDeadline(user, draft.date, time.time);
       if (!deadline.ok) return message(user.privateChatId, deadline.text);
       return setDeadline(deps, user, draft, deadline.deadline);
     }
@@ -1041,6 +1201,23 @@ export async function handleTaskInput(
       return combine(
         { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
         change(deps, user, task, { title: text }, { title: task.title }, `Renamed: ${text}.`),
+      );
+    }
+    case "task_repeat_interval": {
+      const deadline = pending.payload.deadline as Deadline | undefined;
+      if (!draft || !deadline) return expired();
+      const repeat = parseRepeatInterval(text);
+      if (!repeat) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that. Try every 2 days, every 3 weeks, or every 6 months.",
+        );
+      }
+      return combine(
+        { replies: [], statements: (db) => [clearPendingInputStatement(db, user.id)] },
+        await withTypingHint(user, "task", (note) =>
+          createSeries(deps, user, draft, deadline, repeat, note),
+        ),
       );
     }
     case "series_rename": {
@@ -1097,6 +1274,32 @@ export async function handleTaskInput(
 
 // --- Recurring tasks ---------------------------------------------------------------
 
+/** The repeat options shared by tasks and events. */
+export function repeatRows(
+  option: (label: string, repeat: RepeatChoice | null) => InlineKeyboardButton,
+): InlineKeyboardButton[][] {
+  const plain = (freq: Frequency): RepeatChoice => ({ freq, interval: 1 });
+  return [
+    [option("Doesn't repeat", null)],
+    [
+      option("Daily", plain("daily")),
+      option("Weekdays", { freq: "daily", interval: 1, by: "weekdays" }),
+    ],
+    [option("Weekly", plain("weekly")), option("Monthly", plain("monthly"))],
+    [
+      option("Last day of month", { freq: "monthly", interval: 1, by: "last_day" }),
+      option("Yearly", plain("yearly")),
+    ],
+  ];
+}
+
+/** A repeat choice from a button payload (older buttons carried only `freq`). */
+export function readRepeat(payload: Record<string, unknown>): RepeatChoice | null {
+  const repeat = payload.repeat as RepeatChoice | null | undefined;
+  if (repeat && typeof repeat.freq === "string") return repeat;
+  return typeof payload.freq === "string" ? { freq: payload.freq as Frequency, interval: 1 } : null;
+}
+
 function askRepeat(
   deps: SetupDeps,
   user: UserRecord,
@@ -1104,8 +1307,8 @@ function askRepeat(
   deadline: Deadline,
 ): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const option = (label: string, freq: Frequency | null) =>
-    buttons.button(label, "task_repeat", { draft, deadline, freq });
+  const option = (label: string, repeat: RepeatChoice | null) =>
+    buttons.button(label, "task_repeat", { draft, deadline, repeat });
   return {
     replies: [
       keyboardMessage(
@@ -1113,9 +1316,9 @@ function askRepeat(
         `Does ${draft.title} repeat?`,
         {
           inline_keyboard: [
-            [option("Doesn't repeat", null)],
-            [option("Daily", "daily"), option("Weekly", "weekly")],
-            [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            ...repeatRows(option),
+            [buttons.button("Every…", "task_repeat_every", { draft, deadline })],
+            cancelRow(buttons, `adding the task ${draft.title}`),
           ],
         },
         null,
@@ -1133,15 +1336,17 @@ async function createSeries(
   user: UserRecord,
   draft: TaskDraft,
   deadline: Deadline,
-  freq: Frequency,
+  repeat: RepeatChoice,
+  note?: string,
 ): Promise<Reaction> {
-  if (deadline.kind === "none") return createTask(deps, user, draft, deadline);
+  if (deadline.kind === "none")
+    return createTask(deps, user, draft, deadline, note ? { note } : {});
   const lists = await listTaskLists(deps.db, user.id);
   const list = lists.find((l) => l.id === draft.listId) ?? lists.find((l) => l.isInbox);
   if (!list)
     return message(user.privateChatId, "Your lists aren't ready yet. Send /task to try again.");
   const now = deps.clock.now();
-  const anchor = deadline.kind === "date" ? deadline.date : localDateAt(deadline.at, user.timezone);
+  const chosen = deadline.kind === "date" ? deadline.date : localDateAt(deadline.at, user.timezone);
   const dueTime =
     deadline.kind === "datetime"
       ? (() => {
@@ -1149,16 +1354,21 @@ async function createSeries(
           return `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`;
         })()
       : null;
+  // A narrower rule may not include the chosen date: start at its first date.
+  const anchor = firstOccurrence({ ...repeat, anchor: chosen }) ?? chosen;
+  const first =
+    anchor === chosen ? deadline : occurrenceDeadline({ dueTime, timezone: user.timezone }, anchor);
+  const freq = repeat.freq;
   const seriesId = deps.ids.next();
   const taskId = deps.ids.next();
-  const rule = { freq, interval: 1, anchor };
+  const rule = { ...repeat, anchor };
   const buttons = new ActionButtons(deps.ids, user.id, now);
   return {
     about: { kind: "task", taskId },
     replies: [
       keyboardMessage(
         user,
-        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(deadline, user.timezone).replace(/^Due /, "due ")}.`,
+        `Recurring task added to ${list.name}: ${draft.title}.\n${describeRecurrence(rule)}. First ${dueLabel(first, user.timezone).replace(/^Due /, "due ")}.${note ? `\n\n${note}` : ""}`,
         { inline_keyboard: [[buttons.button("Undo", "series_stop", { seriesId, version: 1 })]] },
         null,
       ),
@@ -1172,7 +1382,8 @@ async function createSeries(
           listId: list.id,
           title: draft.title,
           freq,
-          interval: 1,
+          interval: repeat.interval,
+          by: repeat.by ?? null,
           anchorDate: anchor,
           dueTime,
           timezone: user.timezone,
@@ -1188,7 +1399,7 @@ async function createSeries(
           userId: user.id,
           listId: list.id,
           title: draft.title,
-          deadline,
+          deadline: first,
           status: "open",
           origin: "telegram",
           occurrence: { seriesId, date: anchor },
@@ -1216,7 +1427,7 @@ async function currentSeries(deps: SetupDeps, user: UserRecord, payload: Record<
     : null;
 }
 
-async function openOccurrences(
+export async function openOccurrences(
   deps: SetupDeps,
   user: UserRecord,
   seriesId: string,
@@ -1225,7 +1436,7 @@ async function openOccurrences(
 }
 
 /** Renames the series and every open occurrence (each version-checked), updating markers. */
-async function renameSeries(
+export async function renameSeries(
   deps: SetupDeps,
   user: UserRecord,
   series: SeriesRecord,
@@ -1257,7 +1468,7 @@ async function renameSeries(
  * Stops the series: occurrences from today on are cancelled (and their markers
  * removed); earlier unfinished occurrences stay open.
  */
-async function stopSeries(
+export async function stopSeries(
   deps: SetupDeps,
   user: UserRecord,
   series: SeriesRecord,
