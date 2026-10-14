@@ -1,0 +1,31 @@
+# Runs the repository's checks (Mini App build, lint, typecheck, tests) on every
+# pull request and on pushes to develop and main. Needs no secrets: tests use a
+# local D1 and fake Telegram and Google clients.
+name: Check
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # The bundle in src/miniapp/generated is committed; fail if it is stale.
+      - run: git diff --exit-code -- src/miniapp/generated

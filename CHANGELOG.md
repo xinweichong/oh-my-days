@@ -29,6 +29,8 @@ over the day, and a Telegram Mini App.
 - A warning the day before Google access ends while the OAuth app is in Testing
 - `/healthz` reports scheduler liveness (`ok tick_age_s=N`, or 503 when stale)
 - Repository banner, README screenshots, this changelog, and a licence
+- Continuous integration: `npm run check` on every pull request and on pushes to `develop` and `main`
+- Production values (host, database ID, bot username, contact address) are kept in an untracked file and merged in by `npm run deploy`
 
 ### Changed
 

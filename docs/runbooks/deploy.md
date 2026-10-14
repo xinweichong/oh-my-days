@@ -86,7 +86,7 @@ Releases follow [Semantic Versioning](https://semver.org) and are recorded in
 1. On a `release/<version>` branch from the integrated work: set `version` in
    `package.json` (and the lockfile with `npm install --package-lock-only`), move
    the changelog entries under the new version and date, and update the README's
-   version and test-count badges.
+   version badge. The check badge follows CI on `main` by itself.
 2. `npm run check`, then merge into `develop`, then `develop` into `main`, each by
    pull request.
 3. Tag the merge commit on `main` (`git tag -a v2.0.0 -m "Oh My Days v2.0.0"`),

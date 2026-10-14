@@ -8,7 +8,7 @@
 A Telegram assistant for your events and tasks, with **Google Calendar as the calendar**. Type what you need to remember, and it lands in your calendar or your task lists, then comes back as a morning agenda and reminders. It runs on free tiers only and works fully without AI.
 
 [![Version](https://img.shields.io/badge/version-2.0.0-0b6b62?style=flat-square)](CHANGELOG.md)
-[![Tests](https://img.shields.io/badge/tests-601%20passing-0b6b62?style=flat-square)](tests/)
+[![Check](https://img.shields.io/github/actions/workflow/status/xinweichong/oh-my-days/check.yml?branch=main&label=check&style=flat-square)](https://github.com/xinweichong/oh-my-days/actions/workflows/check.yml)
 [![Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-51605d?style=flat-square)](https://workers.cloudflare.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-51605d?style=flat-square)](tsconfig.json)
 [![License](https://img.shields.io/badge/license-all%20rights%20reserved-51605d?style=flat-square)](LICENSE)
