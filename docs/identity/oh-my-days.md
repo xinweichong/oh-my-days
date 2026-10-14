@@ -1,6 +1,6 @@
 # Oh My Days — identity
 
-Status: Name, voice, and minimal presentation direction confirmed in the design interview. Logo and detailed visual system deferred.
+Status: Name, voice, and presentation direction confirmed in the design interview; logo and design system approved 2026-10-09; repository banner approved 2026-10-14.
 
 Date: 2026-09-25
 
@@ -88,6 +88,13 @@ Telegram theme mapping, Mini App components) is the
 It keeps the rules above: system type in the product, one brand colour,
 functional symbols only, status never by colour alone. Superseded concepts
 (the open ring) are archived in [`logo/archive/`](logo/archive/) for reference.
+
+The repository banner (`logo/oh-my-days-banner.svg`, with a `-dark` version for
+dark backgrounds; PNG renders beside them) is the horizontal lockup centred over
+the tagline, flat on the light or dark surface colour. On the banner only, "Day"
+in the wordmark takes the tide colour to emphasise the day; the "s" and the rest
+of the name stay ink. Approved by the owner on 2026-10-14. Other lockups keep the
+one-colour wordmark.
 
 ## Related decisions
 
