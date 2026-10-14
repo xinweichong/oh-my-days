@@ -504,7 +504,7 @@ Stage 2 decisions to review:
 
 Stage 3 decisions and gaps to review:
 
-- Served at `ohmydays.xinweichong.com` with a homepage and privacy policy for
+- Served at a custom domain with a homepage and privacy policy for
   OAuth verification ([ADR 0002](../adr/0002-custom-domain-and-oauth-verification.md)).
 - The OAuth app stays in Testing until verified, so access expires every 7 days
   and the bot asks for reauthorization.

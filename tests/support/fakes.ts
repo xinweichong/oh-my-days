@@ -65,7 +65,7 @@ export const testConfig: AppConfig = {
   telegramBotToken: "test-bot-token",
   telegramWebhookSecret: "test-webhook-secret",
   allowedTelegramUserIds: new Set([OWNER, OTHER_USER]),
-  telegramBotUsername: "oh_my_days_bot",
+  telegramBotUsername: "omd_test_bot",
   publicBaseUrl: "https://ohmydays.test",
   googleClientId: "test-client.apps.googleusercontent.com",
   googleClientSecret: "test-client-secret",

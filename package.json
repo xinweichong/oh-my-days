@@ -15,7 +15,9 @@
     "format": "biome check --write .",
     "check": "npm run build:app && npm run lint && npm run typecheck && npm test",
     "db:migrate:local": "wrangler d1 migrations apply oh-my-days --local",
-    "build:app": "node scripts/build-app.mjs"
+    "build:app": "node scripts/build-app.mjs",
+    "deploy": "npm run check && node scripts/production-config.mjs && wrangler deploy --config wrangler.production.jsonc",
+    "db:migrate:remote": "node scripts/production-config.mjs && wrangler d1 migrations apply oh-my-days --remote --config wrangler.production.jsonc"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
@@ -28,7 +30,8 @@
     "wrangler": "4.141.0"
   },
   "overrides": {
-    "sharp": "0.35.4"
+    "sharp": "0.35.5",
+    "undici": "7.30.0"
   },
   "description": "A Telegram assistant for events and tasks, with Google Calendar as the calendar."
 }

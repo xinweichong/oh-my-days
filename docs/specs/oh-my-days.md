@@ -344,7 +344,7 @@ Daily agendas, reminders, task actions, views, health controls, and synchronizat
 
 | Component | Proposed service | Responsibility |
 |---|---|---|
-| Telegram bot backend | Cloudflare Workers Free, served at `ohmydays.xinweichong.com` | Webhooks, commands, validation, authorization callbacks, provider calls |
+| Telegram bot backend | Cloudflare Workers Free, served at a custom domain | Webhooks, commands, validation, authorization callbacks, provider calls |
 | Durable application state | Cloudflare D1 Free | Users, tasks, lists, contacts, sync state, pending operations, reminder state |
 | Scheduled work | Cloudflare Cron Triggers | Due reminders, agendas, retries, synchronization maintenance |
 | Language interpretation | Gemini API Free | Sanitized text-to-intent interpretation only |
@@ -354,7 +354,7 @@ This is a deployment proposal. No infrastructure has been provisioned and no mod
 
 ### Cloudflare account capacity
 
-The Cloudflare account also holds DNS for `xinweichong.com`. The owner confirmed on 2026-10-02 that the other application runs on Oracle Cloud and uses no Workers, D1, or Cron Triggers in this account, so the earlier even split is unnecessary. Keep the half-allowance figures as **operating targets** to leave headroom for retries, recovery, and later features:
+The Cloudflare account also holds DNS for the owner's personal domain. The owner confirmed on 2026-10-02 that the other application runs on Oracle Cloud and uses no Workers, D1, or Cron Triggers in this account, so the earlier even split is unnecessary. Keep the half-allowance figures as **operating targets** to leave headroom for retries, recovery, and later features:
 
 | Resource | Documented account allowance | Operating target |
 |---|---:|---:|

@@ -6,7 +6,7 @@ export interface Env {
   TELEGRAM_ALLOWED_USER_IDS: string;
   /** Bot username without @, used for "Continue in Telegram" links. */
   TELEGRAM_BOT_USERNAME: string;
-  /** Origin the Worker is reached at, e.g. https://ohmydays.xinweichong.com. */
+  /** Origin the Worker is reached at, e.g. https://calendar.example.com. */
   PUBLIC_BASE_URL: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;

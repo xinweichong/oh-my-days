@@ -190,27 +190,27 @@ npm run dev                      # Worker at http://localhost:8787
 | `npm run lint` | Biome lint and formatting check (`npm run format` fixes) |
 | `npm run typecheck` | TypeScript strict, for the Worker and the Mini App client |
 | `npm test` | Vitest inside the Workers runtime with a local D1 |
+| `npm run deploy` | Check, then deploy with the values in `wrangler.production.local.json` |
 
 ### Deploy
 
-1. Create the D1 database (`npx wrangler d1 create oh-my-days`) and put its ID, your hostname, and your bot's username in `wrangler.jsonc`.
-2. In Google Cloud, add the redirect URI `https://<your-host>/oauth/callback` and the scopes `openid`, `email`, `calendar.events`, `calendar.calendarlist.readonly`, and `calendar.app.created`.
-3. Set the secrets with `npx wrangler secret put <NAME>` (see [Configuration](#configuration)).
-4. Apply migrations and deploy:
+1. Create the D1 database: `npx wrangler d1 create oh-my-days`.
+2. Copy `wrangler.production.example.json` to `wrangler.production.local.json` and fill in your host, the database ID, your bot's username, and a contact address. This file is ignored by git, so your production values never enter the repository.
+3. In Google Cloud, add the redirect URI `https://<your-host>/oauth/callback` and the scopes `openid`, `email`, `calendar.events`, `calendar.calendarlist.readonly`, and `calendar.app.created`.
+4. Set the secrets with `npx wrangler secret put <NAME>` (see [Configuration](#configuration)).
+5. Apply migrations and deploy:
    ```sh
-   npm run check
-   npx wrangler d1 migrations apply oh-my-days --remote
-   npx wrangler deploy
+   npm run db:migrate:remote
+   npm run deploy            # runs npm run check, then deploys with your production values
    ```
-5. Register the webhook with Telegram's `setWebhook`: URL `https://<your-host>/telegram/webhook`, your `TELEGRAM_WEBHOOK_SECRET` as `secret_token`, and `allowed_updates` `["message", "callback_query"]`.
-6. In BotFather, enable the Mini App at `https://<your-host>/app`.
+6. Register the webhook with Telegram's `setWebhook`: URL `https://<your-host>/telegram/webhook`, your `TELEGRAM_WEBHOOK_SECRET` as `secret_token`, and `allowed_updates` `["message", "callback_query"]`. In BotFather, enable the Mini App at `https://<your-host>/app`.
 7. Send `/start` to your bot.
 
 The [deploy runbook](docs/runbooks/deploy.md) has checks after deploying and rollback; the [operations runbook](docs/runbooks/operations.md) covers restore and data deletion.
 
 ### Configuration
 
-Non-secret settings live in `wrangler.jsonc`; secrets are Worker secrets. `.dev.vars.example` lists all of them for local use.
+Secrets are Worker secrets. Production values that aren't secret live in the untracked `wrangler.production.local.json`; settings shared by every environment stay in `wrangler.jsonc`. For local development, `.dev.vars.example` lists everything.
 
 | Setting | Kind | Purpose |
 |---|---|---|
@@ -219,10 +219,10 @@ Non-secret settings live in `wrangler.jsonc`; secrets are Worker secrets. `.dev.
 | `TELEGRAM_ALLOWED_USER_IDS` | secret | Comma-separated numeric Telegram user IDs allowed to use the bot |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | secret | OAuth client from Google Cloud |
 | `TOKEN_ENCRYPTION_KEY` | secret | 32 random bytes, base64 (`openssl rand -base64 32`); encrypts stored Google tokens |
-| `PUBLIC_BASE_URL` | var | The Worker's public origin |
-| `TELEGRAM_BOT_USERNAME` | var | Used in links back to the chat |
-| `CONTACT_EMAIL` | var, optional | Shown in the privacy policy at `/privacy` |
-| `TESTING_TOKEN_TTL_DAYS` | var, optional | While the Google OAuth app is in Testing, access lasts 7 days; this sends a warning the day before |
+| `PUBLIC_BASE_URL` | production file | The Worker's public origin |
+| `TELEGRAM_BOT_USERNAME` | production file | Used in links back to the chat |
+| `CONTACT_EMAIL` | production file, optional | Shown in the privacy policy at `/privacy` |
+| `TESTING_TOKEN_TTL_DAYS` | `wrangler.jsonc`, optional | While the Google OAuth app is in Testing, access lasts 7 days; this sends a warning the day before |
 
 Changing `TOKEN_ENCRYPTION_KEY` makes stored Google tokens unreadable; each user then reconnects once.
 
@@ -258,7 +258,7 @@ oh-my-days/
 │   └── shared/              # Clock, IDs, hashing, structured logs
 ├── migrations/              # D1 schema, append-only
 ├── tests/                   # Unit, flow, and integration tests by area
-├── scripts/build-app.mjs    # Bundles the Mini App client
+├── scripts/                 # Mini App bundling; production config from untracked values
 └── docs/                    # Spec, plans, ADRs, design, identity, runbooks
 ```
 

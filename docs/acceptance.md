@@ -52,7 +52,7 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | 7 | Delivery | Deduplication, unknown sends (never resent), coincident reminders (summarized), late-created items tested. Residual risk: a send whose outcome is unknown may be missing (it is never duplicated); `/health` counts these. |
 | 8 | Telegram usability | Callback data uses opaque tokens within 64 bytes; stale and cross-user buttons refused; pagination in lists and views; owner used the flows live. |
 | 9 | Recovery and retention | Retention purges implemented (inbox/outbox 7 days, operations and reminder log 30 days, links and state on expiry). Restore drill: see [runbook](runbooks/operations.md#restore-drill). List deletion moves tasks to Inbox after confirmation. |
-| 10 | Naming and deployment identity | Bot `@oh_my_days_bot`; Worker `oh-my-days` at `ohmydays.xinweichong.com`. |
+| 10 | Naming and deployment identity | Bot username confirmed available; Worker `oh-my-days` on a custom domain (values in the untracked production config). |
 
 ## Telegram Mini App (improvement D7)
 

@@ -6,7 +6,7 @@ const base: Env = {
   TELEGRAM_BOT_TOKEN: "test-bot-token",
   TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
   TELEGRAM_ALLOWED_USER_IDS: "1001",
-  TELEGRAM_BOT_USERNAME: "oh_my_days_bot",
+  TELEGRAM_BOT_USERNAME: "omd_test_bot",
   PUBLIC_BASE_URL: "https://ohmydays.test",
   GOOGLE_CLIENT_ID: "id",
   GOOGLE_CLIENT_SECRET: "secret",

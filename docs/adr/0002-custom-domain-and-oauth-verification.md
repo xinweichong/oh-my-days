@@ -1,4 +1,4 @@
-# ADR 0002: Serve from ohmydays.xinweichong.com and pursue Google OAuth verification
+# ADR 0002: Serve from a custom domain and pursue Google OAuth verification
 
 Status: Accepted; verification submission deferred by the owner on 2026-10-02 (Testing mode continues)
 Date: 2026-10-02
@@ -11,14 +11,14 @@ seven days, forcing a weekly reconnect. The Google console refused to publish th
 app to production without verification. Verification requires a homepage, a
 privacy policy, and redirect URIs on a domain whose ownership is verified in
 Google Search Console; a shared `workers.dev` hostname cannot be verified. The
-owner already controls `xinweichong.com`, whose DNS is in the same Cloudflare
+owner already controls a personal domain, whose DNS is in the same Cloudflare
 account that will host the Worker.
 
 ## Decision
 
-- Serve the Worker at `ohmydays.xinweichong.com` as a Workers custom domain. The
+- Serve the Worker at a subdomain of that domain as a Workers custom domain. The
   apex site is unaffected; the custom domain creates its own DNS record.
-- Verify `xinweichong.com` in Search Console (DNS TXT record) and list it as an
+- Verify the domain in Search Console (DNS TXT record) and list it as an
   authorized domain on the OAuth consent screen.
 - The Worker serves a minimal homepage (`/`) and privacy policy (`/privacy`) in
   addition to the planned connection pages, because verification requires them.
@@ -40,7 +40,7 @@ account that will host the Worker.
 
 ## Consequences
 
-- Deployment identity is fixed to `ohmydays.xinweichong.com`: the Telegram webhook,
+- Deployment identity is fixed to that subdomain: the Telegram webhook,
   OAuth redirect URI, and page links use it. Local development uses
   `http://localhost:8787` via `.dev.vars`.
 - Homepage and privacy-policy copy must stay accurate as features change, since

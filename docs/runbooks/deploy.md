@@ -1,16 +1,31 @@
 # Runbook: deploy and operate
 
-Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1
-database `oh-my-days` (APAC), one cron trigger (`* * * * *`). First deployed
-2026-10-03 from `feature/google-connection`.
+Production: Worker `oh-my-days` on a custom domain, D1 database `oh-my-days`
+(APAC), one cron trigger (`* * * * *`). First deployed 2026-10-03 from
+`feature/google-connection`. `<host>` below means the production host.
+
+## Production values
+
+The repository holds no production values. `wrangler.jsonc` is shared by local
+development, tests, and deploys, with a placeholder database ID. The production
+host, D1 database ID, bot username, and contact address live in
+`wrangler.production.local.json` (untracked; start from
+`wrangler.production.example.json`). `scripts/production-config.mjs` merges the
+two into `wrangler.production.jsonc` (untracked), which the deploy commands use.
+Keep a copy of `wrangler.production.local.json` somewhere safe outside the
+repository; without it, deploys stop with a message naming what is missing.
 
 ## Deploy a change
 
 ```sh
-npm run check                                      # must pass first
-npx wrangler d1 migrations apply oh-my-days --remote   # only when migrations/ changed
-npx wrangler deploy
+npm run db:migrate:remote   # only when migrations/ changed
+npm run deploy              # runs npm run check, writes the production config, deploys
 ```
+
+Never run a bare `npx wrangler deploy`: it uses the shared config and fails on
+the placeholder database ID. Other Wrangler commands that act on production
+(`tail`, `rollback`, `secret`, `d1 execute --remote`) find the Worker by name and
+work as before; for `d1` commands pass `--config wrangler.production.jsonc`.
 
 Apply migrations before deploying code that depends on them. Migrations are
 append-only once applied remotely; never edit an applied migration.
@@ -21,7 +36,7 @@ Set with `npx wrangler secret put <NAME>`; list names with `npx wrangler secret 
 Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `TELEGRAM_ALLOWED_USER_IDS`,
 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`. Non-secret
 settings (`PUBLIC_BASE_URL`, `TELEGRAM_BOT_USERNAME`, `CONTACT_EMAIL`) live in
-`wrangler.jsonc`. Never upload `PUBLIC_BASE_URL` as a secret.
+`wrangler.production.local.json`. Never upload `PUBLIC_BASE_URL` as a secret.
 
 Changing `TOKEN_ENCRYPTION_KEY` makes stored Google tokens unreadable: users
 receive one Reauthorize alert and must reconnect.
@@ -43,7 +58,7 @@ After rotating the webhook secret, update the Worker secret and call `setWebhook
 
 The OAuth app is in Testing (verification deferred; ADR 0002), so refresh tokens
 expire after 7 days and the bot asks for reauthorization. Redirect URI:
-`https://ohmydays.xinweichong.com/oauth/callback`.
+`https://<host>/oauth/callback`.
 
 ## Mini App (one-time, owner)
 
@@ -51,7 +66,7 @@ The Mini App is served at `/app` by the same Worker ([ADR 0005](../adr/0005-mini
 After the first deploy that includes it:
 
 1. In @BotFather: `/mybots` → the bot → Bot Settings → Configure Mini App →
-   enable it with `https://ohmydays.xinweichong.com/app`. Leave the Menu Button
+   enable it with `https://<host>/app`. Leave the Menu Button
    as the command list.
 2. In the chat, send `/start`: the persistent **Open app** keyboard button
    appears. Pressing it makes the bot send an inline **Open app** button
@@ -76,7 +91,7 @@ Releases follow [Semantic Versioning](https://semver.org) and are recorded in
    pull request.
 3. Tag the merge commit on `main` (`git tag -a v2.0.0 -m "Oh My Days v2.0.0"`),
    push the tag, and create the GitHub release from the changelog entry.
-4. Deploy from `main` as above.
+4. Deploy from `main` with `npm run deploy`.
 
 ## Rollback
 

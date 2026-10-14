@@ -8,9 +8,11 @@ TELEGRAM_WEBHOOK_SECRET=replace-with-a-long-random-value
 # Comma-separated numeric Telegram user IDs permitted to use the bot.
 TELEGRAM_ALLOWED_USER_IDS=123456789
 
-# Origin used for Google redirects and page links. Overrides the deployed value
-# in wrangler.jsonc so local development uses localhost.
+# Origin used for Google redirects and page links; localhost for local development.
+# Production values go in wrangler.production.local.json (see the deploy runbook).
 PUBLIC_BASE_URL=http://localhost:8787
+# Bot username without @, used in links back to the chat.
+TELEGRAM_BOT_USERNAME=your_bot_username
 
 # OAuth client (Web application) from Google Cloud > Google Auth Platform > Clients.
 GOOGLE_CLIENT_ID=replace-me.apps.googleusercontent.com
@@ -21,6 +23,6 @@ TOKEN_ENCRYPTION_KEY=replace-with-32-random-bytes-base64
 # Optional: contact address shown in the privacy policy at /privacy.
 # CONTACT_EMAIL=you@example.com
 
-# Optional (set in wrangler.jsonc): days Google access lasts while the OAuth app
+# Optional (shared value in wrangler.jsonc): days Google access lasts while the OAuth app
 # is in Testing. Drives a warning a day before; remove once the app is verified.
 # TESTING_TOKEN_TTL_DAYS=7
