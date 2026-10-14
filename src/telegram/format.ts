@@ -120,3 +120,8 @@ export function formatDayLabel(date: string): string {
 export function formatTime(instant: number, timeZone: string): string {
   return clock(new Date(instant), timeZone, true);
 }
+
+/** A local wall time for labels, e.g. "15:00" → "3pm", "09:30" → "9:30am". */
+export function formatWallTime(time: string): string {
+  return clock(new Date(`1970-01-01T${time}:00Z`), "UTC", true);
+}

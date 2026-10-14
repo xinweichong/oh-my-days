@@ -83,3 +83,17 @@ export async function userIdFor(db: D1Database, telegramUserId: number): Promise
   if (!row) throw new Error("user not found");
   return row.id;
 }
+
+/** The inline keyboard rows of a sent call, if it has an inline keyboard. */
+export function inlineRows(
+  call: { params: object } | undefined,
+): import("../../src/telegram/api").InlineKeyboardButton[][] {
+  const markup =
+    call && "reply_markup" in call.params
+      ? (call.params as { reply_markup?: object }).reply_markup
+      : undefined;
+  return markup && "inline_keyboard" in markup
+    ? (markup as { inline_keyboard: import("../../src/telegram/api").InlineKeyboardButton[][] })
+        .inline_keyboard
+    : [];
+}

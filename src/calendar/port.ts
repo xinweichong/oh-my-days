@@ -17,6 +17,18 @@ export type ProviderError =
 
 export type ProviderResult<T> = { ok: true; value: T } | { ok: false; error: ProviderError };
 
+/**
+ * Details shown in reminders only. Deliberately outside EventFields: they are
+ * never compared for conflicts or written back. Links are https only.
+ */
+export interface EventDisplay {
+  location: string | null;
+  /** Video-call link (Google Meet or another conference provider). */
+  callUrl: string | null;
+  /** The event in Google Calendar. */
+  htmlLink: string | null;
+}
+
 export interface CalendarEvent {
   calendarId: string;
   id: string;
@@ -34,6 +46,7 @@ export interface CalendarEvent {
   attendees?: string[];
   /** The user organizes it; only the organizer can send updates to guests. */
   organizerSelf?: boolean;
+  display?: EventDisplay;
 }
 
 /** Properties beyond the editable fields, used for task deadline markers. */
@@ -76,6 +89,15 @@ export interface CalendarPort {
     ifMatchEtag: string,
     extras?: Pick<EventExtras, "notifyGuests">,
   ): Promise<ProviderResult<null>>;
+  /**
+   * Moves an event to another calendar (same event ID; guests not notified).
+   * Callers check the current version first: Google's move takes no If-Match.
+   */
+  moveEvent(
+    calendarId: string,
+    eventId: string,
+    destinationId: string,
+  ): Promise<ProviderResult<CalendarEvent>>;
 }
 
 /** Returns the user's calendar port, or null when no usable Google connection exists. */
@@ -122,6 +144,7 @@ export interface SyncedEvent {
   hasGuests: boolean;
   /** The user organizes it (or it has no organizer distinct from the user). */
   organizerSelf: boolean;
+  display?: EventDisplay;
 }
 
 export type EventPageResult =
@@ -142,10 +165,14 @@ export interface CalendarSyncSource {
     calendarId: string,
     cursor: { syncToken: string | null; pageToken: string | null },
   ): Promise<EventPageResult>;
-  /** Event occurrences overlapping a time window, recurring instances expanded. */
+  /**
+   * Event occurrences overlapping a time window, recurring instances expanded.
+   * `query` asks Google for events matching the words (its free-text search).
+   */
   listWindow(
     calendarId: string,
     timeMin: number,
     timeMax: number,
+    options?: { query?: string },
   ): Promise<ProviderResult<SyncedEvent[]>>;
 }

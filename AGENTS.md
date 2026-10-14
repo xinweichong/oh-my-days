@@ -9,13 +9,16 @@ into a dedicated calendar. The backend must remain useful without AI.
 Read these documents before changing behavior:
 
 - `docs/specs/oh-my-days.md`: agreed product scope and acceptance scenarios.
-- `docs/plans/backend.md`: proposed architecture, dependencies, and delivery gates.
-- `docs/identity/oh-my-days.md`: initial identity and conversation-writing direction.
+- `docs/plans/backend.md`: architecture, dependencies, delivery gates, and the
+  implementation record (§10).
+- `docs/identity/oh-my-days.md`: identity, logo, and conversation-writing direction.
+- `docs/README.md`: index of every document and whether it is current or historical.
 
 The spec takes precedence over implementation proposals. Flag contradictions;
-do not silently reduce scope. Frontend design is a later discussion. The backend
-is partially implemented; `docs/plans/backend.md` §10 records which stages exist,
-and `README.md` lists the check commands (`npm run check`).
+do not silently reduce scope. Version 2.0.0 is released; natural-language input
+through Gemini is the one deferred stage. `docs/plans/backend.md` §10 records what
+exists, `CHANGELOG.md` records releases, and `README.md` lists the check commands
+(`npm run check`).
 
 ## Git workflow
 

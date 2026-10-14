@@ -2,6 +2,7 @@ import type {
   CalendarEvent,
   CalendarPort,
   CalendarSyncSource,
+  EventDisplay,
   EventExtras,
   EventPageResult,
   ProviderError,
@@ -10,7 +11,7 @@ import type {
 } from "../../src/calendar/port";
 import type { EventFields } from "../../src/domain/calendar-event";
 
-type Method = "get" | "insert" | "patch" | "delete" | "list";
+type Method = "get" | "insert" | "patch" | "delete" | "list" | "move";
 
 /** Attributes the sync engine reads beyond the editable fields. */
 export interface EventMeta {
@@ -21,6 +22,7 @@ export interface EventMeta {
   hasGuests?: boolean;
   organizerSelf?: boolean;
   attendees?: string[];
+  display?: EventDisplay;
 }
 
 /**
@@ -131,6 +133,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
     calendarId: string,
     timeMin: number,
     timeMax: number,
+    options?: { query?: string },
   ): Promise<ProviderResult<SyncedEvent[]>> {
     this.calls.push("list");
     if (this.inaccessible.has(calendarId)) return { ok: false, error: { kind: "not_found" } };
@@ -141,6 +144,10 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       .filter(([k]) => !this.meta.get(k)?.recurring)
       .filter(([, e]) => e.calendarId === calendarId && e.status !== "cancelled")
       .filter(([, e]) => instant(e.fields.start) < timeMax && instant(e.fields.end) > timeMin)
+      .filter(
+        ([, e]) =>
+          !options?.query || e.fields.summary.toLowerCase().includes(options.query.toLowerCase()),
+      )
       .map(([k, e]) => this.synced(k, e));
     return { ok: true, value: items };
   }
@@ -159,6 +166,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
       declined: meta.declined ?? false,
       hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
       organizerSelf: meta.organizerSelf ?? true,
+      ...(meta.display ? { display: meta.display } : {}),
     };
   }
 
@@ -205,7 +213,25 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
         hasGuests: meta.hasGuests ?? (meta.attendees?.length ?? 0) > 0,
         attendees: meta.attendees ?? [],
         organizerSelf: meta.organizerSelf ?? true,
+        ...(meta.display ? { display: meta.display } : {}),
       });
+    });
+  }
+
+  async moveEvent(
+    calendarId: string,
+    eventId: string,
+    destinationId: string,
+  ): Promise<ProviderResult<CalendarEvent>> {
+    return this.run("move", () => {
+      const source = this.events.get(key(calendarId, eventId));
+      if (!source || source.status === "cancelled") return err({ kind: "not_found" });
+      if (this.readOnlyCalendars.has(destinationId)) return err({ kind: "forbidden" });
+      const meta = this.meta.get(key(calendarId, eventId)) ?? {};
+      source.status = "cancelled";
+      source.etag = this.nextEtag();
+      this.touch(calendarId, eventId);
+      return ok(structuredClone(this.seed(destinationId, eventId, source.fields, meta)));
     });
   }
 

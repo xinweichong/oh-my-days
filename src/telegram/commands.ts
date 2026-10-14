@@ -14,6 +14,8 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "event", description: "Add, rename, move, or delete an event" },
   { command: "task", description: "Add a task, or manage lists" },
   { command: "tasks", description: "Open tasks, by list, with actions" },
+  { command: "app", description: "Open the app: tasks and your week" },
+  { command: "find", description: "Search tasks and events by words" },
   { command: "daily", description: "Today's events, due and overdue tasks" },
   { command: "weekly", description: "This week, Monday to Sunday" },
   { command: "monthly", description: "This month, compactly" },
@@ -22,7 +24,9 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "reminders", description: "Upcoming and snoozed reminders" },
   { command: "settings", description: "Calendars, default calendar, and timezone" },
   { command: "health", description: "Google Calendar connection status" },
-  { command: "help", description: "Available commands" },
+  { command: "export", description: "Your tasks, lists, and contacts as a file" },
+  { command: "cancel", description: "Stop the question I'm waiting on" },
+  { command: "help", description: "Examples and commands" },
 ];
 
 /** Changes whenever the menu should be registered again. */

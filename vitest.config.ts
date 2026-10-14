@@ -16,6 +16,7 @@ export default defineConfig({
             TELEGRAM_WEBHOOK_SECRET: "test-webhook-secret",
             TELEGRAM_ALLOWED_USER_IDS: "1001,1002",
             PUBLIC_BASE_URL: "https://ohmydays.test",
+            TELEGRAM_BOT_USERNAME: "omd_test_bot",
             GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
             GOOGLE_CLIENT_SECRET: "test-client-secret",
             // 32 zero bytes: a synthetic key for tests only.

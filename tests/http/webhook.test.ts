@@ -132,10 +132,18 @@ describe("Telegram webhook", () => {
 });
 
 describe("Worker entry point", () => {
-  it("serves a minimal liveness check", async () => {
+  it("serves a minimal liveness check that includes the scheduler", async () => {
+    const stale = await exports.default.fetch("https://example.test/healthz");
+    expect(stale.status).toBe(503);
+    expect(await stale.text()).toBe("stale tick_age_s=unknown");
+    await env.DB.prepare(
+      "INSERT INTO app_state (key, value, updated_at) VALUES ('tick:last', ?1, ?1)",
+    )
+      .bind(Date.now())
+      .run();
     const response = await exports.default.fetch("https://example.test/healthz");
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("ok");
+    expect(await response.text()).toMatch(/^ok tick_age_s=\d+$/);
   });
 
   it("returns 404 for unknown paths and 405 for wrong methods", async () => {

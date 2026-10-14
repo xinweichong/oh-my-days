@@ -1,6 +1,6 @@
 # Acceptance matrix
 
-Status as of 2026-10-04. Maps every acceptance scenario in the
+Status as of 2026-10-14 (release 2.0.0; everything listed is deployed). Maps every acceptance scenario in the
 [specification](specs/oh-my-days.md) §12 to its evidence, and every validation
 item in §13 to its result. "Test" evidence runs in `npm test` (Workers runtime,
 local D1, fake Google and Telegram); "Live" evidence was observed on the
@@ -14,10 +14,10 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 
 | # | Scenario | Status | Evidence |
 |---|---|---|---|
-| 1 | `Dinner Friday at 7pm` → event, 7–8pm, result with Undo, one-hour reminder | Structured ✓; natural language **Deferred** | `tests/flows/events.test.ts` "guides title, day, time, and length…"; `tests/flows/reminders.test.ts` "reminds one hour before a timed event, once" |
-| 2 | `Call Alex tomorrow at 3pm` → event by default | **Deferred** (needs interpretation) | — |
-| 3 | `Remind me to buy milk tomorrow` → task due tomorrow, marker, 8am agenda | Structured ✓; natural language **Deferred** | `tests/flows/tasks.test.ts` "projects a date-only deadline…"; `tests/flows/reminders.test.ts` agenda "Due today" |
-| 4 | `Buy milk` → open-ended Inbox task, no calendar entry | Structured ✓ | `tests/flows/tasks.test.ts` "adds an open-ended Inbox task…" |
+| 1 | `Dinner Friday at 7pm` → event, 7–8pm, result with Undo, one-hour reminder | Structured ✓; template forms ✓ (quick capture); free-form natural language **Deferred** | `tests/flows/capture.test.ts` "creates an event with the default length, Undo, and a switch"; `tests/domain/capture.test.ts` "Dinner Friday at 7pm"; `tests/flows/events.test.ts` "guides title, day, time, and length…"; `tests/flows/reminders.test.ts` "reminds one hour before a timed event, once" |
+| 2 | `Call Alex tomorrow at 3pm` → event by default | Template forms ✓ (quick capture); free-form natural language **Deferred** | `tests/flows/capture.test.ts` "reads 'Call Alex tomorrow at 3pm' as an event" |
+| 3 | `Remind me to buy milk tomorrow` → task due tomorrow, marker, 8am agenda | Structured ✓; template forms ✓ (quick capture); free-form natural language **Deferred** | `tests/flows/capture.test.ts` "creates a task due tomorrow…"; `tests/flows/tasks.test.ts` "projects a date-only deadline…"; `tests/flows/reminders.test.ts` agenda "Due today" |
+| 4 | `Buy milk` → open-ended Inbox task, no calendar entry | Structured ✓; typed ✓ (quick capture) | `tests/flows/capture.test.ts` "creates an open-ended Inbox task…"; `tests/flows/tasks.test.ts` "adds an open-ended Inbox task…" |
 | 5 | Task due tomorrow 3pm → marker at 3pm, agenda, 2pm reminder | ✓ | `tests/flows/tasks.test.ts` "preserves an exact due time…"; `tests/flows/reminders.test.ts` "reminds one hour before an exact-time deadline…"; owner checked markers live |
 | 6 | Snooze an overdue task → deadline unchanged; out of overdue summaries until expiry | ✓ | `tests/flows/reminders.test.ts` "leaves a still-snoozed task out of the agenda", "folds a snooze ending at 8am…" |
 | 7 | Complete through Telegram → ✓ marker remains; reminders stop | ✓ | `tests/flows/tasks.test.ts` "keeps the marker with a ✓…"; `tests/flows/reminders.test.ts` "sends no reminder for a completed task" |
@@ -26,8 +26,8 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | 10 | Prior recurring occurrence unfinished → next is independent | ✓ | `tests/flows/recurrence.test.ts` "keeps each occurrence independent…" |
 | 11 | Overlapping event created and flagged; task markers excluded | ✓ | `tests/flows/events.test.ts` "flags overlapping events but ignores free time, declined invitations, and task markers" |
 | 12 | Invite a saved contact → full email and preview before any notification | ✓ | `tests/flows/conversation.test.ts` "previews every recipient and sends nothing until confirmed…", "asks again if the guest list changed…" |
-| 13 | Reply `Move it to 4pm` → correct item; normal confirmation rules | ✓ (fixed grammar) | `tests/flows/conversation.test.ts` follow-ups; `tests/domain/follow-up.test.ts` |
-| 14 | Multiple instructions in one message → no partial execution | **Deferred** (structured flows take one instruction per step) | — |
+| 13 | Reply `Move it to 4pm` → correct item; normal confirmation rules | ✓ (fixed grammar, including `make that Friday`; ambiguous dates and hours ask) | `tests/flows/conversation.test.ts` follow-ups; `tests/flows/typed-dates.test.ts` "asks which Friday and applies the chosen one"; `tests/domain/follow-up.test.ts` |
+| 14 | Multiple instructions in one message → no partial execution | ✓ (quick capture refuses and creates nothing) | `tests/flows/capture.test.ts` "refuses several requests in one message and creates nothing"; `tests/domain/capture.test.ts` "one instruction per message" |
 | 15 | `/weekly` or `/monthly` → current period, navigation, no AI | ✓ | `tests/flows/reminders.test.ts` views; `tests/domain/schedule.test.ts` periods |
 | 16 | Gemini quota exhausted or unsafe input → structured fallback, nothing sent | ✓ by construction (no Gemini calls exist); **Deferred** for the interpretation path | Every feature is structured |
 | 17 | Google temporarily unavailable → pending, retried, confirmed | ✓ | `tests/application/operation-runner.test.ts` "sends one pending notice across retries, then one result", unknown-outcome and crash tests |
@@ -52,4 +52,17 @@ Natural-language interpretation (backend stage 9) is **deferred by the owner on
 | 7 | Delivery | Deduplication, unknown sends (never resent), coincident reminders (summarized), late-created items tested. Residual risk: a send whose outcome is unknown may be missing (it is never duplicated); `/health` counts these. |
 | 8 | Telegram usability | Callback data uses opaque tokens within 64 bytes; stale and cross-user buttons refused; pagination in lists and views; owner used the flows live. |
 | 9 | Recovery and retention | Retention purges implemented (inbox/outbox 7 days, operations and reminder log 30 days, links and state on expiry). Restore drill: see [runbook](runbooks/operations.md#restore-drill). List deletion moves tasks to Inbox after confirmation. |
-| 10 | Naming and deployment identity | Bot `@oh_my_days_bot`; Worker `oh-my-days` at `ohmydays.xinweichong.com`. |
+| 10 | Naming and deployment identity | Bot username confirmed available; Worker `oh-my-days` on a custom domain (values in the untracked production config). |
+
+## Telegram Mini App (improvement D7)
+
+| # | Check | Status | Evidence |
+|---|---|---|---|
+| M1 | Requests without valid, fresh (≤1 hour), allowlisted `initData` get no data; another bot's signature is refused | ✓ Test | `tests/miniapp/init-data.test.ts`; `tests/miniapp/read-api.test.ts` "refuses requests…" |
+| M2 | Today and Week show the same events and tasks as `/daily` and `/weekly` | ✓ Test | `tests/miniapp/read-api.test.ts` "shows Today…", "shows the Week…" |
+| M3 | Every write uses the chat operation (✓ marker, projection, version) | ✓ Test | `tests/miniapp/write-api.test.ts` "completes a task like chat does…" |
+| M4 | Stale version → 409 with the current task; replayed key → no second change | ✓ Test | `tests/miniapp/write-api.test.ts` "refuses a stale version…", "lets only one of two concurrent changes…" |
+| M5 | Cancel (one or several) confirmed and bound to the exact set and versions | ✓ Test | `tests/miniapp/write-api.test.ts` cancel and bulk-cancel tests |
+| M6 | One user can't read or change another's tasks or lists | ✓ Test | `tests/miniapp/read-api.test.ts`, `write-api.test.ts` cross-user tests |
+| M7 | Screens render and act in a real browser | ✓ Local | Headless Chrome against `wrangler dev` (2026-10-10): Home, Overdue, Today, quick add, complete and Undo, task detail, snooze |
+| M8 | Opens and works inside Telegram on iOS, Android, desktop | **Partial**: the owner used it in Telegram on 2026-10-10 (one client, not recorded); the iOS, Android, and desktop matrix is not recorded | [Deploy runbook: Mini App](runbooks/deploy.md#mini-app-one-time-owner) |

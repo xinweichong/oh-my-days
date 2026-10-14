@@ -1,13 +1,20 @@
 import { isWritable } from "../calendar/port";
 import type { EventFields, EventTime } from "../domain/calendar-event";
-import { parseDuration, parseLocalDate, parseWallTime } from "../domain/parse-input";
-import { describeRecurrence, type Frequency, toRRule } from "../domain/recurrence";
+import { parseDate, parseDuration, parseTime, parseTimeRange } from "../domain/parse-input";
+import {
+  describeRecurrence,
+  firstOccurrence,
+  parseRepeatInterval,
+  type RepeatChoice,
+  toRRule,
+} from "../domain/recurrence";
 import {
   addDays,
   type LocalDate,
   localDateAt,
   rfc3339,
   type WallTime,
+  wallPartsAt,
   zonedInstant,
 } from "../domain/time";
 import { type CachedEvent, findCachedEvent } from "../storage/events";
@@ -16,14 +23,22 @@ import {
   clearPendingInputStatement,
   type PendingInput,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
+import { findOperation } from "../storage/operations";
+import { findTask } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatDayLabel, formatEventRange, formatShortStart } from "../telegram/format";
+import {
+  formatDayLabel,
+  formatEventRange,
+  formatShortStart,
+  formatWallTime,
+} from "../telegram/format";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { eventsBetween, type SourceFor } from "./calendar-view";
+import { cancelRow, guidedPrompt } from "./cancel";
+import { dateChoiceLabel, whenQuestion } from "./choices";
 import {
   CREATE_EVENT,
   type CreateEventIntent,
@@ -31,12 +46,17 @@ import {
   type DeleteEventIntent,
   deletePreview,
   guestChangePreview,
+  MOVE_EVENT,
+  type MoveEventIntent,
   PATCH_EVENT,
   type PatchEventIntent,
+  RESTORE_WINDOW_MS,
 } from "./event-operations";
+import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
-import { PENDING_INPUT_TTL_MS, type SetupDeps } from "./setup";
+import type { SetupDeps } from "./setup";
+import { readRepeat, repeatRows } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /**
@@ -65,6 +85,8 @@ export interface Draft {
   move?: { calendarId: string; eventId: string; start: EventTime; end: EventTime };
   /** Moving every occurrence of a recurring series (time of day only). */
   series?: boolean;
+  /** Scheduling work time for this task (a one-off event; the deadline is unchanged). */
+  sessionFor?: { taskId: string };
 }
 
 /**
@@ -132,7 +154,7 @@ export async function eventMenu(deps: EventFlowDeps, user: UserRecord): Promise<
   };
 }
 
-async function unavailable(deps: EventFlowDeps, user: UserRecord): Promise<Reaction | null> {
+export async function unavailable(deps: EventFlowDeps, user: UserRecord): Promise<Reaction | null> {
   if (user.setupStep !== "done") {
     return message(user.privateChatId, "Finish setup first: send /start to continue.");
   }
@@ -157,25 +179,14 @@ function ask(
   keyboard: InlineKeyboardButton[][] = [],
   buttons?: ActionButtons,
 ): Reaction {
-  const now = deps.clock.now();
-  return {
-    replies: [
-      keyboard.length
-        ? keyboardMessage(user, text, { inline_keyboard: keyboard }, null)
-        : { method: "sendMessage", params: { chat_id: user.privateChatId, text } },
-    ],
-    statements: (db, guard) => [
-      setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now, payload),
-      ...(buttons?.statements(db, guard) ?? []),
-    ],
-  };
+  return guidedPrompt(deps, user, kind, payload, text, keyboard, buttons);
 }
 
 function askTitle(deps: EventFlowDeps, user: UserRecord): Reaction {
   return ask(deps, user, "event_title", {}, "What's the event called?");
 }
 
-function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
+export function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
   const today = localDateAt(deps.clock.now(), user.timezone);
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const day = (offset: number) => {
@@ -188,13 +199,17 @@ function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction 
     [day(2), day(3)],
     [day(4), day(5)],
   ];
-  const lead = draft.move ? `Move ${draft.title} to which day?` : `Which day is ${draft.title}?`;
+  const lead = draft.move
+    ? `Move ${draft.title} to which day?`
+    : draft.sessionFor
+      ? `Which day do you want to work on ${draft.title}?`
+      : `Which day is ${draft.title}?`;
   return ask(
     deps,
     user,
     "event_date",
     { draft },
-    `${lead}\nOr type a date, like 9 Oct or 9/10.`,
+    `${lead}\nOr type a date, like Fri, next Fri, in 3 days, or 9 Oct.`,
     keyboard,
     buttons,
   );
@@ -202,13 +217,14 @@ function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction 
 
 function askTime(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const keyboard = draft.move ? [] : [[buttons.button("All day", "event_all_day", { draft })]];
+  const keyboard =
+    draft.move || draft.sessionFor ? [] : [[buttons.button("All day", "event_all_day", { draft })]];
   return ask(
     deps,
     user,
     "event_time",
     { draft },
-    `What time on ${formatDayLabel(draft.date ?? "")}? Send a time like 19:00 or 7pm.`,
+    `What time on ${formatDayLabel(draft.date ?? "")}? Send a time like 7pm, or a range like 7-9pm.`,
     keyboard,
     buttons,
   );
@@ -230,7 +246,7 @@ function askDuration(deps: EventFlowDeps, user: UserRecord, draft: Draft): React
 }
 
 /** Builds the event's start and end in the user's timezone, refusing skipped times. */
-function timedFields(
+export function timedFields(
   user: UserRecord,
   draft: Draft,
   length: { minutes: number } | { endTime: WallTime },
@@ -264,12 +280,21 @@ function timedFields(
   };
 }
 
-async function writableDefault(deps: EventFlowDeps, user: UserRecord) {
+/** The chosen calendar (default: the user's default), if listed and writable. */
+async function writableTarget(deps: EventFlowDeps, user: UserRecord, calendarId: string | null) {
   const calendars = await listStoredCalendars(deps.db, user.id);
+  const wanted = calendarId ?? user.defaultCalendarId;
   const target = calendars.find(
-    (c) => c.calendarId === user.defaultCalendarId && c.listed && isWritable(c.accessRole),
+    (c) => c.calendarId === wanted && c.listed && isWritable(c.accessRole),
   );
   return { calendars, target };
+}
+
+/** Calendars a new event can go to: listed, writable, and not the task calendar. */
+export function eventCalendars(user: UserRecord, calendars: StoredCalendar[]): StoredCalendar[] {
+  return calendars.filter(
+    (c) => c.listed && isWritable(c.accessRole) && c.calendarId !== user.taskCalendarId,
+  );
 }
 
 function overlapCalendarIds(user: UserRecord, calendars: StoredCalendar[]): string[] {
@@ -280,8 +305,8 @@ function overlapCalendarIds(user: UserRecord, calendars: StoredCalendar[]): stri
 
 function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFields): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const option = (label: string, freq: Frequency | null) =>
-    buttons.button(label, "event_repeat", { fields, freq });
+  const option = (label: string, repeat: RepeatChoice | null) =>
+    buttons.button(label, "event_repeat", { fields, repeat });
   return {
     replies: [
       keyboardMessage(
@@ -289,9 +314,9 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
         `Does ${fields.summary} repeat?`,
         {
           inline_keyboard: [
-            [option("Doesn't repeat", null)],
-            [option("Daily", "daily"), option("Weekly", "weekly")],
-            [option("Monthly", "monthly"), option("Yearly", "yearly")],
+            ...repeatRows(option),
+            [buttons.button("Every…", "event_repeat_every", { fields })],
+            cancelRow(buttons, `adding the event ${fields.summary}`),
           ],
         },
         null,
@@ -304,22 +329,66 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
   };
 }
 
+/** The same event on another date: same local start time and length. */
+function onDate(fields: EventFields, date: LocalDate): EventFields {
+  const { start, end } = fields;
+  if ("date" in start && "date" in end) {
+    return {
+      ...fields,
+      start: { date },
+      end: { date: addDays(date, daysBetween(start.date, end.date)) },
+    };
+  }
+  if (!("dateTime" in start) || !("dateTime" in end)) return fields;
+  const zone = start.timeZone ?? "UTC";
+  const length = Date.parse(end.dateTime) - Date.parse(start.dateTime);
+  const w = wallPartsAt(Date.parse(start.dateTime), zone);
+  const moved = zonedInstant(
+    date,
+    `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`,
+    zone,
+  );
+  if (!moved.ok) return fields;
+  return {
+    ...fields,
+    start: { dateTime: rfc3339(moved.instant, zone), timeZone: zone },
+    end: { dateTime: rfc3339(moved.instant + length, zone), timeZone: zone },
+  };
+}
+
 function startDate(fields: EventFields): LocalDate {
   return "date" in fields.start ? fields.start.date : fields.start.dateTime.slice(0, 10);
 }
 
-async function create(
+export interface CreateOptions {
+  /** A calendar other than the default (quick capture's `on <calendar>`). */
+  calendarId?: string | null;
+  /** Offered as "Make it a task" on the result (quick capture). */
+  switchTo?: CreateEventIntent["switchTo"];
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
+  /** Link the new event to this task as a work session. */
+  sessionFor?: { taskId: string };
+}
+
+export async function create(
   deps: EventFlowDeps,
   user: UserRecord,
   fields: EventFields,
   idempotencyKey: string,
-  freq: Frequency | null = null,
+  repeat: RepeatChoice | null = null,
+  options: CreateOptions = {},
 ): Promise<Reaction> {
-  const { calendars, target } = await writableDefault(deps, user);
+  // A narrower rule may not include the chosen date: the series starts on its first date.
+  const first = repeat ? firstOccurrence({ ...repeat, anchor: startDate(fields) }) : null;
+  if (repeat && first && first !== startDate(fields)) fields = onDate(fields, first);
+  const { calendars, target } = await writableTarget(deps, user, options.calendarId ?? null);
   if (!target) {
     return message(
       user.privateChatId,
-      "Your default calendar isn't available for new events. Choose another in /settings.",
+      options.calendarId
+        ? "That calendar isn't available for new events."
+        : "Your default calendar isn't available for new events. Choose another in /settings.",
     );
   }
   const intent: CreateEventIntent = {
@@ -328,10 +397,15 @@ async function create(
     fields,
     calendarName: target.summary,
     overlapCalendarIds: overlapCalendarIds(user, calendars),
-    ...(freq
+    ...(options.switchTo ? { switchTo: options.switchTo } : {}),
+    ...(options.note ? { note: options.note } : {}),
+    ...(options.sessionFor ? { sessionFor: options.sessionFor } : {}),
+    // One-off events can be moved to another writable calendar from the result.
+    ...(!repeat && eventCalendars(user, calendars).length > 1 ? { movable: true as const } : {}),
+    ...(repeat
       ? {
-          recurrence: [toRRule(freq)],
-          repeatLabel: describeRecurrence({ freq, interval: 1, anchor: startDate(fields) }),
+          recurrence: [toRRule(repeat)],
+          repeatLabel: describeRecurrence({ ...repeat, anchor: startDate(fields) }),
         }
       : {}),
   };
@@ -362,11 +436,22 @@ async function eventList(
   const { events: all } = await eventsBetween(deps, user, today, addDays(today, UPCOMING_DAYS));
   const events = all.filter((e) => eventEndsAfter(e.fields, now, user.timezone));
 
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  const pickDate = [buttons.button("Pick a date", "event_pick_date", {})];
   if (events.length === 0) {
-    return message(user.privateChatId, `No upcoming events in the next ${UPCOMING_DAYS} days.`);
+    return {
+      replies: [
+        keyboardMessage(
+          user,
+          `No upcoming events in the next ${UPCOMING_DAYS} days.`,
+          { inline_keyboard: [pickDate] },
+          null,
+        ),
+      ],
+      statements: (db, guard) => buttons.statements(db, guard),
+    };
   }
   const shown = events.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
-  const buttons = new ActionButtons(deps.ids, user.id, now);
   const rows = shown.map((e) => [
     buttons.button(
       truncate(`${formatShortStart(e.fields, user.timezone)} · ${e.fields.summary}`, 60),
@@ -380,17 +465,152 @@ async function eventList(
     nav.push(buttons.button("More", "event_list", { page: page + 1 }));
   }
   if (nav.length) rows.push(nav);
+  rows.push(pickDate);
   return {
     replies: [
       keyboardMessage(
         user,
-        `Choose an event (next ${UPCOMING_DAYS} days).`,
+        `Choose an event (next ${UPCOMING_DAYS} days), or pick a date.`,
         { inline_keyboard: rows },
         editMessageId,
       ),
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+/** A just-created event, if its creation succeeded and it can still be moved from there. */
+async function createdEvent(deps: EventFlowDeps, user: UserRecord, operationId: string) {
+  const op = await findOperation(deps.db, user.id, operationId);
+  if (op?.kind !== CREATE_EVENT || op.status !== "succeeded") return null;
+  const intent = op.intent as CreateEventIntent;
+  const result = op.result as { fields: EventFields } | null;
+  return intent.movable && result ? { op, intent, fields: result.fields } : null;
+}
+
+/** "Calendar: Personal ▸": the other calendars a new event can go to. */
+async function calendarMenu(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+): Promise<Reaction> {
+  const created = await createdEvent(deps, user, operationId);
+  if (!created) return message(user.privateChatId, "This event can't be moved from here anymore.");
+  const others = eventCalendars(user, await listStoredCalendars(deps.db, user.id)).filter(
+    (c) => c.calendarId !== created.intent.calendarId,
+  );
+  if (others.length === 0) {
+    return message(user.privateChatId, "There's no other calendar you can add events to.");
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const rows = others.map((c) => [
+    buttons.button(c.summary, "event_calendar_move", { operationId, calendarId: c.calendarId }),
+  ]);
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Move ${created.fields.summary} to which calendar?`,
+        { inline_keyboard: [...rows, cancelRow(buttons, "the move")] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+/** Moves the just-created event, only if it is still exactly as created. */
+async function moveToCalendar(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+  calendarId: string,
+  key: string,
+): Promise<Reaction> {
+  const created = await createdEvent(deps, user, operationId);
+  if (!created) return message(user.privateChatId, "This event can't be moved from here anymore.");
+  const destination = eventCalendars(user, await listStoredCalendars(deps.db, user.id)).find(
+    (c) => c.calendarId === calendarId,
+  );
+  if (!destination || destination.calendarId === created.intent.calendarId) {
+    return message(user.privateChatId, "That calendar isn't available for events.");
+  }
+  const intent: MoveEventIntent = {
+    calendarId: created.intent.calendarId,
+    eventId: created.intent.eventId,
+    destinationId: destination.calendarId,
+    title: created.fields.summary,
+    calendarName: created.intent.calendarName ?? "its calendar",
+    destinationName: destination.summary,
+    base: created.fields,
+  };
+  const prepared = await prepareProposal(deps, user, {
+    kind: MOVE_EVENT,
+    idempotencyKey: key,
+    intent,
+    confirmation: null,
+  });
+  return { replies: prepared.replies, statements: prepared.statements };
+}
+
+/**
+ * Restore after deleting an event without guests: a new event (new ID) with the
+ * same title and time in the same calendar, within 24 hours. Only once.
+ */
+async function restoreDeleted(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  operationId: string,
+): Promise<Reaction> {
+  const op = await findOperation(deps.db, user.id, operationId);
+  const result = op?.result as
+    | { fields: EventFields; restorable?: boolean; deletedAt?: number }
+    | null
+    | undefined;
+  if (
+    op?.kind !== DELETE_EVENT ||
+    op.status !== "succeeded" ||
+    !result?.restorable ||
+    (result.deletedAt ?? 0) + RESTORE_WINDOW_MS <= deps.clock.now()
+  ) {
+    return message(user.privateChatId, "This event can't be restored anymore.");
+  }
+  const intent = op.intent as DeleteEventIntent;
+  return create(deps, user, result.fields, `restore:${op.id}`, null, {
+    calendarId: intent.calendarId,
+    note: "Restored as a copy: the title and time are back; a description, location, or attachments from the original are not.",
+  });
+}
+
+/** Every event on one date (past or upcoming), to choose one to change. */
+async function dayList(deps: EventFlowDeps, user: UserRecord, date: LocalDate): Promise<Reaction> {
+  const { events: all } = await eventsBetween(deps, user, date, addDays(date, 1));
+  const events = all.slice(0, 2 * PAGE_SIZE);
+  if (events.length === 0) {
+    return combine(
+      clearInput(user),
+      message(user.privateChatId, `No events on ${formatDayLabel(date)}.`),
+    );
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const rows = events.map((e) => [
+    buttons.button(
+      truncate(`${formatShortStart(e.fields, user.timezone)} · ${e.fields.summary}`, 60),
+      "event_pick",
+      { calendarId: e.calendarId, eventId: e.eventId },
+    ),
+  ]);
+  return combine(clearInput(user), {
+    replies: [
+      keyboardMessage(
+        user,
+        `Events on ${formatDayLabel(date)} ${date.slice(0, 4)}:`,
+        { inline_keyboard: rows },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  });
 }
 
 function eventEndsAfter(fields: EventFields, now: number, timeZone: string): boolean {
@@ -599,6 +819,53 @@ export async function handleEventAction(
           Number(payload.page ?? 0) > 0 ? callback.messageId : null,
         ),
       );
+    case "event_calendar_menu":
+      return combine(
+        answer(callback),
+        await calendarMenu(deps, user, String(payload.operationId ?? "")),
+      );
+    case "event_calendar_move":
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await moveToCalendar(
+          deps,
+          user,
+          String(payload.operationId ?? ""),
+          String(payload.calendarId ?? ""),
+          key,
+        ),
+      );
+    case "event_restore":
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await restoreDeleted(deps, user, String(payload.operationId ?? "")),
+      );
+    case "event_session_new":
+      return combine(
+        answer(callback),
+        await scheduleSession(deps, user, String(payload.taskId ?? "")),
+      );
+    case "event_pick_date":
+      return combine(
+        answer(callback),
+        ask(
+          deps,
+          user,
+          "event_list_date",
+          {},
+          "Which day? Type a date, like Fri, 9 Oct, or 9/10/2025.",
+        ),
+      );
+    case "event_day":
+      if (typeof payload.date !== "string")
+        return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await dayList(deps, user, payload.date),
+      );
     case "event_pick": {
       const { calendarId, eventId } = target();
       return combine(answer(callback), await eventCard(deps, user, calendarId, eventId));
@@ -710,11 +977,28 @@ export async function handleEventAction(
     case "event_repeat": {
       const fields = payload.fields as EventFields | undefined;
       if (!fields) return answer(callback, "This button is no longer valid.");
-      const freq = typeof payload.freq === "string" ? (payload.freq as Frequency) : null;
+      const repeat = readRepeat(payload);
       return combine(
         answer(callback),
         removeButtons(user, callback),
-        await create(deps, user, fields, key, freq),
+        await withTypingHint(user, "event", (note) =>
+          create(deps, user, fields, key, repeat, note ? { note } : {}),
+        ),
+      );
+    }
+    case "event_repeat_every": {
+      const fields = payload.fields as EventFields | undefined;
+      if (!fields) return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        ask(
+          deps,
+          user,
+          "event_repeat_interval",
+          { fields },
+          "How often? Type every 2 days, every 3 weeks, or every 6 months.",
+        ),
       );
     }
     case "event_date": {
@@ -725,6 +1009,16 @@ export async function handleEventAction(
         answer(callback),
         removeButtons(user, callback),
         await afterDate(deps, user, { ...draft, date: payload.date }, key),
+      );
+    }
+    case "event_time": {
+      const draft = readDraft(payload);
+      if (!draft?.date || typeof payload.time !== "string")
+        return answer(callback, "This button is no longer valid.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        await afterTime(deps, user, { ...draft, time: payload.time }, key),
       );
     }
     case "event_all_day": {
@@ -749,7 +1043,7 @@ export async function handleEventAction(
       return combine(
         answer(callback),
         removeButtons(user, callback),
-        await finishTimed(deps, user, draft, { minutes }),
+        await finishTimed(deps, user, draft, { minutes }, key),
       );
     }
     default:
@@ -768,15 +1062,46 @@ async function afterDate(
   return askTime(deps, user, draft);
 }
 
+async function afterTime(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  draft: Draft,
+  key: string,
+): Promise<Reaction> {
+  return draft.move ? move(deps, user, draft, key) : askDuration(deps, user, draft);
+}
+
 async function finishTimed(
   deps: EventFlowDeps,
   user: UserRecord,
   draft: Draft,
   length: { minutes: number } | { endTime: WallTime },
+  key: string,
 ): Promise<Reaction> {
   const fields = timedFields(user, draft, length);
   if (!fields.ok) return message(user.privateChatId, fields.text);
-  return askEventRepeat(deps, user, { summary: draft.title, start: fields.start, end: fields.end });
+  const event = { summary: draft.title, start: fields.start, end: fields.end };
+  if (draft.sessionFor) {
+    // Work time: a one-off event linked to the task; the deadline stays as it is.
+    return create(deps, user, event, key, null, {
+      sessionFor: draft.sessionFor,
+      note: `Work time for the task ${draft.title}. Its deadline is unchanged.`,
+    });
+  }
+  return askEventRepeat(deps, user, event);
+}
+
+/** "Schedule time" on a task: guided day, time, and length for a work session. */
+async function scheduleSession(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  taskId: string,
+): Promise<Reaction> {
+  const task = await findTask(deps.db, user.id, taskId);
+  if (task?.status !== "open") {
+    return message(user.privateChatId, "That task is no longer open.");
+  }
+  return askDate(deps, user, { title: task.title, sessionFor: { taskId } });
 }
 
 // --- Typed answers -------------------------------------------------------------
@@ -804,23 +1129,51 @@ export async function handleEventInput(
       return askDate(deps, user, { title: text });
     }
     case "event_date": {
-      const date = parseLocalDate(text, today);
+      const date = parseDate(text, today);
       if (!draft) break;
       if (!date) {
         return message(
           user.privateChatId,
-          "I didn't recognize that date. Try 9 Oct, 9/10, or 2026-10-09.",
+          "I didn't recognize that date. Try Fri, next Fri, in 3 days, 9 Oct, or 9/10.",
         );
       }
-      return afterDate(deps, user, { ...draft, date }, key);
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "event_date", { draft, date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "event_date", { draft }, question, [row], buttons);
+      }
+      return afterDate(deps, user, { ...draft, date: date.date }, key);
     }
     case "event_time": {
-      const time = parseWallTime(text);
       if (!draft) break;
-      if (!time)
-        return message(user.privateChatId, "I didn't recognize that time. Try 19:00 or 7pm.");
-      const next = { ...draft, time };
-      return next.move ? move(deps, user, next, key) : askDuration(deps, user, next);
+      const range = draft.move ? null : parseTimeRange(text);
+      if (range)
+        return finishTimed(
+          deps,
+          user,
+          { ...draft, time: range.start },
+          { endTime: range.end },
+          key,
+        );
+      const time = parseTime(text);
+      if (!time) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that time. Try 7pm, 19:00, or a range like 7-9pm.",
+        );
+      }
+      if ("choose" in time) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = time.choose.map((t) =>
+          buttons.button(formatWallTime(t), "event_time", { draft, time: t }),
+        );
+        const question = whenQuestion(time.choose.map((t) => ({ date: null, time: t })));
+        return ask(deps, user, "event_time", { draft }, question, [row], buttons);
+      }
+      return afterTime(deps, user, { ...draft, time: time.time }, key);
     }
     case "event_duration": {
       const length = parseDuration(text);
@@ -831,7 +1184,42 @@ export async function handleEventInput(
           "I didn't recognize that. Try 90m, 2 hours, or an end time like 9pm.",
         );
       }
-      return finishTimed(deps, user, draft, length);
+      return finishTimed(deps, user, draft, length, key);
+    }
+    case "event_repeat_interval": {
+      const fields = pending.payload.fields as EventFields | undefined;
+      if (!fields) break;
+      const repeat = parseRepeatInterval(text);
+      if (!repeat) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that. Try every 2 days, every 3 weeks, or every 6 months.",
+        );
+      }
+      return combine(
+        clearInput(user),
+        await withTypingHint(user, "event", (note) =>
+          create(deps, user, fields, key, repeat, note ? { note } : {}),
+        ),
+      );
+    }
+    case "event_list_date": {
+      const date = parseDate(text, today);
+      if (!date) {
+        return message(
+          user.privateChatId,
+          "I didn't recognize that date. Try Fri, 9 Oct, or 9/10/2025.",
+        );
+      }
+      if ("choose" in date) {
+        const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+        const row = date.choose.map((d) =>
+          buttons.button(dateChoiceLabel(d, today), "event_day", { date: d }),
+        );
+        const question = whenQuestion(date.choose.map((d) => ({ date: d, time: null })));
+        return ask(deps, user, "event_list_date", {}, question, [row], buttons);
+      }
+      return dayList(deps, user, date.date);
     }
     case "event_rename": {
       if (text.length === 0 || text.length > MAX_TITLE_LENGTH) {

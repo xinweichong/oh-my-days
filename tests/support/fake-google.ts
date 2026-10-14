@@ -142,6 +142,7 @@ export class FakeGoogle {
       insertEvent: (c, e, f, x) => withAccount((a) => a.events.insertEvent(c, e, f, x)),
       patchEvent: (c, e, p, m, x) => withAccount((a) => a.events.patchEvent(c, e, p, m, x)),
       deleteEvent: (c, e, m, x) => withAccount((a) => a.events.deleteEvent(c, e, m, x)),
+      moveEvent: (c, e, d) => withAccount((a) => a.events.moveEvent(c, e, d)),
       listEventPage: async (c, cursor) => {
         const token = await tokens(false);
         const subject = token.ok ? this.accessTokens.get(token.token) : undefined;
@@ -149,7 +150,8 @@ export class FakeGoogle {
         if (!account) return { ok: false, error: { kind: "auth_required" } };
         return account.events.listEventPage(c, cursor);
       },
-      listWindow: (c, min, max) => withAccount((a) => a.events.listWindow(c, min, max)),
+      listWindow: (c, min, max, options) =>
+        withAccount((a) => a.events.listWindow(c, min, max, options)),
       listCalendars: () => withAccount(async (a) => ({ ok: true, value: [...a.calendars] })),
       createCalendar: (summary) =>
         withAccount(async (a) => {

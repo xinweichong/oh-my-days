@@ -1,6 +1,6 @@
 {
   "name": "oh-my-days",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,21 +10,28 @@
     "dev": "wrangler dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "npm run lint && npm run typecheck && npm test",
-    "db:migrate:local": "wrangler d1 migrations apply oh-my-days --local"
+    "check": "npm run build:app && npm run lint && npm run typecheck && npm test",
+    "db:migrate:local": "wrangler d1 migrations apply oh-my-days --local",
+    "build:app": "node scripts/build-app.mjs",
+    "deploy": "npm run check && node scripts/production-config.mjs && wrangler deploy --config wrangler.production.jsonc",
+    "db:migrate:remote": "node scripts/production-config.mjs && wrangler d1 migrations apply oh-my-days --remote --config wrangler.production.jsonc"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@cloudflare/workers-types": "5.20260926.1",
+    "esbuild": "0.28.1",
+    "motion": "13.4.4",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
     "wrangler": "4.141.0"
   },
   "overrides": {
-    "sharp": "0.35.4"
-  }
+    "sharp": "0.35.5",
+    "undici": "7.30.0"
+  },
+  "description": "A Telegram assistant for events and tasks, with Google Calendar as the calendar."
 }

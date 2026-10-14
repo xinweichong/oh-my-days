@@ -37,6 +37,14 @@ describe("runbook: deleting a user's data", () => {
       OWNER,
     );
     if (!user) throw new Error("no user");
+    // A work session (D4) references a task, so it must go first.
+    await env.DB.prepare(
+      `INSERT INTO task_sessions (user_id, task_id, calendar_id, event_id, starts_at, ends_at, created_at)
+       SELECT user_id, id, 'cal', 'ev', 0, 1, 0 FROM tasks WHERE user_id = ? LIMIT 1`,
+    )
+      .bind(user.id)
+      .run();
+    expect(await rows(env.DB, "SELECT event_id FROM task_sessions")).toHaveLength(1);
 
     const statements = deletionStatements(user.id);
     expect(statements.length).toBeGreaterThan(15);

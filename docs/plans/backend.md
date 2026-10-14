@@ -1,8 +1,9 @@
 # Oh My Days — backend architecture and delivery plan
 
-Status: Stages 1–2 implemented and tested locally (see §10); later stages proposed.
-Nothing provisioned or deployed.  
-Date: 2026-09-25; status updated 2026-09-27  
+Status: Stages 1–8 and 10 implemented, deployed, and released (2.0.0, 2026-10-14);
+stage 9 (Gemini interpretation) deferred. §10 has the per-stage record. The
+earlier sections are the plan as written and are kept for reference.  
+Date: 2026-09-25; status updated 2026-10-14  
 Source of truth: [product specification](../specs/oh-my-days.md).
 
 ## 1. Outcome and constraints
@@ -345,11 +346,153 @@ implementation work. Frontend decisions remain outside this delivery plan.
 | 9. Interpretation path | **Deferred by the owner on 2026-10-04** | Still in scope: natural-language input through Gemini with the local privacy gate. Until then, every feature works through structured commands and buttons, and no data is sent to Gemini. Acceptance rows that need it are marked Deferred in the [acceptance matrix](../acceptance.md). |
 | 10. Release hardening | Done for the structured release (2026-10-04) | [Acceptance matrix](../acceptance.md); [capacity measurements](../capacity.md) (CPU tuned from 10–22 ms to a median of 8 ms per run); restore and rollback drills and [operations runbook](../runbooks/operations.md); data-deletion SQL tested. Owner release approval pending. |
 
+Post-release improvements ([improvement plan](improvements.md)) are tracked in
+that plan's status column. All of them were deployed on 2026-10-10 and released
+in 2.0.0 on 2026-10-14. The stage table above keeps the wording recorded when
+each stage was built ("not yet deployed" there is historical). Implemented:
+
+- A2: one shared date grammar (`src/domain/parse-input.ts`) for guided input,
+  follow-ups, and snoozing: weekdays, `next`/`this <weekday>`, `in N days/weeks`,
+  `next week`, `end of month`, time ranges (`7-9pm`), and number-word
+  durations. Ambiguous input asks with dated buttons ("Which Friday?", "3am or
+  3pm?"); follow-ups accept `make that`/`make it` (`tests/domain/parse-input.test.ts`,
+  `tests/flows/typed-dates.test.ts`).
+- A1: quick capture (`src/domain/capture.ts`, `src/application/capture-flow.ts`).
+  Plain text that is not an answer or a follow-up becomes one event or task
+  through the existing create operations, or a question (dates, am/pm, task or
+  all-day event); several requests in one message are refused; unreadable text
+  gets **Add as task · Add as event · Cancel**. Results carry Undo and a type
+  switch: **Make it a task** confirms removal of the event (bound to its created
+  version) and the task is created only after the deletion is verified; **Make
+  it an event** confirms, cancels the unchanged task, then creates the event.
+  Choice buttons act once (`tests/domain/capture.test.ts`,
+  `tests/flows/capture.test.ts`). "That isn't available yet" now only answers
+  unknown commands.
+- A3: `/help` leads with typed examples (each checked against the grammar in
+  `tests/flows/help.test.ts`); the first three guided creations add "Next time
+  you can type: …", counted in `users.typing_hints_shown` (migration 0011).
+- A4: every question waiting for typed input is built by one helper
+  (`src/application/cancel.ts`) that adds **Cancel**; button-only questions
+  (repeat, list, "Which Friday?") have Cancel too. `/cancel` drops the open
+  question and says what was abandoned. An older Cancel never closes a newer
+  question (`tests/flows/cancel.test.ts`).
+- B3: each tick records its finish time in `app_state`; `/healthz` returns
+  `ok tick_age_s=N`, or 503 `stale …` when none finished in 10 minutes or none
+  has run. `/health` shows the same age (`tests/http/liveness.test.ts`).
+- B1: with `TESTING_TOKEN_TTL_DAYS` set, frequent maintenance sends one
+  "Google access ends tomorrow around …" warning with **Reconnect** a day before
+  `connected_at + TTL`, recorded per `auth_generation` (migration 0012);
+  `/health` shows "Reconnect by …". The after-the-fact alert is unchanged
+  (`tests/flows/access-expiry.test.ts`).
+- B5: an agenda still unsent at 12:00 local is "Catch-up: today so far." with
+  only events that haven't ended; from 20:00 it is skipped and the date recorded
+  as covered; finishing setup after 08:00 covers that day (spec §8,
+  `tests/flows/late-agenda.test.ts`). This replaces stage 6's "catch-up later
+  that day".
+- B4: the reminder pass visits only users whose `next_due_at` has passed
+  (at most an hour apart); triggers clear it on task, override, horizon, and
+  timezone changes, and `due_version` keeps a concurrent change from being
+  overwritten ([ADR 0004](../adr/0004-next-due-time-by-trigger.md), migration
+  0013, `tests/jobs/idle-ticks.test.ts`). Local count: reminder-pass reads per
+  idle hour 576 → 6 ([capacity](../capacity.md)); live re-measure pending.
+- C1: the agenda and `/daily` add **Act on a task** (today's overdue and due
+  occurrences; picking one opens Done · Snooze · Edit) and **Snooze all overdue
+  → tomorrow 8am**: one confirmation with the count, bound to each task's
+  version; deadlines never move; one Undo restores each earlier snooze unless
+  the task changed since (`tests/flows/act-on-agenda.test.ts`).
+- C2: Google's `location`, video link (`hangoutLink` or a conference video
+  entry point), and `htmlLink` are read into a display-only `EventDisplay`
+  outside `EventFields` (https links only, Calendar links only from Google
+  hosts). They live with the event horizon (migration 0014, removed when the
+  occurrence leaves the ~26-hour window) and are refreshed from the live read
+  before a reminder. Single event reminders show "Where:", "Video call:", and
+  **Join call** / **Open in Calendar** URL buttons. The privacy policy now says
+  so (`tests/google/event-display.test.ts`, `tests/flows/reminders.test.ts`).
+- C3: `/find <words>` lists open tasks and synced one-off events whose title
+  contains the words (SQLite `LIKE`, so case-insensitive for ASCII only; `%`
+  and `_` literal), upcoming events before past ones, plus one line per
+  recurring series from a live Google `q` search over the next year; at most 20
+  results, 8 per page; a note says when Google couldn't be searched. "Change an
+  event" gains **Pick a date** for any day (`tests/flows/find.test.ts`).
+- C4: when the user has another writable calendar, a new one-off event's
+  result shows **Calendar: X ▸**; choosing one runs a `calendar.event.move`
+  operation (Google `move`, no guest emails) that first re-reads the event and
+  refuses if it changed since creation; a lost response is reconciled by
+  finding the event in the destination; Undo moves it back. Quick capture also
+  accepts `on <calendar>` (`tests/flows/calendar-choice.test.ts`).
+- C5: `/tasks` has **Recent**: tasks completed or cancelled in the last 30 days
+  (newest first, up to 100, 8 per page); each opens its card with the existing
+  version-bound Reopen/Restore, which re-creates a deadline marker
+  (`tests/flows/recent.test.ts`).
+- C6: deleting a one-off event that had no guests (as read just before the
+  delete) offers **Restore** for 24 hours. It creates a new event (new ID) with
+  the deleted title and time in the same calendar, through the normal create
+  operation, once, and says it is a copy without the description, location, or
+  attachments. Events with guests, series, and occurrences are excluded
+  (`tests/flows/restore-event.test.ts`).
+- C7: changing timezone offers buttons for the user's recent zones (newest
+  first, up to three, migration 0015) and a short common list; a typed city
+  matches the runtime's IANA zones by city name (`London` → `Europe/London`),
+  and a shared name or a partial name offers choices. Region/City still works
+  (`tests/domain/timezones.test.ts`, `tests/flows/timezone-choice.test.ts`).
+- D1: `/settings` sets the agenda hour (6–11am, default 8) and the default
+  reminder lead for timed events and exact deadlines (10 min–2 h, default 1 h;
+  per-item overrides win). Migration 0016 adds both, with a trigger that clears
+  `next_due_at`. The agenda stays keyed by local date. "Tomorrow at …" snoozes
+  follow the agenda hour. The setup summary no longer says event and task
+  creation "arrives in a later update" (`tests/flows/schedule-settings.test.ts`).
+- D2: an optional evening "Tomorrow" message (off by default; 6–10pm in
+  `/settings`, migration 0017) renders the next day like the agenda, once per
+  date (recorded in `agenda_runs` as `evening:<date>`), never after midnight.
+  The reminder pass schedules it in `next_due_at`
+  (`tests/flows/evening-preview.test.ts`).
+- D5: optional quiet hours (presets 10/11pm–7/8am, migration 0018). While a
+  window is active the reminder pass holds everything (no reads) and schedules
+  itself for the window's end; then reminders still relevant are sent as one
+  "While quiet hours were on:" summary. Agenda and evening preview are not
+  held (`tests/flows/quiet-hours.test.ts`).
+- D3: repeat questions for tasks and events offer Weekdays, Last day of month,
+  and **Every…** (typed "every 2 weeks"); series store the interval and a
+  `by_rule` (migration 0019) and materialize as before (ADR 0003). Events use
+  `BYDAY=MO,TU,WE,TH,FR` and `BYMONTHDAY=-1` (the plan named `BYSETPOS=-1`;
+  `BYMONTHDAY=-1` is the direct RFC 5545 form). A date outside the rule starts
+  the series at the first matching date (`tests/domain/recurrence.test.ts`,
+  `tests/flows/repeat-rules.test.ts`).
+- D4: **Schedule time** on an open task asks day, time, and length (no all-day,
+  no repeat) and creates an ordinary one-off event in the default calendar
+  through the create operation; on success it is linked in `task_sessions`
+  (migration 0020). The task card lists upcoming work time, preferring the
+  synced copy (so Google moves and deletions show). The deadline never changes,
+  and completing the task leaves the event (`tests/flows/work-sessions.test.ts`).
+- D6: `/export` sends one JSON document (tasks with history, lists, recurring
+  tasks, contacts; no tokens, account, or event copy), at most 1 MB, through the
+  outbox as `sendDocument` (multipart upload; never replayed after an unknown
+  outcome; the payload is cleared once sent). Migration 0021 rebuilds
+  `telegram_outbox` to allow the method, keeping rows and indexes
+  (`tests/flows/export.test.ts`, `tests/telegram/client.test.ts`,
+  `tests/storage/d1-semantics.test.ts`).
+- D7 (Mini App), step 5a: [ADR 0005](../adr/0005-mini-app-surface-and-initdata-auth.md).
+  `/app` serves the page and `/app/app.js` (esbuild bundle of
+  `src/miniapp/client`, regenerated by `npm run check`); `/app/api/*`
+  verifies `initData` (HMAC, ≤1 hour, allowlist, active user, setup done) and
+  serves Home, Today, Week, task sets, task detail, and Recent from the chat's
+  queries. Open app appears under the agenda, `/daily`, and `/tasks`, as
+  `/app`, and as a persistent keyboard button answered with an inline launch
+  (keyboard launches carry no `initData`) (`tests/miniapp/`).
+- D7 steps 5b–5c: `POST /app/api/…` task writes (complete, reopen, snooze,
+  rename, move, deadline, confirmed cancel, quick add, series rename/stop) and
+  bulk complete/snooze/move/cancel reuse the chat's task change statements,
+  check the task version (409 with the current task), and record a client key
+  in the same batch (migration 0022) so replays change nothing. The client adds
+  check-off with Undo, swipe, task actions, multi-select with Telegram's main
+  button, and quick add. Smoke-tested in headless Chrome against `wrangler dev`.
+
 Stage 2 decisions to review:
 
 - Undo of a just-created event is a deletion, so it shows the standard delete
   confirmation (decided 2026-10-02). It is bound to the created version; any
-  later edit makes Undo unavailable. Undo of a deletion is not offered yet.
+  later edit makes Undo unavailable. Undo of a deletion is not offered; for
+  events without guests, improvement C6 offers Restore (a new copy) instead.
 - Users outside the allowlist who message the bot privately receive "This bot
   is private." as the webhook response; nothing about them is stored, and
   group chats get no reply (decided 2026-10-02).
@@ -361,7 +504,7 @@ Stage 2 decisions to review:
 
 Stage 3 decisions and gaps to review:
 
-- Served at `ohmydays.xinweichong.com` with a homepage and privacy policy for
+- Served at a custom domain with a homepage and privacy policy for
   OAuth verification ([ADR 0002](../adr/0002-custom-domain-and-oauth-verification.md)).
 - The OAuth app stays in Testing until verified, so access expires every 7 days
   and the bot asks for reauthorization.
@@ -376,8 +519,8 @@ Stage 4 decisions and gaps to review:
 
 - Guided input accepts a small fixed set of date, time, and duration forms
   (day-first numeric dates); anything else is refused and asked again.
-- New events always use the default calendar; naming another calendar arrives
-  with natural-language input (stage 9) or a later structured option.
+- New events use the default calendar; quick capture (improvement A1) accepts
+  `on <calendar>` for another writable calendar.
 - Events with guests, recurring events, and view-only calendars are shown but
   not changeable from Telegram (stages 7–8).
 - The event cache stores recurring series masters but lists and overlap checks
@@ -430,8 +573,9 @@ Stage 7 decisions and gaps to review:
 
 Stage 8 decisions and gaps to review:
 
-- Follow-ups are recognized from a small fixed grammar without AI; free-form
-  follow-ups ("make that Friday") arrive with interpretation in stage 9.
+- Follow-ups are recognized from a small fixed grammar without AI (`make that
+  Friday` added by improvement A2); free-form follow-ups beyond it arrive with
+  interpretation in stage 9.
 - When guests are invited, Google also emails existing guests an update; the
   preview says so.
 - The most recently discussed item stays the default target for 24 hours.

@@ -1,6 +1,6 @@
 # Google connection pages — implementation plan
 
-Status: Main layout and explicit return to Telegram approved. Implementation pending.
+Status: Implemented (backend stage 3) and deployed. Kept as the record of the plan.
 
 ## Scope
 

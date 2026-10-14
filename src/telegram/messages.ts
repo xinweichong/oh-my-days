@@ -10,7 +10,16 @@ export function introText(): string {
 
 export function helpText(): string {
   return [
-    "Available commands:",
+    "Type what you want to add, for example:",
+    "Dinner Fri 7pm",
+    "Buy milk",
+    "Pay rent by 1 Nov",
+    "",
+    "Then reply to the result to change it, for example:",
+    "move it to 4pm",
+    "done",
+    "",
+    "Commands:",
     ...BOT_COMMANDS.map((c) => `/${c.command} – ${c.description}`),
     "",
     "The same list is in the Menu button next to the message box.",

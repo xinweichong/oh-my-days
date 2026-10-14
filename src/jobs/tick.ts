@@ -2,6 +2,8 @@ import { type RunnerDeps, runDueOperations } from "../application/operation-runn
 import { materializeSeries } from "../application/series";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
+import { purgeAppRequestsStatement } from "../storage/app-requests";
+import { recordTickStatement } from "../storage/app-state";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
 import { purgeExpiredAuthStatements } from "../storage/google";
 import { purgeFinishedInboxStatement, usersWithInboxWork } from "../storage/inbox";
@@ -12,6 +14,7 @@ import {
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
 import { purgeOldReminderStatements } from "../storage/reminders";
+import { type AccessExpiryDeps, warnBeforeAccessEnds } from "./access-expiry";
 import { syncBotCommands } from "./bot-commands";
 import {
   refreshCalendarLists,
@@ -56,6 +59,7 @@ export interface TickDeps {
   delivery: DeliveryDeps;
   sync: SyncDeps;
   reminders: ReminderDeps;
+  expiry: AccessExpiryDeps;
 }
 
 export interface TickSummary {
@@ -92,6 +96,7 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
     await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
     await evaluateSyncHealth(deps.reminders);
+    await warnBeforeAccessEnds(deps.expiry);
   }
 
   // Reminders and agendas come before delivery so they go out in this tick.
@@ -117,6 +122,8 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     syncedCalendars,
     reminders,
   };
+  // Recorded only when the tick got this far, so /healthz shows a stalled scheduler.
+  await recordTickStatement(deps.db, deps.clock.now()).run();
   logEvent("tick.finished", { ...summary, frequent: due.frequent, cleanup: due.cleanup });
   return summary;
 }
@@ -170,5 +177,6 @@ async function purge(db: D1Database, later: number): Promise<void> {
     ...purgeExpiredAuthStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeExpiredInteractionsStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeOldReminderStatements(db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
+    purgeAppRequestsStatement(db, cutoff, TICK_LIMITS.purgeRows),
   ]);
 }

@@ -1,8 +1,13 @@
 import { isWritable } from "../calendar/port";
+import { agendaDueDate } from "../domain/schedule";
+import { COMMON_ZONES, matchCity, nextRecentZones, zoneLabel } from "../domain/timezones";
 import type { AppConfig } from "../env";
+import { accessEndsAt } from "../jobs/access-expiry";
 import { requestForcePoll, type SyncSummary, syncSummary } from "../jobs/calendar-sync";
+import { APP_KEYBOARD, appUrl } from "../miniapp/entry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
+import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
 import { deleteContactStatement, listContacts } from "../storage/contacts";
 import {
   findConnection,
@@ -13,28 +18,35 @@ import {
 import {
   clearPendingInputStatement,
   type PendingInputKind,
-  setPendingInputStatement,
   type UiAction,
 } from "../storage/interactions";
+import { claimAgendaStatement } from "../storage/reminders";
 import {
+  AGENDA_HOURS,
   advanceSetupStatement,
+  EVENING_HOURS,
+  QUIET_HOURS,
+  REMINDER_LEADS,
   type SetupStep,
+  setQuietHoursStatement,
+  setScheduleSettingStatement,
   setTimezoneStatement,
   setUserCalendarStatement,
   type UserRecord,
 } from "../storage/users";
 import type { InlineKeyboardButton, InlineKeyboardMarkup } from "../telegram/api";
-import { formatShortStart } from "../telegram/format";
+import { formatShortStart, formatWallTime } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
+import { guidedPrompt } from "./cancel";
 import { connectMessage } from "./google-connection";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 export const TASK_CALENDAR_NAME = "Tasks - Oh My Days";
-export const PENDING_INPUT_TTL_MS = 10 * 60_000;
+
 /** Bounds picker size well inside Telegram's keyboard limits. */
 const MAX_PICKER_CALENDARS = 24;
 
@@ -88,11 +100,17 @@ async function advance(
   const to = NEXT_STEP[from];
   if (!to || user.setupStep !== from) return { replies: [] };
   const now = deps.clock.now();
-  const next = await setupPrompt(deps, { ...user, ...changes, setupStep: to });
+  const updated = { ...user, ...changes, setupStep: to };
+  const next = await setupPrompt(deps, updated);
+  // Setup finishing after 8am: today's agenda is covered; the first is tomorrow's.
+  const covered = to === "done" ? agendaDueDate(now, updated.timezone, updated.agendaHour) : null;
   return combine(
     {
       replies: [],
-      statements: (db, guard) => [advanceSetupStatement(db, user.id, from, to, now, guard)],
+      statements: (db, guard) => [
+        advanceSetupStatement(db, user.id, from, to, now, guard),
+        ...(covered ? [claimAgendaStatement(db, user.id, covered, "setup", now)] : []),
+      ],
     },
     next,
   );
@@ -232,15 +250,123 @@ async function settingsLines(deps: SetupDeps, user: UserRecord): Promise<string[
     `Default for new events: ${name(user.defaultCalendarId)}`,
     `Task deadlines: ${name(user.taskCalendarId)}`,
     `Timezone: ${user.timezone}`,
+    `Daily agenda: ${hourLabel(user.agendaHour)}`,
+    `Default reminder: ${leadLabel(user.reminderMinutes)}`,
+    `Evening preview: ${user.eveningHour === null ? "Off" : hourLabel(user.eveningHour)}`,
+    `Quiet hours: ${user.quietHours ? quietLabel(user.quietHours) : "Off"}`,
   ];
+}
+
+function quietLabel(quiet: { start: number; end: number }): string {
+  return `${hourLabel(quiet.start)}–${hourLabel(quiet.end)}`;
+}
+
+function quietPicker(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const current = user.quietHours;
+  const same = (q: { start: number; end: number }) =>
+    current?.start === q.start && current?.end === q.end;
+  const options = [
+    buttons.button(`${current ? "" : "✓ "}Off`, "set_quiet_hours", { quiet: null }),
+    ...QUIET_HOURS.map((q) =>
+      buttons.button(`${same(q) ? "✓ " : ""}${quietLabel(q)}`, "set_quiet_hours", {
+        quiet: { start: q.start, end: q.end },
+      }),
+    ),
+  ];
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        "Hold reminders overnight? Ones that fall due are sent together when quiet hours end. The agenda still arrives at its time.",
+        { inline_keyboard: [options.slice(0, 1), options.slice(1, 3), options.slice(3)] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+function hourLabel(hour: number): string {
+  return formatWallTime(`${String(hour).padStart(2, "0")}:00`);
+}
+
+/** "1 hour before", "30 minutes before". */
+export function leadLabel(minutes: number): string {
+  if (minutes % 60 === 0) return minutes === 60 ? "1 hour before" : `${minutes / 60} hours before`;
+  return `${minutes} minutes before`;
+}
+
+function eveningPicker(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const mark = (on: boolean) => (on ? "✓ " : "");
+  const options = [
+    buttons.button(`${mark(user.eveningHour === null)}Off`, "set_evening_hour", { hour: null }),
+    ...EVENING_HOURS.map((hour) =>
+      buttons.button(`${mark(user.eveningHour === hour)}${hourLabel(hour)}`, "set_evening_hour", {
+        hour,
+      }),
+    ),
+  ];
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        "Get a short preview of tomorrow in the evening?",
+        { inline_keyboard: [options.slice(0, 3), options.slice(3)] },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
+}
+
+function schedulePicker(deps: SetupDeps, user: UserRecord, setting: "agenda" | "lead"): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const options =
+    setting === "agenda"
+      ? AGENDA_HOURS.map((hour) =>
+          buttons.button(
+            `${hour === user.agendaHour ? "✓ " : ""}${hourLabel(hour)}`,
+            "set_agenda_hour",
+            { hour },
+          ),
+        )
+      : REMINDER_LEADS.map((minutes) =>
+          buttons.button(
+            `${minutes === user.reminderMinutes ? "✓ " : ""}${leadLabel(minutes)}`,
+            "set_reminder_lead",
+            { minutes },
+          ),
+        );
+  const rows: InlineKeyboardButton[][] = [];
+  for (let i = 0; i < options.length; i += 3) rows.push(options.slice(i, i + 3));
+  const text =
+    setting === "agenda"
+      ? "When should the daily agenda arrive?"
+      : "How long before timed events and exact deadlines should I remind you? Reminders set on one item stay as they are.";
+  return {
+    replies: [keyboardMessage(user, text, { inline_keyboard: rows }, null)],
+    statements: (db, guard) => buttons.statements(db, guard),
+  };
 }
 
 async function summary(deps: SetupDeps, user: UserRecord, heading: string): Promise<Reaction> {
   const lines = await settingsLines(deps, user);
-  return message(
-    user.privateChatId,
-    `${heading}\n\n${lines.join("\n")}\n\nAdding events and tasks arrives in a later update. Use /settings to change these.`,
-  );
+  const text = `${heading}\n\n${lines.join("\n")}\n\nType what you want to add, like Dinner Fri 7pm or Buy milk, or send /help. Use /settings to change these.`;
+  // The persistent "Open app" keyboard appears once setup is done.
+  return {
+    replies: [
+      {
+        method: "sendMessage",
+        params: {
+          chat_id: user.privateChatId,
+          text,
+          ...(appUrl(deps.config) ? { reply_markup: APP_KEYBOARD } : {}),
+        },
+      },
+    ],
+  };
 }
 
 export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<Reaction> {
@@ -261,6 +387,14 @@ export async function settingsView(deps: SetupDeps, user: UserRecord): Promise<R
       [
         buttons.button("Timezone", "open_timezone", {}),
         buttons.button("Reconnect Google", "reconnect", {}),
+      ],
+      [
+        buttons.button("Agenda time", "open_agenda_hour", {}),
+        buttons.button("Default reminder", "open_reminder_lead", {}),
+      ],
+      [
+        buttons.button("Evening preview", "open_evening", {}),
+        buttons.button("Quiet hours", "open_quiet", {}),
       ],
       [buttons.button("Contacts", "open_contacts", {})],
     ],
@@ -294,8 +428,12 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     : connection.status === "active"
       ? `Connected (${connection.email})`
       : `Reconnection needed (${connection.email})`;
+  const ttl = deps.config.testingTokenTtlDays;
   const lines = [
     `Google Calendar: ${status}`,
+    ...(connection?.status === "active" && ttl !== null
+      ? [`Reconnect by: ${reconnectBy(accessEndsAt(connection.connectedAt, ttl), user.timezone)}`]
+      : []),
     `Last successful sync: ${describeSync(sync, deps.clock.now(), user.timezone)}`,
   ];
   if (sync.failingCalendars > 0) {
@@ -309,6 +447,7 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
   const attention = count("needs_resolution");
   if (attention > 0) lines.push(`Changes needing your attention: ${attention}`);
   if ((unknown?.n ?? 0) > 0) lines.push(`Messages that may not have arrived: ${unknown?.n}`);
+  lines.push(`Scheduler: ${describeTick(await lastTickAt(deps.db), deps.clock.now())}`);
 
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const row = [buttons.button(connection ? "Reauthorize" : "Connect", "reconnect", {})];
@@ -321,6 +460,21 @@ export async function healthView(deps: SetupDeps, user: UserRecord): Promise<Rea
     ],
     statements: (db, guard) => buttons.statements(db, guard),
   };
+}
+
+/** "Fri 2 Oct, 9am" (estimated: Testing-mode access lasts a fixed number of days). */
+function reconnectBy(endsAt: number, timeZone: string): string {
+  return formatShortStart(
+    { start: { dateTime: new Date(endsAt).toISOString(), timeZone } },
+    timeZone,
+  );
+}
+
+function describeTick(last: number | null, now: number): string {
+  if (last === null) return "not run yet";
+  const minutes = Math.floor((now - last) / 60_000);
+  const age = minutes < 1 ? "last run just now" : `last run ${minutes} min ago`;
+  return now - last > MAX_TICK_AGE_MS ? `${age} (delayed: reminders may be late)` : age;
 }
 
 function describeSync(sync: SyncSummary, now: number, timeZone: string): string {
@@ -480,6 +634,11 @@ export async function handleUiAction(
 
     case "change_timezone":
       return combine(ack(), removeButtons(user, callback), askFor(deps, user, "timezone"));
+    case "set_timezone": {
+      const zone = canonicalTimezone(String(payload.zone ?? ""));
+      if (!zone) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), await applyTimezone(deps, user, zone));
+    }
 
     case "open_calendars":
       return combine(ack(), await calendarPicker(deps, user, "settings", null));
@@ -487,6 +646,83 @@ export async function handleUiAction(
       return combine(ack(), await defaultPicker(deps, user, "settings"));
     case "open_timezone":
       return combine(ack(), timezonePrompt(deps, user, "settings"));
+    case "open_agenda_hour":
+      return combine(ack(), schedulePicker(deps, user, "agenda"));
+    case "open_reminder_lead":
+      return combine(ack(), schedulePicker(deps, user, "lead"));
+    case "open_quiet":
+      return combine(ack(), quietPicker(deps, user));
+    case "set_quiet_hours": {
+      const chosen = payload.quiet as { start: number; end: number } | null | undefined;
+      const quiet = chosen
+        ? QUIET_HOURS.find((q) => q.start === chosen.start && q.end === chosen.end)
+        : null;
+      if (chosen && !quiet) return ack("This button is no longer valid.");
+      const text = quiet
+        ? `Quiet hours: ${quietLabel(quiet)}. Reminders due then are sent together afterwards.`
+        : "Quiet hours off.";
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [{ method: "sendMessage", params: { chat_id: user.privateChatId, text } }],
+        statements: (db) => [
+          setQuietHoursStatement(
+            db,
+            user.id,
+            quiet ? { start: quiet.start, end: quiet.end } : null,
+            now,
+          ),
+        ],
+      });
+    }
+    case "open_evening":
+      return combine(ack(), eveningPicker(deps, user));
+    case "set_evening_hour": {
+      const hour = payload.hour === null ? null : Number(payload.hour);
+      if (hour !== null && !EVENING_HOURS.some((h) => h === hour)) {
+        return ack("This button is no longer valid.");
+      }
+      const text =
+        hour === null
+          ? "Evening preview off."
+          : `I'll send a preview of tomorrow at ${hourLabel(hour)}.`;
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [{ method: "sendMessage", params: { chat_id: user.privateChatId, text } }],
+        statements: (db) => [setScheduleSettingStatement(db, user.id, { eveningHour: hour }, now)],
+      });
+    }
+    case "set_agenda_hour": {
+      const hour = Number(payload.hour);
+      if (!AGENDA_HOURS.some((h) => h === hour)) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [
+          {
+            method: "sendMessage",
+            params: {
+              chat_id: user.privateChatId,
+              text: `The daily agenda now arrives at ${hourLabel(hour)}. A day that already had its agenda won't get a second one.`,
+            },
+          },
+        ],
+        statements: (db) => [setScheduleSettingStatement(db, user.id, { agendaHour: hour }, now)],
+      });
+    }
+    case "set_reminder_lead": {
+      const minutes = Number(payload.minutes);
+      if (!REMINDER_LEADS.some((m) => m === minutes)) return ack("This button is no longer valid.");
+      return combine(ack(), removeButtons(user, callback), {
+        replies: [
+          {
+            method: "sendMessage",
+            params: {
+              chat_id: user.privateChatId,
+              text: `Reminders now come ${leadLabel(minutes)} timed events and exact deadlines, unless set on the item.`,
+            },
+          },
+        ],
+        statements: (db) => [
+          setScheduleSettingStatement(db, user.id, { reminderMinutes: minutes }, now),
+        ],
+      });
+    }
 
     case "force_poll": {
       const result = await requestForcePoll(deps.db, user.id, now);
@@ -575,19 +811,60 @@ export async function handleUiAction(
 // --- Typed answers -----------------------------------------------------------
 
 function askFor(deps: SetupDeps, user: UserRecord, kind: PendingInputKind): Reaction {
+  if (kind === "timezone") return askTimezone(deps, user);
+  return guidedPrompt(deps, user, kind, {}, "Send a name for the new calendar.");
+}
+
+/** Recent zones first, then common ones, as buttons; or a typed city or Region/City. */
+function askTimezone(deps: SetupDeps, user: UserRecord): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const zones = [...user.recentTimezones, ...COMMON_ZONES]
+    .filter((z, i, all) => z !== user.timezone && all.indexOf(z) === i)
+    .slice(0, 8);
+  const options = zones.map((zone) => buttons.button(zoneLabel(zone), "set_timezone", { zone }));
+  const rows: InlineKeyboardButton[][] = [];
+  for (let i = 0; i < options.length; i += 2) rows.push(options.slice(i, i + 2));
+  return guidedPrompt(
+    deps,
+    user,
+    "timezone",
+    {},
+    "Choose a timezone, or type a city or Region/City, for example London or Europe/London.",
+    rows,
+    buttons,
+  );
+}
+
+/** Zones a typed city name is matched against. */
+function knownZones(): readonly string[] {
+  try {
+    return Intl.supportedValuesOf("timeZone");
+  } catch {
+    return COMMON_ZONES;
+  }
+}
+
+/** Sets the timezone (remembering the previous one), and continues setup if in it. */
+async function applyTimezone(deps: SetupDeps, user: UserRecord, zone: string): Promise<Reaction> {
   const now = deps.clock.now();
-  const prompt =
-    kind === "timezone"
-      ? "Send your timezone as Region/City, for example Europe/London."
-      : "Send a name for the new calendar.";
+  const recent = nextRecentZones(user.timezone, user.recentTimezones, zone);
+  const update: Reaction = {
+    replies: [],
+    statements: (db) => [
+      clearPendingInputStatement(db, user.id),
+      setTimezoneStatement(db, user.id, zone, now, recent),
+    ],
+  };
+  const updated = { ...user, timezone: zone, recentTimezones: recent };
+  if (user.setupStep === "timezone") {
+    return combine(update, await advance(deps, updated, "timezone"));
+  }
   return combine(
-    {
-      replies: [],
-      statements: (db) => [
-        setPendingInputStatement(db, user.id, kind, now + PENDING_INPUT_TTL_MS, now),
-      ],
-    },
-    message(user.privateChatId, prompt),
+    update,
+    message(
+      user.privateChatId,
+      `Timezone set to ${zone}. Existing events keep their times; new dates and reminders use ${zone}.`,
+    ),
   );
 }
 
@@ -607,27 +884,19 @@ export async function handlePendingInput(
 
   if (kind === "timezone") {
     const zone = canonicalTimezone(text);
-    if (!zone) {
-      return message(
-        user.privateChatId,
-        "I don't recognize that timezone. Send it as Region/City, for example Europe/London.",
-      );
+    if (zone) return applyTimezone(deps, user, zone);
+    const city = matchCity(text, knownZones());
+    if (city && "zone" in city) return applyTimezone(deps, user, city.zone);
+    if (city) {
+      const buttons = new ActionButtons(deps.ids, user.id, now);
+      const rows = city.choose.map((z) => [
+        buttons.button(z.replace(/_/g, " "), "set_timezone", { zone: z }),
+      ]);
+      return guidedPrompt(deps, user, "timezone", {}, "Which one?", rows, buttons);
     }
-    const update: Reaction = {
-      replies: [],
-      statements: (db) => [setTimezoneStatement(db, user.id, zone, now)],
-    };
-    const updated = { ...user, timezone: zone };
-    if (user.setupStep === "timezone") {
-      return combine(clear, update, await advance(deps, updated, "timezone"));
-    }
-    return combine(
-      clear,
-      update,
-      message(
-        user.privateChatId,
-        `Timezone set to ${zone}. Existing events keep their times; new dates and reminders use ${zone}.`,
-      ),
+    return message(
+      user.privateChatId,
+      "I don't recognize that timezone. Send a city, for example London, or Region/City, for example Europe/London.",
     );
   }
 

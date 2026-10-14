@@ -1,10 +1,13 @@
 import type { CalendarEvent, ProviderError } from "../calendar/port";
 import { type EventField, type EventFields, pickEventFields } from "../domain/calendar-event";
 import { mergeIntended, valuesEqual } from "../domain/field-merge";
-import { DEFAULT_EVENT_REMINDER_MINUTES, reminderKeys } from "../domain/schedule";
+import { reminderKeys } from "../domain/schedule";
+import type { Deadline } from "../domain/tasks";
 import { cacheOwnWriteStatement, deleteEventStatement } from "../storage/events";
 import type { ItemRef } from "../storage/outbox";
 import { claimReminderStatement } from "../storage/reminders";
+import { deleteSessionStatement, insertSessionStatement } from "../storage/sessions";
+import { listTaskLists } from "../storage/tasks";
 import type { UserRecord } from "../storage/users";
 import { formatEventRange } from "../telegram/format";
 import type {
@@ -14,7 +17,8 @@ import type {
   SucceededContext,
 } from "./operation-types";
 import { canCheckOverlaps, findOverlaps, type Overlap } from "./overlaps";
-import type { Reaction } from "./reactions";
+import { combine, type Reaction } from "./reactions";
+import { taskCreation } from "./task-flow";
 
 /**
  * Calendar event operations through the shared pipeline. Each attempt reads
@@ -25,6 +29,7 @@ import type { Reaction } from "./reactions";
 export const CREATE_EVENT = "calendar.event.create";
 export const PATCH_EVENT = "calendar.event.patch";
 export const DELETE_EVENT = "calendar.event.delete";
+export const MOVE_EVENT = "calendar.event.move";
 
 /** Display and conflict-check details shared by event intents. */
 interface EventContext {
@@ -42,6 +47,34 @@ export interface CreateEventIntent extends EventContext {
   /** For a recurring event: its rules and the interpreted schedule shown to the user. */
   recurrence?: string[];
   repeatLabel?: string;
+  /** Quick capture: the task this event becomes if the user switches type. */
+  switchTo?: TaskInstead;
+  /** A line appended to the result (e.g. a typing hint). */
+  note?: string;
+  /** Other writable calendars exist: the result offers "Calendar: X ▸". */
+  movable?: true;
+  /** A work session for this task (spec §6); linked once created. */
+  sessionFor?: { taskId: string };
+}
+
+/** Moves an event to another calendar, bound to the version it was shown at. */
+export interface MoveEventIntent {
+  calendarId: string;
+  eventId: string;
+  destinationId: string;
+  title: string;
+  calendarName: string;
+  destinationName: string;
+  /** The event as it was when the move was offered; any other version is refused. */
+  base: EventFields;
+  undo?: true;
+}
+
+/** A task to create in place of a removed event (quick capture's type switch). */
+export interface TaskInstead {
+  title: string;
+  deadline: Deadline;
+  listId: string | null;
 }
 
 /**
@@ -79,6 +112,8 @@ export interface DeleteEventIntent {
   /** The event as previewed; a different current event requires a new confirmation. */
   base: EventFields;
   undo?: true;
+  /** Created once the event is removed (switching a just-created event to a task). */
+  replacedBy?: TaskInstead;
 }
 
 interface WriteResult {
@@ -97,7 +132,17 @@ interface PatchResult extends WriteResult {
 
 interface DeleteResult {
   fields: EventFields;
+  /**
+   * The deleted event had no guests and wasn't part of a series, as read just
+   * before deleting: a copy can be restored without notifying anyone.
+   */
+  restorable?: boolean;
+  /** When it was deleted, for the restore window. */
+  deletedAt?: number;
 }
+
+/** How long Restore is offered after deleting an event. */
+export const RESTORE_WINDOW_MS = 24 * 60 * 60_000;
 
 /** Maps provider failures that need no operation-specific handling. */
 export function providerFailure(error: ProviderError): ExecutionOutcome {
@@ -171,11 +216,13 @@ export const createEventHandler: OperationHandler = {
     const intent = op.intent as CreateEventIntent;
     const title = intent.fields.summary;
     switch (event.kind) {
-      case "succeeded":
-        return withRepeat(
+      case "succeeded": {
+        const text = withRepeat(
           writtenNotice("Event added", event.result as CreateResult, intent, user),
           intent,
         );
+        return intent.note ? `${text}\n\n${intent.note}` : text;
+      }
       case "pending":
         return event.outcomeUnknown
           ? `Pending: I couldn't confirm that ${title} was added to Google Calendar. I'll check again automatically.`
@@ -185,7 +232,49 @@ export const createEventHandler: OperationHandler = {
     }
   },
 
-  onSucceeded: cacheWrite,
+  async onSucceeded(ctx) {
+    const cached = await cacheWrite(ctx);
+    const intent = ctx.op.intent as CreateEventIntent;
+    const written = ctx.result as CreateResult;
+    if (!intent.sessionFor) return cached;
+    const { start, end } = written.fields;
+    if (!("dateTime" in start) || !("dateTime" in end)) return cached;
+    const taskId = intent.sessionFor.taskId;
+    return combine(cached, {
+      replies: [],
+      statements: (db, guard) => [
+        insertSessionStatement(
+          db,
+          ctx.user.id,
+          taskId,
+          intent.calendarId,
+          intent.eventId,
+          Date.parse(start.dateTime),
+          Date.parse(end.dateTime),
+          ctx.now,
+          guard,
+        ),
+      ],
+    });
+  },
+
+  resultButtons(op) {
+    const intent = op.intent as CreateEventIntent;
+    return [
+      ...(intent.movable
+        ? [
+            {
+              text: `Calendar: ${intent.calendarName ?? "Default"} ▸`,
+              action: "event_calendar_menu",
+              payload: { operationId: op.id },
+            },
+          ]
+        : []),
+      ...(intent.switchTo
+        ? [{ text: "Make it a task", action: "capture_to_task", payload: { operationId: op.id } }]
+        : []),
+    ];
+  },
 
   inverse(op, user) {
     const intent = op.intent as CreateEventIntent;
@@ -351,17 +440,25 @@ export const patchEventHandler: OperationHandler = {
 export const deleteEventHandler: OperationHandler = {
   kind: DELETE_EVENT,
 
-  async onSucceeded({ op, user }) {
+  async onSucceeded({ op, user, ids, now, db }) {
     const intent = op.intent as DeleteEventIntent;
-    return {
+    const removed: Reaction = {
       replies: [],
       statements: (db, guard) => [
         deleteEventStatement(db, user.id, intent.calendarId, intent.eventId, guard),
+        deleteSessionStatement(db, user.id, intent.calendarId, intent.eventId),
       ],
     };
+    const task = intent.replacedBy;
+    if (!task) return removed;
+    // Switching type: the task is created only once the event is verified gone.
+    const lists = await listTaskLists(db, user.id);
+    const list = lists.find((l) => l.id === task.listId) ?? lists.find((l) => l.isInbox);
+    if (!list) return removed;
+    return combine(removed, taskCreation(ids, now, user, list, task.title, task.deadline));
   },
 
-  async execute({ op, calendar, user }) {
+  async execute({ op, calendar, user, now }) {
     if (!calendar) return { kind: "auth_required" };
     const intent = op.intent as DeleteEventIntent;
     const current = await calendar.getEvent(intent.calendarId, intent.eventId);
@@ -395,7 +492,25 @@ export const deleteEventHandler: OperationHandler = {
       intent.notify ? { notifyGuests: true } : undefined,
     );
     if (!deleted.ok && deleted.error.kind !== "not_found") return providerFailure(deleted.error);
-    return succeeded<DeleteResult>({ fields: intent.base });
+    const plain =
+      !intent.scope &&
+      !intent.undo &&
+      !intent.replacedBy &&
+      (current.value.attendees ?? []).length === 0 &&
+      !current.value.hasGuests &&
+      !current.value.recurring &&
+      !current.value.recurringEventId;
+    return succeeded<DeleteResult>({
+      fields: intent.base,
+      ...(plain ? { restorable: true, deletedAt: now } : {}),
+    });
+  },
+
+  resultButtons(op) {
+    const result = op.result as DeleteResult | null;
+    return result?.restorable
+      ? [{ text: "Restore", action: "event_restore", payload: { operationId: op.id } }]
+      : [];
   },
 
   notice(op, event, user) {
@@ -403,6 +518,7 @@ export const deleteEventHandler: OperationHandler = {
     const title = intent.base.summary;
     switch (event.kind) {
       case "succeeded":
+        if (intent.replacedBy) return `Removed event: ${title}.`;
         if (intent.undo) return `Undone: ${title} was removed from Google Calendar.`;
         if (intent.scope === "series") {
           return `Deleted every occurrence of ${title}.${intent.notify ? `\n\n${guestsEmailed(intent.notify, "cancellation")}` : ""}`;
@@ -416,12 +532,102 @@ export const deleteEventHandler: OperationHandler = {
           : `Pending: ${title} has not been deleted from Google Calendar. I'll retry automatically.`;
       case "failed":
         if (event.errorClass === "undo_stale") {
-          return `Undo isn't available: ${title} changed in Calendar since it was added.`;
+          return intent.replacedBy
+            ? `${title} changed in Calendar since it was added, so it stays an event.`
+            : `Undo isn't available: ${title} changed in Calendar since it was added.`;
         }
         return commonNotice(title, event, "delete");
       default:
         return commonNotice(title, event, "delete");
     }
+  },
+};
+
+export const moveEventHandler: OperationHandler = {
+  kind: MOVE_EVENT,
+  about: (op) => {
+    const intent = op.intent as MoveEventIntent;
+    return { kind: "event", calendarId: intent.destinationId, eventId: intent.eventId };
+  },
+
+  async execute({ op, calendar }) {
+    if (!calendar) return { kind: "auth_required" };
+    const intent = op.intent as MoveEventIntent;
+    const current = await calendar.getEvent(intent.calendarId, intent.eventId);
+    if (!current.ok && current.error.kind !== "not_found") return providerFailure(current.error);
+    if (!current.ok || !isLive(current.value)) {
+      // Gone from the source: an earlier attempt may already have moved it.
+      const moved = await calendar.getEvent(intent.destinationId, intent.eventId);
+      if (moved.ok && isLive(moved.value)) {
+        return succeeded<WriteResult>({ fields: moved.value.fields, etag: moved.value.etag });
+      }
+      if (!moved.ok && moved.error.kind !== "not_found") return providerFailure(moved.error);
+      return { kind: "failed", errorClass: "not_found" };
+    }
+    if (!valuesEqual(pickEventFields(current.value.fields), pickEventFields(intent.base))) {
+      return { kind: "failed", errorClass: "move_stale" };
+    }
+    const moved = await calendar.moveEvent(intent.calendarId, intent.eventId, intent.destinationId);
+    if (!moved.ok) return providerFailure(moved.error);
+    return succeeded<WriteResult>({ fields: moved.value.fields, etag: moved.value.etag });
+  },
+
+  notice(op, event) {
+    const intent = op.intent as MoveEventIntent;
+    switch (event.kind) {
+      case "succeeded":
+        return intent.undo
+          ? `Undone: ${intent.title} is back in ${intent.destinationName}.`
+          : `Moved ${intent.title} to ${intent.destinationName}.`;
+      case "pending":
+        return event.outcomeUnknown
+          ? `Pending: I couldn't confirm that ${intent.title} moved to ${intent.destinationName}. I'll check again automatically.`
+          : `Pending: ${intent.title} has not moved to ${intent.destinationName} yet. I'll retry automatically.`;
+      case "failed":
+        if (event.errorClass === "move_stale") {
+          return `${intent.title} changed since, so it stays in ${intent.calendarName}.`;
+        }
+        if (event.errorClass === "not_found") {
+          return `I can't find ${intent.title} in ${intent.calendarName} anymore. Nothing was moved.`;
+        }
+        return commonNotice(intent.title, event, "update");
+      default:
+        return commonNotice(intent.title, event, "update");
+    }
+  },
+
+  async onSucceeded(ctx) {
+    const intent = ctx.op.intent as MoveEventIntent;
+    const cached = await cacheWrite({
+      ...ctx,
+      op: { ...ctx.op, intent: { calendarId: intent.destinationId, eventId: intent.eventId } },
+    });
+    return combine(
+      {
+        replies: [],
+        statements: (db, guard) => [
+          deleteEventStatement(db, ctx.user.id, intent.calendarId, intent.eventId, guard),
+        ],
+      },
+      cached,
+    );
+  },
+
+  inverse(op) {
+    const intent = op.intent as MoveEventIntent;
+    if (intent.undo) return null;
+    const result = op.result as WriteResult;
+    const back: MoveEventIntent = {
+      calendarId: intent.destinationId,
+      eventId: intent.eventId,
+      destinationId: intent.calendarId,
+      title: intent.title,
+      calendarName: intent.destinationName,
+      destinationName: intent.calendarName,
+      base: result.fields,
+      undo: true,
+    };
+    return { kind: MOVE_EVENT, intent: back, confirmation: null };
   },
 };
 
@@ -527,9 +733,7 @@ async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<
   // Created or moved inside the reminder window: this confirmation is the
   // approaching notice, so no separate reminder follows.
   const insideWindow =
-    startsAt !== null &&
-    startsAt > now &&
-    startsAt - DEFAULT_EVENT_REMINDER_MINUTES * 60_000 <= now;
+    startsAt !== null && startsAt > now && startsAt - user.reminderMinutes * 60_000 <= now;
   return {
     replies: [],
     statements: (db, guard) => [
@@ -538,12 +742,7 @@ async function cacheWrite({ op, user, result, now }: SucceededContext): Promise<
             claimReminderStatement(
               db,
               user.id,
-              reminderKeys.event(
-                intent.calendarId,
-                intent.eventId,
-                startsAt,
-                DEFAULT_EVENT_REMINDER_MINUTES,
-              ),
+              reminderKeys.event(intent.calendarId, intent.eventId, startsAt, user.reminderMinutes),
               "confirmed_on_create",
               op.id,
               now,
@@ -679,4 +878,5 @@ export const eventOperationHandlers = [
   createEventHandler,
   patchEventHandler,
   deleteEventHandler,
+  moveEventHandler,
 ] as const;

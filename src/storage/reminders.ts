@@ -1,3 +1,4 @@
+import type { EventDisplay } from "../calendar/port";
 import type { Guard } from "./guard";
 
 export interface HorizonEvent {
@@ -7,6 +8,8 @@ export interface HorizonEvent {
   startsAt: number;
   endsAt: number;
   declined: boolean;
+  /** Shown in reminders only. */
+  display: EventDisplay;
 }
 
 /**
@@ -19,16 +22,20 @@ export function replaceHorizonStatements(
   events: readonly HorizonEvent[],
   now: number,
 ): D1PreparedStatement[] {
+  // Upsert, then drop rows this refresh didn't see: unchanged occurrences are
+  // left alone, so only new or moved ones mark the user's next due time stale.
   return [
-    db.prepare("DELETE FROM event_horizon WHERE user_id = ?").bind(userId),
     ...events.map((e) =>
       db
         .prepare(
           `INSERT INTO event_horizon (user_id, calendar_id, event_id, summary, starts_at, ends_at,
-             declined, refreshed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             declined, location, call_url, html_link, refreshed_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT (user_id, calendar_id, event_id) DO UPDATE SET summary = excluded.summary,
              starts_at = excluded.starts_at, ends_at = excluded.ends_at,
-             declined = excluded.declined, refreshed_at = excluded.refreshed_at`,
+             declined = excluded.declined, location = excluded.location,
+             call_url = excluded.call_url, html_link = excluded.html_link,
+             refreshed_at = excluded.refreshed_at`,
         )
         .bind(
           userId,
@@ -38,9 +45,15 @@ export function replaceHorizonStatements(
           e.startsAt,
           e.endsAt,
           e.declined ? 1 : 0,
+          e.display.location,
+          e.display.callUrl,
+          e.display.htmlLink,
           now,
         ),
     ),
+    db
+      .prepare("DELETE FROM event_horizon WHERE user_id = ? AND refreshed_at < ?")
+      .bind(userId, now),
     db.prepare("UPDATE users SET horizon_refreshed_at = ? WHERE id = ?").bind(now, userId),
   ];
 }
@@ -53,7 +66,8 @@ export async function horizonEvents(
 ): Promise<HorizonEvent[]> {
   const { results } = await db
     .prepare(
-      `SELECT calendar_id, event_id, summary, starts_at, ends_at, declined FROM event_horizon
+      `SELECT calendar_id, event_id, summary, starts_at, ends_at, declined, location, call_url,
+         html_link FROM event_horizon
        WHERE user_id = ? AND starts_at > ? AND starts_at <= ? ORDER BY starts_at`,
     )
     .bind(userId, from, to)
@@ -64,6 +78,9 @@ export async function horizonEvents(
       starts_at: number;
       ends_at: number;
       declined: number;
+      location: string | null;
+      call_url: string | null;
+      html_link: string | null;
     }>();
   return results.map((r) => ({
     calendarId: r.calendar_id,
@@ -72,6 +89,7 @@ export async function horizonEvents(
     startsAt: r.starts_at,
     endsAt: r.ends_at,
     declined: r.declined === 1,
+    display: { location: r.location, callUrl: r.call_url, htmlLink: r.html_link },
   }));
 }
 

@@ -65,7 +65,8 @@ describe("daily agenda", () => {
     await addTask(world, "Buy milk", null, null);
 
     await until(world, sgt(26, 7, 59));
-    expect(agendas(world)).toHaveLength(1); // Friday's, sent during setup
+    // Setup finished at 9am Friday, so Friday is covered; Saturday's is the first.
+    expect(agendas(world)).toHaveLength(0);
     await until(world, sgt(26, 8));
     expect(agendas(world).at(-1)).toBe(
       [
@@ -88,7 +89,7 @@ describe("daily agenda", () => {
     expect(world.findButton("View week")).toBeTruthy();
 
     await until(world, sgt(26, 12));
-    expect(agendas(world)).toHaveLength(2); // no duplicate for the same date
+    expect(agendas(world)).toHaveLength(1); // no duplicate for the same date
   });
 
   it("says the calendar is clear, and folds a snooze ending at 8am into the agenda", async () => {
@@ -135,9 +136,9 @@ describe("daily agenda", () => {
     await world.press("Change timezone");
     await world.send("Europe/London");
     await until(world, Date.UTC(2026, 8, 26, 7)); // 08:00 Saturday in London
-    expect(agendas(world)).toHaveLength(2);
+    expect(agendas(world)).toHaveLength(1);
     await until(world, Date.UTC(2026, 8, 27, 7)); // 08:00 Sunday in London (BST)
-    expect(agendas(world)).toHaveLength(3);
+    expect(agendas(world)).toHaveLength(2);
   });
 
   it("is sent once even when two scheduled runs overlap", async () => {
@@ -188,6 +189,41 @@ describe("reminders", () => {
 
     await world.send("/reminders");
     expect(world.lastText()).toContain("Custom reminders\n• Dinner: 30 minutes before");
+  });
+
+  it("shows where, the video call, and an Open in Calendar button (C2)", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    seedEvent(world, "planning", "Planning", 25, 14, {
+      display: {
+        location: "Room 4",
+        callUrl: "https://meet.google.com/abc-defg-hij",
+        htmlLink: "https://www.google.com/calendar/event?eid=planning",
+      },
+    });
+    await until(world, sgt(25, 12));
+    // Changed in Calendar after the horizon was read: the live value is shown.
+    const calendar = ownerCalendar(world);
+    const key = `${PRIMARY.calendarId}/planning`;
+    calendar.meta.set(key, {
+      display: {
+        location: "Room 5",
+        callUrl: "https://meet.google.com/abc-defg-hij",
+        htmlLink: "https://www.google.com/calendar/event?eid=planning",
+      },
+    });
+    await until(world, sgt(25, 13));
+    expect(world.lastText()).toBe(
+      "In 1 hour: Planning\nFri 25 Sep 2026, 2–3pm\nWhere: Room 5\nVideo call: https://meet.google.com/abc-defg-hij",
+    );
+    expect(world.findButton("Join call")).toEqual({
+      text: "Join call",
+      url: "https://meet.google.com/abc-defg-hij",
+    });
+    expect(world.findButton("Open in Calendar")).toEqual({
+      text: "Open in Calendar",
+      url: "https://www.google.com/calendar/event?eid=planning",
+    });
   });
 
   it("revalidates before sending: a moved event is reminded at its new time", async () => {

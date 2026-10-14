@@ -1,7 +1,8 @@
 # Runbook: operating Oh My Days
 
-Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1 database
-`oh-my-days` (APAC), one cron trigger every minute. Deploying is covered in
+Production: Worker `oh-my-days` on a custom domain (`<host>` below; set in the
+untracked `wrangler.production.local.json`), D1 database `oh-my-days` (APAC), one
+cron trigger every minute. Deploying is covered in
 [deploy.md](deploy.md). Commands run from the repository root after
 `npx wrangler login`.
 
@@ -9,7 +10,7 @@ Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1 databa
 
 - `/health` in Telegram: connection, last successful sync, failed checks,
   pending changes, and messages that may not have arrived.
-- `GET https://ohmydays.xinweichong.com/healthz` returns `ok`.
+- `GET https://<host>/healthz` returns `ok tick_age_s=…` with status 200. Status 503 (`stale`) means no scheduled tick has finished in 10 minutes: check Cron Triggers and `wrangler tail`. `/health` in Telegram shows the same figure.
 - Counts only (no personal data):
 
   ```sh
@@ -26,10 +27,13 @@ Production: Worker `oh-my-days` at `https://ohmydays.xinweichong.com`, D1 databa
 
 ## Google access stops working
 
-The OAuth app is in Testing, so Google ends access every 7 days (ADR 0002). The
-bot sends one alert with **Reauthorize**; paused changes resume after
-reconnecting. Nothing else is needed. If reconnecting fails, check the OAuth
-client's redirect URI (`https://ohmydays.xinweichong.com/oauth/callback`) and
+The OAuth app is in Testing, so Google ends access every 7 days (ADR 0002).
+With `TESTING_TOKEN_TTL_DAYS` set (`wrangler.jsonc`), the bot warns about a day
+before, once per connection, with **Reconnect**, and `/health` shows "Reconnect
+by …". If access lapses anyway, the bot sends one alert with **Reauthorize**;
+paused changes resume after reconnecting. Once the app is verified, remove
+`TESTING_TOKEN_TTL_DAYS` and update ADR 0002. Nothing else is needed. If reconnecting fails, check the OAuth
+client's redirect URI (`https://<host>/oauth/callback`) and
 that the user is still a test user on the consent screen.
 
 ## Sync outage alert
@@ -120,6 +124,8 @@ DELETE FROM event_horizon WHERE user_id = '<id>';
 DELETE FROM event_cache WHERE user_id = '<id>';
 DELETE FROM calendar_sync WHERE user_id = '<id>';
 DELETE FROM calendars WHERE user_id = '<id>';
+DELETE FROM app_requests WHERE user_id = '<id>';
+DELETE FROM task_sessions WHERE user_id = '<id>';
 DELETE FROM tasks WHERE user_id = '<id>';
 DELETE FROM task_series WHERE user_id = '<id>';
 DELETE FROM task_lists WHERE user_id = '<id>';
