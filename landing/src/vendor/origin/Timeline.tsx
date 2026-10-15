@@ -1,0 +1,65 @@
+/**
+ * Adapted from Origin UI "Timeline" (MIT), https://coss.com/origin
+ *
+ * Landing page only: the three setup steps. Kept from the original: the item,
+ * header, separator and indicator anatomy, steps up to the active one marked
+ * completed, and the separator filling between completed steps. Changes:
+ * vertical only, no Radix Slot, the indicator is the design system's check
+ * circle, and the separator's fill is drawn by Motion as the step completes.
+ */
+import { motion, useReducedMotion } from "motion/react";
+import type { ReactNode } from "react";
+import { cn } from "../../lib/cn";
+import { EASE_OUT } from "../../lib/ease";
+
+export function Timeline({ children, className }: { children: ReactNode; className?: string }) {
+  return <ol className={cn("flex flex-col", className)}>{children}</ol>;
+}
+
+export function TimelineItem({
+  completed,
+  last = false,
+  indicator,
+  title,
+  children,
+}: {
+  completed: boolean;
+  last?: boolean;
+  indicator: ReactNode;
+  title: ReactNode;
+  children: ReactNode;
+}) {
+  const reduce = useReducedMotion();
+  return (
+    <li data-completed={completed || undefined} className={cn("relative ps-14", !last && "pb-10")}>
+      {last ? null : (
+        <span
+          aria-hidden="true"
+          className="absolute start-[19px] top-11 bottom-1 w-0.5 rounded-full bg-line"
+        >
+          <motion.span
+            className="absolute inset-0 origin-top rounded-full bg-tide"
+            initial={false}
+            animate={{ scaleY: completed ? 1 : 0 }}
+            transition={reduce ? { duration: 0 } : { duration: 0.7, ease: EASE_OUT, delay: 0.15 }}
+          />
+        </span>
+      )}
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute start-0 top-0 grid size-10 place-items-center rounded-full border-2 font-display text-base font-semibold tabular-nums transition-colors duration-300",
+          completed
+            ? "border-tide bg-tide text-on-tide"
+            : "border-line-strong bg-surface text-muted",
+        )}
+      >
+        {indicator}
+      </span>
+      <h3 className="pt-1.5 font-display text-xl font-semibold tracking-[-0.01em] text-ink">
+        {title}
+      </h3>
+      <div className="mt-2 max-w-[56ch] text-base leading-6 text-muted">{children}</div>
+    </li>
+  );
+}
