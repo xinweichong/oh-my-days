@@ -23,7 +23,10 @@ const STEPS = [
   },
 ];
 
-/** Origin UI's timeline: the steps fill in turn as the list comes into view. */
+/**
+ * Origin UI's timeline: the steps light in turn as the list comes into view.
+ * They stay numbered, never ticked: the visitor has not done them yet.
+ */
 export function Setup() {
   const ref = useRef<HTMLDivElement>(null);
   const seen = useInView(ref, { once: true, amount: 0.5 });
@@ -64,7 +67,7 @@ export function Setup() {
                 key={s.title}
                 completed={i < done}
                 last={i === STEPS.length - 1}
-                indicator={i < done ? "✓" : i + 1}
+                indicator={i + 1}
                 title={s.title}
               >
                 {s.body}

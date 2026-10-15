@@ -2,10 +2,10 @@
  * Adapted from Origin UI "Timeline" (MIT), https://coss.com/origin
  *
  * Landing page only: the three setup steps. Kept from the original: the item,
- * header, separator and indicator anatomy, steps up to the active one marked
- * completed, and the separator filling between completed steps. Changes:
- * vertical only, no Radix Slot, the indicator is the design system's check
- * circle, and the separator's fill is drawn by Motion as the step completes.
+ * header, separator and indicator anatomy, steps up to the active one marked,
+ * and the separator filling between marked steps. Changes: vertical only, no
+ * Radix Slot, a marked step is a tide outline rather than a fill (these are
+ * steps to come, not steps done), and Motion draws the separator's fill.
  */
 import { motion, useReducedMotion } from "motion/react";
 import type { ReactNode } from "react";
@@ -50,7 +50,7 @@ export function TimelineItem({
         className={cn(
           "absolute start-0 top-0 grid size-10 place-items-center rounded-full border-2 font-display text-base font-semibold tabular-nums transition-colors duration-300",
           completed
-            ? "border-tide bg-tide text-on-tide"
+            ? "border-tide bg-surface text-tide"
             : "border-line-strong bg-surface text-muted",
         )}
       >

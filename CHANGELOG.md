@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Landing page** at `/`: the tagline made literal, with ten things in your head captured one message at a time, a scroll-driven walkthrough of an event, a task, the 8am agenda and a snooze in Telegram and Google Calendar, the Mini App, setup, and privacy. Separate desktop and phone compositions. Built with React, Tailwind CSS and Motion, with components adapted from Kokonut UI, beUI and Origin UI, prerendered and served as static assets ([ADR 0006](docs/adr/0006-landing-page-as-static-assets.md))
+- **Landing page** at `/`: the tagline made literal, with ten things in your head captured one message at a time, a scroll-driven walkthrough of an event, a task, the 8am agenda and a snooze in Telegram and Google Calendar, the Mini App, setup, and privacy. Separate desktop and phone compositions. Built with React, Tailwind CSS and Motion, with components adapted from Kokonut UI, beUI, Origin UI and Animate UI, prerendered and served as static assets ([ADR 0006](docs/adr/0006-landing-page-as-static-assets.md))
 
 ### Changed
 

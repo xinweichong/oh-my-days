@@ -7,7 +7,7 @@ export function Header() {
     <header className="sticky top-0 z-30 border-b border-line bg-surface">
       <div className="mx-auto flex h-16 max-w-[76rem] items-center justify-between gap-4 px-4 sm:px-6 md:px-8">
         <a href="/" className="-m-2 p-2" aria-label="Oh My Days, home">
-          <Lockup className="h-8" />
+          <Lockup className="h-7 xs:h-8" />
         </a>
         <nav aria-label="Main" className="flex items-center gap-2 sm:gap-6">
           <a
@@ -28,8 +28,7 @@ export function Header() {
             rel="noopener"
             className="inline-flex min-h-11 items-center rounded-lg bg-tide px-4 text-[15px] font-semibold text-on-tide transition-[filter] hover:brightness-110"
           >
-            <span className="sm:hidden">Open</span>
-            <span className="hidden sm:inline">Open in Telegram</span>
+            Open in Telegram
           </a>
         </nav>
       </div>

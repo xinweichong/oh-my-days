@@ -155,7 +155,7 @@ export const STEPS: Step[] = [
   },
   {
     id: "agenda",
-    label: "8am",
+    label: "Agenda",
     title: "The day comes back at 8am.",
     body: "Each morning one message lists today's events and what's due. Nothing to open, nothing to remember to check.",
   },
@@ -241,7 +241,7 @@ export const MINI_APP_SCREENS = [
   },
   {
     id: "list",
-    label: "A list",
+    label: "List",
     alt: "The Work list in dark mode: four open tasks with their deadlines",
   },
   {

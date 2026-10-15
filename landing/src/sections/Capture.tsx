@@ -11,6 +11,7 @@ import { STEPS, THOUGHTS, thought } from "../content";
 import { cn } from "../lib/cn";
 import { EASE_OUT, SPRING_LAND } from "../lib/ease";
 import { Checkbox } from "../vendor/beui/Checkbox";
+import { TopoBackground } from "../vendor/kokonut/TopoBackground";
 import { CalendarWeek } from "./CalendarWeek";
 import { ChatFrame, Composer } from "./Chat";
 import { CountLine } from "./Count";
@@ -71,6 +72,8 @@ function Stage() {
   const shown = Math.max(step, 0);
   const caption = STEPS[shown] ?? STEPS[0];
   const composer = step === 1 ? task.composer : event.composer;
+  // The thought being typed leaves the head column and rides in the composer.
+  const travelling = event.phase === 1 ? "dentist" : task.phase === 1 ? "invoice" : null;
 
   const jump = (i: number) => {
     const el = track.current;
@@ -111,8 +114,8 @@ function Stage() {
           </div>
           <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-5 md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:grid-cols-[16rem_minmax(0,22rem)_minmax(0,1fr)] lg:gap-6">
             <HeadPane
-              dentist={stateOf(0, step, landed.dentist)}
-              invoice={stateOf(1, step, landed.invoice)}
+              dentist={stateOf(0, step, landed.dentist, travelling === "dentist")}
+              invoice={stateOf(1, step, landed.invoice, travelling === "invoice")}
             />
             <ChatFrame className="min-h-0">
               <div className="flex min-h-0 flex-1 flex-col justify-end gap-2 overflow-hidden px-3 py-3 [mask-image:linear-gradient(to_bottom,transparent,#000_3.5rem)]">
@@ -120,7 +123,11 @@ function Stage() {
                   {[...event.messages, ...task.messages, ...agenda.messages, ...snooze.messages]}
                 </AnimatePresence>
               </div>
-              <Composer text={composer.text} busy={composer.busy} />
+              <Composer
+                text={composer.text}
+                busy={composer.busy}
+                carrying={travelling ? <StageChip id={travelling} state="travelling" /> : null}
+              />
             </ChatFrame>
             <CalendarWeek
               className="min-h-0"
@@ -138,50 +145,74 @@ function Stage() {
   );
 }
 
-type ChipState = "waiting" | "active" | "captured";
+type ChipState = "waiting" | "active" | "travelling" | "captured";
 
-function stateOf(i: number, step: number, landed: boolean): ChipState {
+function stateOf(i: number, step: number, landed: boolean, travelling: boolean): ChipState {
   if (landed) return "captured";
+  if (travelling) return "travelling";
   return i === step ? "active" : "waiting";
 }
 
-/** Large screens: the things in your head, two of them being captured. */
+/**
+ * A thought in the stage. It shares a layout id between the head column and
+ * the composer, so when typing starts it flies from one to the other.
+ */
+function StageChip({ id, state }: { id: string; state: ChipState }) {
+  const t = thought(id);
+  return (
+    <motion.span
+      layoutId={`stage-thought-${id}`}
+      transition={SPRING_LAND}
+      className={cn(
+        "inline-flex min-h-9 items-center rounded-full border bg-raised px-3.5 text-[14px] whitespace-nowrap text-ink shadow-soft",
+        state === "active" || state === "travelling"
+          ? "border-tide ring-4 ring-tide/15"
+          : "border-line",
+      )}
+      style={{ rotate: state === "travelling" ? 0 : t.tilt * 0.5 }}
+    >
+      {t.text}
+    </motion.span>
+  );
+}
+
+/** Large screens: the things in your head over the hero's tide lines. */
 function HeadPane({ dentist, invoice }: { dentist: ChipState; invoice: ChipState }) {
   const count =
     THOUGHTS.length - (dentist === "captured" ? 1 : 0) - (invoice === "captured" ? 1 : 0);
   const states: Record<string, ChipState> = { dentist, invoice };
   return (
-    <div className="hidden min-h-0 flex-col gap-4 lg:flex">
-      <CountLine value={count} />
-      <ul className="flex min-h-0 flex-col gap-2 overflow-hidden [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]">
+    <div className="relative hidden min-h-0 flex-col gap-4 lg:flex">
+      <div className="absolute -inset-x-10 -inset-y-6 text-tide">
+        <TopoBackground seed={8} speed={0.6} interactive={false} />
+      </div>
+      <CountLine value={count} className="relative" />
+      <ul className="relative flex min-h-0 flex-col items-start gap-2 overflow-hidden pt-1 pl-1 [mask-image:linear-gradient(to_bottom,#000_70%,transparent)]">
         {THOUGHTS.map((t) => {
           const s = states[t.id] ?? "waiting";
           return (
-            <li key={t.id}>
-              <span className="flex items-center gap-2">
-                <motion.span
-                  layout
-                  transition={SPRING_LAND}
+            <li key={t.id} className="flex min-h-9 items-center gap-2">
+              {s === "waiting" || s === "active" ? (
+                <StageChip id={t.id} state={s} />
+              ) : (
+                <span
                   className={cn(
-                    "inline-flex min-h-9 items-center rounded-full border px-3.5 text-[14px] whitespace-nowrap transition-colors duration-300",
-                    s === "waiting" && "border-line bg-raised text-ink",
-                    s === "active" && "border-tide bg-raised text-ink ring-4 ring-tide/15",
-                    s === "captured" &&
-                      "border-transparent bg-transparent px-0 text-muted line-through decoration-tide/60",
+                    "inline-flex min-h-9 items-center text-[14px] whitespace-nowrap text-muted line-through decoration-tide/60 transition-opacity duration-300",
+                    s === "travelling" && "opacity-40",
                   )}
                 >
                   {t.text}
+                </span>
+              )}
+              {s === "captured" ? (
+                <motion.span
+                  initial={{ opacity: 0, x: -4 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="text-[12px] font-semibold whitespace-nowrap text-tide"
+                >
+                  ✓ {t.kind === "event" ? "Event" : "Task"}
                 </motion.span>
-                {s === "captured" ? (
-                  <motion.span
-                    initial={{ opacity: 0, x: -4 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="text-[12px] font-semibold whitespace-nowrap text-tide"
-                  >
-                    ✓ {t.kind === "event" ? "Event" : "Task"}
-                  </motion.span>
-                ) : null}
-              </span>
+              ) : null}
             </li>
           );
         })}
@@ -287,10 +318,13 @@ function PhoneResult({ index, shown }: { index: number; shown: boolean }) {
   if (index === 0) {
     body = (
       <div className="flex items-center gap-3">
-        <span className="h-10 w-1.5 rounded-full bg-tide" aria-hidden="true" />
-        <span className="flex flex-col">
-          <span className="text-[17px] font-medium text-ink">Dentist</span>
-          <span className="text-sm text-muted">Thu 22 Oct, 10–11am · Personal</span>
+        <span className="flex w-11 shrink-0 flex-col items-center leading-none" aria-hidden="true">
+          <span className="text-[11px] font-semibold text-muted uppercase">Thu</span>
+          <span className="mt-1 font-display text-xl font-semibold text-ink">22</span>
+        </span>
+        <span className="flex flex-1 flex-col rounded-lg bg-tide px-3 py-2 text-on-tide">
+          <span className="text-[15px] font-semibold">Dentist</span>
+          <span className="text-[13px] opacity-90">10–11am · Personal, in Google Calendar</span>
         </span>
       </div>
     );
@@ -300,7 +334,7 @@ function PhoneResult({ index, shown }: { index: number; shown: boolean }) {
         checked={checked}
         onCheckedChange={setChecked}
         label="Send invoice"
-        description={checked ? "Completed" : "Due Fri 23 Oct, 3pm · Inbox"}
+        description={checked ? "Inbox · Completed" : "Inbox · Due Fri 23 Oct, 3pm"}
       />
     );
   } else if (index === 2) {
@@ -319,7 +353,6 @@ function PhoneResult({ index, shown }: { index: number; shown: boolean }) {
       </dl>
     );
   }
-  const label = ["In Google Calendar", "In your Inbox list", "", "After snoozing"][index];
   return (
     <motion.div
       initial={false}
@@ -327,9 +360,6 @@ function PhoneResult({ index, shown }: { index: number; shown: boolean }) {
       transition={SPRING_LAND}
       className="rounded-xl border border-line bg-raised px-4 py-3"
     >
-      <p className="mb-2 text-[12px] font-semibold tracking-[0.04em] text-muted uppercase">
-        {label}
-      </p>
       {body}
     </motion.div>
   );

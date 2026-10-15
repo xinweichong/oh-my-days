@@ -109,6 +109,12 @@ apply to every line, and demo content is synthetic and labelled where it could
 be mistaken for real data. The connection pages, privacy policy, Mini App and
 Telegram keep the rules above unchanged.
 
+The page has two compositions: from 1024px the thoughts drift in an open field
+beside the headline; below that (phones and portrait tablets) they run in two
+slow rows under it, since the field needs that width to keep ten thoughts
+legible. The scroll-pinned walkthrough starts at 768px; phones get a stacked
+version that plays each step as it comes into view.
+
 ## Related decisions
 
 See the [experience brief](../design/experience.md) for the confirmed Telegram and

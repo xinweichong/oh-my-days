@@ -54,7 +54,7 @@ function FieldDesktop() {
           </li>
         ))}
       </ul>
-      <CountLine value={THOUGHTS.length} className="absolute bottom-0 left-0" />
+      <CountLine value={THOUGHTS.length} className="absolute -bottom-2 left-[4%]" />
     </div>
   );
 }

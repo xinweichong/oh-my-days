@@ -125,41 +125,55 @@ export function TypingDots() {
   );
 }
 
-/** The message box, showing what is being typed with a Kokonut-style caret. */
-export function Composer({ text, busy }: { text: string; busy: boolean }) {
+/**
+ * The message box, showing what is being typed with a Kokonut-style caret.
+ * `carrying` is the thought being typed, docked just above the input.
+ */
+export function Composer({
+  text,
+  busy,
+  carrying = null,
+}: {
+  text: string;
+  busy: boolean;
+  carrying?: ReactNode;
+}) {
   return (
-    <div className="flex items-center gap-2 border-t border-line bg-raised px-3 py-2.5">
-      <div className="flex min-h-10 flex-1 items-center rounded-full bg-sunk px-4 text-[15px]">
-        {text ? (
-          <span className="text-ink">
-            {text}
-            <span className="relative inline-block w-0">
-              <span
-                className="omd-caret absolute -bottom-0.5 left-px h-[1.1em] w-[2px] bg-tide"
-                data-idle={busy ? "false" : "true"}
-              />
+    <div className="flex flex-col border-t border-line bg-raised">
+      {carrying ? <div className="flex px-4 pt-3">{carrying}</div> : null}
+      <div className="flex items-center gap-2 px-3 py-2.5">
+        <div className="flex min-h-10 flex-1 items-center rounded-full bg-sunk px-4 text-[15px]">
+          {text ? (
+            <span className="text-ink">
+              {text}
+              <span className="relative inline-block w-0">
+                <span
+                  className="omd-caret absolute -bottom-0.5 left-px h-[1.1em] w-[2px] bg-tide"
+                  data-idle={busy ? "false" : "true"}
+                />
+              </span>
             </span>
-          </span>
-        ) : (
-          <span className="text-muted">Message</span>
-        )}
-      </div>
-      <span
-        className={cn(
-          "grid size-10 place-items-center rounded-full transition-colors duration-200",
-          text ? "bg-tide text-on-tide" : "bg-sunk text-muted",
-        )}
-        aria-hidden="true"
-      >
-        <svg
-          viewBox="0 0 20 20"
-          className="h-[18px] w-[18px]"
-          fill="currentColor"
+          ) : (
+            <span className="text-muted">Message</span>
+          )}
+        </div>
+        <span
+          className={cn(
+            "grid size-10 place-items-center rounded-full transition-colors duration-200",
+            text ? "bg-tide text-on-tide" : "bg-sunk text-muted",
+          )}
           aria-hidden="true"
         >
-          <path d="M3.4 16.6 17.5 10 3.4 3.4l.1 5.1L13 10l-9.5 1.5z" />
-        </svg>
-      </span>
+          <svg
+            viewBox="0 0 20 20"
+            className="h-[18px] w-[18px]"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path d="M3.4 16.6 17.5 10 3.4 3.4l.1 5.1L13 10l-9.5 1.5z" />
+          </svg>
+        </span>
+      </div>
     </div>
   );
 }

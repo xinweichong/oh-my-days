@@ -1,5 +1,5 @@
 import { cn } from "../lib/cn";
-import { NumberTicker } from "../vendor/beui/NumberTicker";
+import { SlidingNumber } from "../vendor/animate-ui/SlidingNumber";
 
 /** "10 to keep in your head", rolling as thoughts are captured. */
 export function CountLine({ value, className }: { value: number; className?: string }) {
@@ -9,9 +9,8 @@ export function CountLine({ value, className }: { value: number; className?: str
         <span className="font-display text-lg font-semibold">Nothing to keep in your head.</span>
       ) : (
         <>
-          <NumberTicker
+          <SlidingNumber
             value={value}
-            startOnView={false}
             className="font-display text-3xl leading-none font-semibold text-tide"
           />
           <span className="text-[15px] text-muted">to keep in your head</span>
