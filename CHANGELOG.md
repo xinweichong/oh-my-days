@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [2.0.1] - 2026-10-15
+## [2.1.0] - 2026-10-15
 
 A landing page, and a new production host.
 
@@ -86,8 +86,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.0.1...HEAD
-[2.0.1]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...v2.0.1
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0-beta.1...v2.0.0
 [2.0.0-beta.1]: https://github.com/xinweichong/oh-my-days/compare/v0.1.0-beta.1...v2.0.0-beta.1
 [0.1.0-beta.1]: https://github.com/xinweichong/oh-my-days/releases/tag/v0.1.0-beta.1
