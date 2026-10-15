@@ -385,15 +385,23 @@ describe("Google connection and setup", () => {
 });
 
 describe("public pages", () => {
-  it("serves the homepage and privacy policy with strict headers and no scripts", async () => {
+  it("serves the privacy policy with strict headers and no scripts", async () => {
     const world = new World(env.DB);
-    for (const path of ["/", "/privacy"]) {
-      const response = await world.request(path);
-      const html = await response.text();
-      expect(response.status).toBe(200);
-      expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
-      expect(html).not.toContain("<script");
-    }
-    expect(await (await world.request("/privacy")).text()).toContain("Limited Use requirements");
+    const response = await world.request("/privacy");
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(html).not.toContain("<script");
+    expect(html).toContain("Limited Use requirements");
+    expect(html).toContain('<a href="/">Oh My Days</a>');
+  });
+
+  it("leaves / to the landing page's static assets", async () => {
+    // Workers Static Assets answers / before the Worker runs (ADR 0006); a
+    // request that reaches the Worker anyway reveals nothing.
+    const world = new World(env.DB);
+    const response = await world.request("/");
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not found");
   });
 });

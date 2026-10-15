@@ -9,6 +9,8 @@
       "*.ts",
       "*.json",
       "*.jsonc",
+      "landing/src/**/*.ts",
+      "landing/src/**/*.tsx",
       "!src/miniapp/generated"
     ]
   },

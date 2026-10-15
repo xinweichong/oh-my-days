@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": [],
+    // Motion's props and the adapted UI-library components pass `undefined` for
+    // optional props throughout; the landing page is presentation only.
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["landing/src"],
+  "exclude": []
+}
