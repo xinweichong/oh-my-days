@@ -18,7 +18,7 @@ became of it.
 
 | Document | What it holds | Kind |
 |---|---|---|
-| [Identity](identity/oh-my-days.md) | Name, voice, copy rules, logo, and the repository banner | Current |
+| [Identity](identity/oh-my-days.md) | Name, voice, copy rules, logo, the repository banner, and the landing page's marketing exception | Current |
 | [Logo files](identity/logo/) | Mark, lockups, avatar, and banner (SVG and PNG); superseded concepts in `archive/` | Current |
 | [Experience brief](design/experience.md) | Telegram flows, connection pages, and the Mini App's layout and behaviour | Current |
 | [Screenshots](screenshots/) | Mini App captures with synthetic data, used in the README | Current |
@@ -28,7 +28,7 @@ became of it.
 | Document | What it holds | Kind |
 |---|---|---|
 | [Backend plan](plans/backend.md) | Architecture, data model, and delivery gates; §10 is the implementation record | Current (§10), record (plan) |
-| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in | Current |
+| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets | Current |
 | [Improvement plan](plans/improvements.md) | The post-beta improvements, all released in 2.0.0 | Record |
 | [Connection-page plan](plans/connection-pages.md) | Layout and states of the Google connection pages, as built | Record |
 | [Stage 0 feasibility](feasibility/stage-0.md) | Checks made before anything was provisioned | Record |

@@ -580,3 +580,10 @@ Stage 8 decisions and gaps to review:
   preview says so.
 - The most recently discussed item stays the default target for 24 hours.
 - Guests can't be removed from Telegram yet.
+
+Landing page (owner request, 2026-10-15; [ADR 0006](../adr/0006-landing-page-as-static-assets.md)):
+implemented on `feature/landing-page`, built and checked locally, not yet
+deployed. `landing/src` is prerendered by `scripts/build-landing.mjs` into
+`landing/dist`, which the Worker serves as static assets at `/`; the Worker's
+own `/` route was removed (`tests/flows/google-setup.test.ts`). The move to the
+new host is a deploy-time step in the [deploy runbook](../runbooks/deploy.md#move-to-a-new-host).

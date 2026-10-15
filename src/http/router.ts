@@ -3,7 +3,7 @@ import { appPage, appScript } from "../miniapp/page";
 import type { Clock } from "../shared/clock";
 import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
 import { type ConnectRouteDeps, finishOAuth, showConnectPage, startOAuth } from "./connect-routes";
-import { homePage, htmlResponse, privacyPage } from "./pages";
+import { htmlResponse, privacyPage } from "./pages";
 import type { WebhookDeps } from "./telegram-webhook";
 import { handleTelegramWebhook } from "./telegram-webhook";
 
@@ -20,7 +20,10 @@ export interface LivenessDeps {
   clock: Clock;
 }
 
-/** Routes are matched exactly; unknown paths reveal nothing about the application. */
+/**
+ * Routes are matched exactly; unknown paths reveal nothing about the application.
+ * The landing page at / is a static asset served before the Worker runs (ADR 0006).
+ */
 export async function route(
   request: Request,
   deps: HttpDeps,
@@ -33,8 +36,6 @@ export async function route(
       return request.method === "GET" ? appPage() : methodNotAllowed("GET");
     case "/app/app.js":
       return request.method === "GET" ? appScript() : methodNotAllowed("GET");
-    case "/":
-      return request.method === "GET" ? htmlResponse(homePage()) : methodNotAllowed("GET");
     case "/privacy":
       return request.method === "GET"
         ? htmlResponse(privacyPage(deps.contactEmail()))

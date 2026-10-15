@@ -96,6 +96,19 @@ in the wordmark takes the tide colour to emphasise the day; the "s" and the rest
 of the name stay ink. Approved by the owner on 2026-10-14. Other lockups keep the
 one-colour wordmark.
 
+## Landing page (marketing exception)
+
+Approved by the owner on 2026-10-15 for the landing page at `/` only
+([ADR 0006](../adr/0006-landing-page-as-static-assets.md)). The page persuades
+rather than operates, so it may use decorative motion (the drifting thoughts,
+the tide contour lines from Kokonut UI's Topo Background), soft shadows, and
+Figtree for display headings. Everything else holds: tide is the one brand
+colour, marigold appears only in the logo, the sun is never animated, the logo
+files are used as supplied, body text uses the system UI stack, voice rules
+apply to every line, and demo content is synthetic and labelled where it could
+be mistaken for real data. The connection pages, privacy policy, Mini App and
+Telegram keep the rules above unchanged.
+
 ## Related decisions
 
 See the [experience brief](../design/experience.md) for the confirmed Telegram and

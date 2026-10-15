@@ -8,13 +8,16 @@ web
 
 The main experience is a Telegram bot, using Telegram's native presentation.
 Google Calendar provides the visual calendar interface. Custom web surfaces are
-the Google connection pages and a Telegram Mini App for tasks and a read-only
-day/week overview. There is no separate calendar web application.
+a landing page at `/`, the Google connection pages, and a Telegram Mini App for
+tasks and a read-only day/week overview. There is no separate calendar web
+application.
 
 ## Stack
 
 TypeScript on Cloudflare Workers, D1, and a per-minute scheduled tick.
-Connection pages are Worker-rendered HTML. The Mini App is vanilla TypeScript
+Connection pages are Worker-rendered HTML. The landing page is React, Tailwind
+and Motion, prerendered at build time and served as static assets by the same
+Worker ([ADR 0006](docs/adr/0006-landing-page-as-static-assets.md)). The Mini App is vanilla TypeScript
 bundled with esbuild, with Motion's small vanilla build for springs; no frontend
 framework ([ADR 0005](docs/adr/0005-mini-app-surface-and-initdata-auth.md)).
 
