@@ -7,13 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-15
+
+A landing page, and a new production host.
+
 ### Added
 
 - **Landing page** at `/`: the tagline made literal, with ten things in your head captured one message at a time, a scroll-driven walkthrough of an event, a task, the 8am agenda and a snooze in Telegram and Google Calendar, the Mini App, setup, and privacy. Separate desktop and phone compositions. Built with React, Tailwind CSS and Motion, with components adapted from Kokonut UI, beUI, Origin UI and Animate UI, prerendered and served as static assets ([ADR 0006](docs/adr/0006-landing-page-as-static-assets.md))
 
 ### Changed
 
-- The Worker no longer serves the plain homepage at `/`; the landing page replaces it. The production host moves to a new hostname at the next deploy (see the deploy runbook)
+- The Worker no longer serves the plain homepage at `/`; the landing page replaces it. Production moves to a new host, with the cutover steps in the deploy runbook
 
 ## [2.0.0] - 2026-10-14
 
@@ -82,7 +86,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0-beta.1...v2.0.0
 [2.0.0-beta.1]: https://github.com/xinweichong/oh-my-days/compare/v0.1.0-beta.1...v2.0.0-beta.1
 [0.1.0-beta.1]: https://github.com/xinweichong/oh-my-days/releases/tag/v0.1.0-beta.1
