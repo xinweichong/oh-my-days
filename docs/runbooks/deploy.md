@@ -50,7 +50,7 @@ After rotating the webhook secret, update the Worker secret and call `setWebhook
 
 ## Checks after deploying
 
-- `GET /healthz` returns `ok tick_age_s=…` once the first scheduled tick has run (503 `stale …` before that, or when no tick has finished for 10 minutes); `/` and `/privacy` return 200.
+- `GET /healthz` returns `ok tick_age_s=…` once the first scheduled tick has run (503 `stale …` before that, or when no tick has finished for 10 minutes); `/` (the landing page) and `/privacy` return 200.
 - Send `/health` to the bot.
 - `npx wrangler tail` streams logs (identifiers and error classes only).
 
@@ -92,6 +92,41 @@ Releases follow [Semantic Versioning](https://semver.org) and are recorded in
 3. Tag the merge commit on `main` (`git tag -a v2.0.0 -m "Oh My Days v2.0.0"`),
    push the tag, and create the GitHub release from the changelog entry.
 4. Deploy from `main` with `npm run deploy`.
+
+## Landing page
+
+The landing page at `/` is built from `landing/src` into `landing/dist` and
+served as static assets by the same Worker ([ADR 0006](../adr/0006-landing-page-as-static-assets.md)).
+`npm run deploy` builds it; the bot link and public origin come from
+`wrangler.production.local.json`. After deploying, check that `/` shows the
+page, **Open in Telegram** opens the bot, and `/privacy` still returns the
+policy.
+
+## Move to a new host
+
+Used once to move from the old host to `oh-my-days.xinweichong.com` (owner,
+2026-10-15; the old host is dropped at cutover). Connecting Google, the
+webhook, and the Mini App stop working until these are all done, so do them
+together, right after the deploy:
+
+1. In `wrangler.production.local.json`, set `routes[0].pattern` and
+   `vars.PUBLIC_BASE_URL` to the new host, then `npm run deploy`. Wrangler
+   attaches the new custom domain; remove the old one from the Worker's
+   Domains in the Cloudflare dashboard.
+2. Google Cloud console, OAuth client: add the redirect URI
+   `https://<new host>/oauth/callback` (remove the old one afterwards). On the
+   consent screen, set the homepage to `https://<new host>/` and the privacy
+   policy to `https://<new host>/privacy`. The authorized domain is the parent
+   domain, so it normally needs no change; if Search Console verified only the
+   old subdomain, verify the new one too.
+3. Telegram: call `setWebhook` with `https://<new host>/telegram/webhook`, the
+   same `secret_token` and `allowed_updates`, then check `getWebhookInfo`.
+4. BotFather: Configure Mini App with `https://<new host>/app`.
+5. Run the checks below, send `/health` and `/app`, and connect Google once
+   with `/connect` to confirm the redirect.
+
+Links in already-sent messages (connection links, Open app buttons) point to
+the old host and stop working; the bot sends fresh ones on request.
 
 ## Rollback
 

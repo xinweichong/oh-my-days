@@ -7,7 +7,7 @@
 
 A Telegram assistant for your events and tasks, with **Google Calendar as the calendar**. Type what you need to remember, and it lands in your calendar or your task lists, then comes back as a morning agenda and reminders. It runs on free tiers only and works fully without AI.
 
-[![Version](https://img.shields.io/badge/version-2.0.0-0b6b62?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.1-0b6b62?style=flat-square)](CHANGELOG.md)
 [![Check](https://img.shields.io/github/actions/workflow/status/xinweichong/oh-my-days/check.yml?branch=main&label=check&style=flat-square)](https://github.com/xinweichong/oh-my-days/actions/workflows/check.yml)
 [![Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-51605d?style=flat-square)](https://workers.cloudflare.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-51605d?style=flat-square)](tsconfig.json)
@@ -158,7 +158,7 @@ Cron (every minute) ──> tick: sync, reminders, agenda, delivery,       └�
                                                                       Google Calendar API
 ```
 
-One TypeScript Cloudflare Worker with a D1 database. Telegram updates are stored before they are acknowledged, then processed one user at a time; replies go through a durable outbox. Domain logic (dates, recurrence, capture grammar, schedules) is pure and takes injected clocks and IDs; Telegram, Google, and D1 stay in adapters. Commands, typed messages, and the Mini App all call the same operations. Decisions are recorded in [`docs/adr/`](docs/adr/).
+One TypeScript Cloudflare Worker with a D1 database; the landing page at `/` is static assets on the same Worker. Telegram updates are stored before they are acknowledged, then processed one user at a time; replies go through a durable outbox. Domain logic (dates, recurrence, capture grammar, schedules) is pure and takes injected clocks and IDs; Telegram, Google, and D1 stay in adapters. Commands, typed messages, and the Mini App all call the same operations. Decisions are recorded in [`docs/adr/`](docs/adr/).
 
 ---
 
@@ -178,7 +178,7 @@ No Cloudflare, Google, or Telegram account is needed to run the tests.
 ```sh
 npm ci
 cp .dev.vars.example .dev.vars   # local settings; never commit .dev.vars
-npm run check                    # build the Mini App, lint, typecheck, test
+npm run check                    # build the Mini App and landing page, lint, typecheck, test
 npm run db:migrate:local         # set up the local D1 for wrangler dev
 npm run dev                      # Worker at http://localhost:8787
 ```
@@ -187,8 +187,9 @@ npm run dev                      # Worker at http://localhost:8787
 |---|---|
 | `npm run check` | Everything below, in order |
 | `npm run build:app` | Bundle the Mini App client into `src/miniapp/generated/` |
+| `npm run build:landing` | Build the landing page from `landing/src` into `landing/dist/` (served at `/`) |
 | `npm run lint` | Biome lint and formatting check (`npm run format` fixes) |
-| `npm run typecheck` | TypeScript strict, for the Worker and the Mini App client |
+| `npm run typecheck` | TypeScript strict, for the Worker, the Mini App client, and the landing page |
 | `npm test` | Vitest inside the Workers runtime with a local D1 |
 | `npm run deploy` | Check, then deploy with the values in `wrangler.production.local.json` |
 
@@ -234,7 +235,7 @@ Changing `TOKEN_ENCRYPTION_KEY` makes stored Google tokens unreadable; each user
 npm test
 ```
 
-601 tests run inside the Workers runtime (`@cloudflare/vitest-pool-workers`) with a fresh local D1 per test, fake Telegram and Google clients, and injected clocks and IDs. They cover tenancy (one user can never see or change another's data), retries and lost responses, concurrency, daylight-saving and timezone changes, recurrence edge cases, and the Mini App's sign-in. Data in tests and screenshots is synthetic.
+602 tests run inside the Workers runtime (`@cloudflare/vitest-pool-workers`) with a fresh local D1 per test, fake Telegram and Google clients, and injected clocks and IDs. They cover tenancy (one user can never see or change another's data), retries and lost responses, concurrency, daylight-saving and timezone changes, recurrence edge cases, and the Mini App's sign-in. Data in tests and screenshots is synthetic.
 
 ---
 
@@ -256,9 +257,10 @@ oh-my-days/
 │   ├── storage/             # D1 queries, all scoped to a user
 │   ├── security/            # Token encryption, constant-time comparison
 │   └── shared/              # Clock, IDs, hashing, structured logs
+├── landing/src/             # Landing page at / (React, Tailwind, Motion), prerendered to landing/dist
 ├── migrations/              # D1 schema, append-only
 ├── tests/                   # Unit, flow, and integration tests by area
-├── scripts/                 # Mini App bundling; production config from untracked values
+├── scripts/                 # Mini App and landing builds; production config from untracked values
 └── docs/                    # Spec, plans, ADRs, design, identity, runbooks
 ```
 

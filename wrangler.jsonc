@@ -7,8 +7,13 @@
   // plain `wrangler deploy` with this file fails on the placeholder database ID.
   "name": "oh-my-days",
   "main": "src/worker.ts",
-  // Bundles the Mini App client into src/miniapp/generated before each build (ADR 0005).
-  "build": { "command": "npm run build:app" },
+  // Bundles the Mini App client into src/miniapp/generated (ADR 0005) and builds
+  // the landing page into landing/dist before each build (ADR 0006).
+  "build": { "command": "npm run build:app && npm run build:landing" },
+  // The landing page at /, served as static assets before the Worker runs; every
+  // other path (/privacy, /connect, /oauth/*, /app, /telegram/webhook, /healthz)
+  // has no asset and reaches the Worker unchanged (ADR 0006).
+  "assets": { "directory": "./landing/dist", "html_handling": "auto-trailing-slash" },
   // Must not exceed the workerd version bundled with @cloudflare/vitest-pool-workers.
   "compatibility_date": "2026-08-15",
   "observability": { "enabled": true },

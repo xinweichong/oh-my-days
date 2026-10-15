@@ -143,17 +143,6 @@ export function outcomePage(outcome: AuthorizationOutcome, telegramUrl: string):
   );
 }
 
-export function homePage(): string {
-  return page(
-    "Oh My Days",
-    `<h1>Events, tasks, and reminders in Telegram</h1>
-<p>Oh My Days is a private Telegram assistant for scheduling. You send it a message, and it adds or updates events in your Google Calendar, keeps track of tasks and their deadlines, and reminds you before they're due.</p>
-<p>Google Calendar remains where you see your schedule. Task deadlines appear in a separate calendar, “${escapeHtml(TASK_CALENDAR_NAME)},” so they don't mark you as busy.</p>
-<p>Access is limited to invited users. There is no public sign-up.</p>
-<footer><a href="/privacy">Privacy policy</a></footer>`,
-  );
-}
-
 export function privacyPage(contactEmail: string | null): string {
   const contact = contactEmail
     ? `<p>Questions or deletion requests: <a href="mailto:${escapeHtml(contactEmail)}">${escapeHtml(contactEmail)}</a>.</p>`

@@ -1,6 +1,6 @@
 {
   "name": "oh-my-days",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "private": true,
   "type": "module",
   "engines": {
@@ -10,21 +10,31 @@
     "dev": "wrangler dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.client.json && tsc -p tsconfig.landing.json",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "npm run build:app && npm run lint && npm run typecheck && npm test",
+    "check": "npm run build:app && npm run build:landing && npm run lint && npm run typecheck && npm test",
     "db:migrate:local": "wrangler d1 migrations apply oh-my-days --local",
     "build:app": "node scripts/build-app.mjs",
     "deploy": "npm run check && node scripts/production-config.mjs && wrangler deploy --config wrangler.production.jsonc",
-    "db:migrate:remote": "node scripts/production-config.mjs && wrangler d1 migrations apply oh-my-days --remote --config wrangler.production.jsonc"
+    "db:migrate:remote": "node scripts/production-config.mjs && wrangler d1 migrations apply oh-my-days --remote --config wrangler.production.jsonc",
+    "build:landing": "node scripts/build-landing.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
     "@cloudflare/vitest-pool-workers": "0.22.0",
     "@cloudflare/workers-types": "5.20260926.1",
+    "@fontsource-variable/figtree": "5.3.0",
+    "@tailwindcss/node": "4.3.3",
+    "@tailwindcss/oxide": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "clsx": "2.1.1",
     "esbuild": "0.28.1",
     "motion": "13.4.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tailwindcss": "4.3.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11",
     "wrangler": "4.141.0"
