@@ -20,6 +20,12 @@ import { exportCommand } from "./export-flow";
 import { findCommand, handleFindAction, handleFindInput, isFindAction } from "./find-flow";
 import { handleFollowUp, handleFollowUpAction, isFollowUpAction } from "./follow-ups";
 import {
+  handleImportAction,
+  handleImportInput,
+  importCommand,
+  isImportAction,
+} from "./import-flow";
+import {
   handleInviteAction,
   handleInviteInput,
   isInviteAction,
@@ -85,6 +91,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (isEventAction(action.action)) return handleEventAction(deps, user, callback, action);
       if (isCaptureAction(action.action)) return handleCaptureAction(deps, user, callback, action);
       if (isFindAction(action.action)) return handleFindAction(deps, user, callback, action);
+      if (isImportAction(action.action)) return handleImportAction(deps, user, callback, action);
       if (isFollowUpAction(action.action))
         return handleFollowUpAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
@@ -123,6 +130,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       task: (user) => taskMenu(deps, user),
       tasks: (user) => tasksCommand(deps, user),
       find: (user, input) => findCommand(deps, user, input),
+      import: (user, input) => importCommand(deps, user, input),
       export: (user) => exportCommand(deps, user),
       daily: (user) => dailyView(deps, user),
       weekly: (user) => weekView(deps, user, null, null, null),
@@ -146,6 +154,7 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       }
       if (pending?.kind === "task_snooze") return handleSnoozeInput(deps, user, input, pending);
       if (pending?.kind === "find_query") return handleFindInput(deps, user, input, pending);
+      if (pending?.kind === "import_list") return handleImportInput(deps, user, input, pending);
       if (pending && isTaskInput(pending.kind)) {
         return handleTaskInput(deps, user, input, pending);
       }
