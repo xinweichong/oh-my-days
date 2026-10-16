@@ -7,7 +7,7 @@
 
 A Telegram assistant for your events and tasks, with **Google Calendar as the calendar**. Type what you need to remember, and it lands in your calendar or your task lists, then comes back as a morning agenda and reminders. It runs on free tiers only and works fully without AI.
 
-[![Version](https://img.shields.io/badge/version-2.1.0-0b6b62?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.2.0-0b6b62?style=flat-square)](CHANGELOG.md)
 [![Check](https://img.shields.io/github/actions/workflow/status/xinweichong/oh-my-days/check.yml?branch=main&label=check&style=flat-square)](https://github.com/xinweichong/oh-my-days/actions/workflows/check.yml)
 [![Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-51605d?style=flat-square)](https://workers.cloudflare.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-51605d?style=flat-square)](tsconfig.json)
@@ -43,10 +43,10 @@ The Telegram Mini App, opened from the chat (synthetic data).
     <td align="center"><b>Snooze</b></td>
   </tr>
   <tr>
-    <td><img src="docs/screenshots/mini-app-home.png" alt="Home: next event, quick add, Today, Overdue, This week and No deadline counts, and lists" width="200"></td>
-    <td><img src="docs/screenshots/mini-app-overdue.png" alt="Overdue tasks grouped, each showing how many days overdue" width="200"></td>
-    <td><img src="docs/screenshots/mini-app-list-dark.png" alt="The Work list in Telegram's dark theme" width="200"></td>
-    <td><img src="docs/screenshots/mini-app-snooze.png" alt="The snooze sheet: in 1 hour, tomorrow at 8am, or a chosen date and time" width="200"></td>
+    <td><img src="docs/screenshots/mini-app-home.png" alt="Home: the logo beside Wednesday, Gym next at 7pm with a countdown, quick add, Today, Overdue and This week tiles, and lists with overdue counts" width="200"></td>
+    <td><img src="docs/screenshots/mini-app-overdue.png" alt="Overdue: two missed rent payments folded under their monthly series, and a one-off task one day overdue" width="200"></td>
+    <td><img src="docs/screenshots/mini-app-list-dark.png" alt="The Work list in dark mode, grouped into Overdue, Today and Later" width="200"></td>
+    <td><img src="docs/screenshots/mini-app-snooze.png" alt="The snooze sheet: presets showing the time they mean, then a day and a time to pick; the deadline stays" width="200"></td>
   </tr>
 </table>
 

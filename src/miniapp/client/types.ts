@@ -31,6 +31,14 @@ export interface AppEvent {
   calendarName: string | null;
   link: string;
   startsAt: number | null;
+  endsAt: number | null;
+}
+
+/** The user's own day and time (their zone, not the phone's). */
+export interface Local {
+  today: string;
+  time: string;
+  agendaHour: number;
 }
 
 export interface ListSummary {
@@ -42,6 +50,7 @@ export interface Home {
   date: string;
   label: string;
   heading: string;
+  local: Local;
   nextUp: string | null;
   next: {
     kind: "event" | "task";
@@ -50,15 +59,22 @@ export interface Home {
     when: string;
     link?: string;
     taskId?: string;
+    startsAt: number;
+    until: string | null;
+    since: number;
   } | null;
   calendarClear: boolean;
   tiles: {
-    today: { events: number; tasks: number };
+    /** Open tasks due today; `done` are those already completed; `left` is what's still ahead. */
+    today: { events: number; tasks: number; done: number; left: number };
     overdue: number;
+    overdueOldestDays: number | null;
     week: number;
+    weekDays: { date: string; letter: string; today: boolean; count: number }[];
     noDeadline: number;
   };
-  lists: { id: string; name: string; open: number; inbox: boolean }[];
+  allClear: boolean;
+  lists: { id: string; name: string; open: number; overdue: number; inbox: boolean }[];
   recent: number;
   sync: string;
   reconnect: boolean;
@@ -68,6 +84,7 @@ export interface Home {
 export interface Today {
   date: string;
   label: string;
+  local: Local;
   live: boolean;
   allDay: AppEvent[];
   timed: AppEvent[];
@@ -80,6 +97,7 @@ export interface Today {
 export interface Week {
   start: string;
   label: string;
+  local: Local;
   previous: string;
   next: string;
   live: boolean;
@@ -90,6 +108,9 @@ export interface TaskSet {
   title: string;
   showList: boolean;
   listId: string | null;
+  local: Local;
+  /** How each series shown repeats, by series ID. */
+  series: Record<string, string>;
   tomorrowLabel: string;
   tasks: AppTask[];
   lists: ListSummary[];
@@ -97,6 +118,7 @@ export interface TaskSet {
 
 export interface TaskDetail {
   task: AppTask;
+  local: Local;
   reminder: string | null;
   repeat: { seriesId: string; version: number; label: string; active: boolean } | null;
   workTime: string[];

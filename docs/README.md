@@ -1,7 +1,7 @@
 # Documentation
 
 Everything about how Oh My Days is meant to work, how it was built, and how to
-run it. **Current** documents describe the product as released (2.1.0); a
+run it. **Current** documents describe the product as released (2.2.0); a
 **record** is a plan or check kept as written, with a status line saying what
 became of it.
 
@@ -21,14 +21,14 @@ became of it.
 | [Identity](identity/oh-my-days.md) | Name, voice, copy rules, logo, the repository banner, and the landing page's marketing exception | Current |
 | [Logo files](identity/logo/) | Mark, lockups, avatar, and banner (SVG and PNG); superseded concepts in `archive/` | Current |
 | [Experience brief](design/experience.md) | Telegram flows, connection pages, and the Mini App's layout and behaviour | Current |
-| [Screenshots](screenshots/) | Mini App captures with synthetic data, used in the README | Current |
+| [Screenshots](screenshots/) | Mini App captures with synthetic data, used in the README and on the landing page; earlier versions in `archive/` | Current |
 
 ## Engineering
 
 | Document | What it holds | Kind |
 |---|---|---|
 | [Backend plan](plans/backend.md) | Architecture, data model, and delivery gates; §10 is the implementation record | Current (§10), record (plan) |
-| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets | Current |
+| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets, Mini App display type and depth | Current |
 | [Improvement plan](plans/improvements.md) | The post-beta improvements, all released in 2.0.0 | Record |
 | [Connection-page plan](plans/connection-pages.md) | Layout and states of the Google connection pages, as built | Record |
 | [Stage 0 feasibility](feasibility/stage-0.md) | Checks made before anything was provisioned | Record |

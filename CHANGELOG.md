@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16
+
+A polished Mini App, in the landing page's finish.
+
+### Changed
+
+- **Mini App polish** to match the landing page ([ADR 0007](docs/adr/0007-mini-app-display-type-and-depth.md)): the mark beside Home's heading; a raised Next up card with a live countdown; Today, Overdue and This week tiles that show progress, the oldest overdue age and deadline days; overdue counts on lists; Figtree titles and figures and soft depth on floating layers, served from the app's own origin
+- **Task screens**: Overdue folds recurring tasks under their series; lists group by Overdue, Today, Later and No deadline; task detail leads with the deadline and shows history as a timeline
+- **Snooze** offers one-tap presets that show the time they mean, and a day and time picker in your own time zone
+- README and landing page screenshots show the new design
+
+### Added
+
+- **All clear**: once a day, when everything today is behind you and nothing is overdue, with Back to Home
+- **Launch screen** with the logo while the app opens
+
 ## [2.1.0] - 2026-10-15
 
 A landing page, and a new production host.
@@ -86,7 +102,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0-beta.1...v2.0.0
 [2.0.0-beta.1]: https://github.com/xinweichong/oh-my-days/compare/v0.1.0-beta.1...v2.0.0-beta.1
