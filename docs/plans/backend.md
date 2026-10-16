@@ -591,7 +591,7 @@ new host is a deploy-time step in the [deploy runbook](../runbooks/deploy.md#mov
 Mini App polish (owner, 2026-10-16; [ADR 0007](../adr/0007-mini-app-display-type-and-depth.md)):
 implemented and tested locally on `feature/mini-app-polish`, not deployed. The
 design rules in `DESIGN.md` and the identity doc were relaxed for display type,
-soft depth and tide lines in the Mini App. Figtree is served from
+soft depth, and tide lines on the Mini App's launch and All clear screens. Figtree is served from
 `/app/figtree-<hash>.woff2`; Home's read model gained progress, overdue age,
 week days, list overdue counts and an `allClear` flag, and task screens gained
 the user's local time and series labels (`tests/miniapp/read-api.test.ts`).

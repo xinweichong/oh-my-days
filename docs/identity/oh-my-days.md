@@ -126,7 +126,7 @@ matches the landing page's polish while staying a tool:
   the next-up time). Body text, rows, buttons and forms stay system UI.
 - **Soft depth** on the next-up card, Home's tiles, sheets and toasts only.
   Rows and lists stay flat.
-- **Tide lines**: static behind Home's heading; drifting slowly on the All
+- **Tide lines**: drifting slowly on the launch and All
   clear screen, stopping under reduced motion. Nowhere else.
 - **The logo**: the mark beside Home's weekday heading (Telegram's header
   already names the app); the full lockup on the launch screen; the mark on the

@@ -1,3 +1,4 @@
+import { TIDE_LINES, TIDE_LINES_VIEWBOX } from "../tide-lines";
 import {
   cancel,
   complete,
@@ -10,7 +11,7 @@ import {
   snoozeSheet,
 } from "./actions";
 import { api } from "./api";
-import { CLEAR_LINES, HOME_LINES, mark, tideLines } from "./brand";
+import { mark, tideLines } from "./brand";
 import { h } from "./dom";
 import { clockLabel, countdown, daysBetween, minutesOf, relativeDay, setLocal } from "./local";
 import { back, current, open, refresh, type Screen, swap } from "./nav";
@@ -264,7 +265,6 @@ function homeScreen(home: Home): Node {
     h(
       "header",
       { class: "home-head" },
-      tideLines("home-lines", HOME_LINES, "100 0 300 180"),
       h(
         "div",
         { class: "home-title" },
@@ -341,7 +341,7 @@ function clearScreen(total: number): Node {
   return h(
     "div",
     { class: "all-clear" },
-    tideLines("clear-lines", CLEAR_LINES, "0 160 520 420"),
+    tideLines("clear-lines", TIDE_LINES, TIDE_LINES_VIEWBOX),
     h(
       "div",
       { class: "clear-body" },

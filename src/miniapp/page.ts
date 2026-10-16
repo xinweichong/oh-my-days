@@ -1,5 +1,6 @@
 import { CLIENT_JS } from "./generated/client";
 import { FIGTREE_PATH, FIGTREE_WOFF2_BASE64 } from "./generated/font";
+import { TIDE_LINES, TIDE_LINES_VIEWBOX } from "./tide-lines";
 
 /**
  * The Mini App document (ADR 0005). Colours come from Telegram's theme
@@ -87,7 +88,6 @@ h2.label { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing:
 
 /* Home */
 .home-head { position: relative; margin: 4px 0 18px; }
-.home-lines { top: -24px; right: calc(-16px - var(--tg-safe-area-inset-right, 0px)); width: 300px; height: 180px; }
 .home-title { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 0 4px; }
 .home-mark { flex: none; width: 50px; height: 27px; margin-top: 10px; }
 .home h1, .launch-name { font-size: 38px; line-height: 40px; }
@@ -143,7 +143,11 @@ h2.label { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing:
 .home > ul.group { margin-top: 12px; }
 
 /* Launch: the first paint, before the script runs */
+.launch { position: relative; }
 .launch .home-title { margin: 4px 0 18px; }
+.launch-lines { left: calc(-16px - var(--tg-safe-area-inset-left, 0px)); top: -120px; width: 520px; height: 420px; }
+.launch-lines g, .clear-lines g { animation: drift 24s linear infinite alternate; }
+.launch > :not(.tide-lines) { position: relative; }
 .skeleton { display: flex; flex-direction: column; gap: 16px; animation: pulse 1.4s ease-in-out infinite; }
 .skel { display: block; border-radius: 16px; background: var(--surface-raised); }
 .skel-next { height: 112px; border-radius: 18px; }
@@ -158,7 +162,6 @@ h2.label { font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing:
 .all-clear { position: relative; display: flex; flex-direction: column;
   min-height: calc(var(--tg-viewport-stable-height, 100vh) - 56px); }
 .clear-lines { left: calc(-16px - var(--tg-safe-area-inset-left, 0px)); top: 18%; width: 520px; height: 420px; }
-.clear-lines g { animation: drift 24s linear infinite alternate; }
 @keyframes drift { to { transform: translateX(-120px); } }
 .clear-body { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center;
   justify-content: center; gap: 18px; padding: 48px 16px; text-align: center; }
@@ -378,6 +381,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /** The first paint, before the script runs: the lockup where Home's heading will be, and its shape. */
 const LAUNCH = `<div class="launch" role="status" aria-label="Oh My Days, opening your day">
+<svg class="tide-lines launch-lines" viewBox="${TIDE_LINES_VIEWBOX}" preserveAspectRatio="xMinYMin slice" aria-hidden="true"><g>${TIDE_LINES.map((d) => `<path d="${d}"/>`).join("")}</g></svg>
 <div class="home-title"><svg class="mark home-mark" viewBox="7 19 50 27" aria-hidden="true"><path class="mark-sun" d="M17 34a15 15 0 0 1 30 0z"/><path class="mark-horizon" d="M10 43H54"/></svg>
 <div><p class="launch-name">Oh My Days</p><p class="home-sub">Opening your day…</p></div></div>
 <div class="skeleton" aria-hidden="true"><span class="skel skel-next"></span><span class="skel skel-add"></span>

@@ -151,7 +151,7 @@ Density is calm and list-shaped: grouped rows on raised cards, 44px touch target
 
 The landing page at `/` is the one recorded marketing exception (owner, 2026-10-15). Because it persuades rather than operates, it may use Figtree for display headings, soft two-layer shadows, and decorative motion (drifting thoughts, slow tide contour lines). It still holds every other rule: tide is the one brand colour, marigold stays in the logo, the sun never animates, body text is system UI, and its demo rows are drawn from the product's real components.
 
-The Mini App shares part of that finish (owner, 2026-10-16; [ADR 0007](docs/adr/0007-mini-app-display-type-and-depth.md)): Figtree for screen titles and large figures, the soft shadow on its floating layers, static tide lines behind Home's heading and slowly drifting ones on the All clear screen, and the mark beside Home's heading. Body text, rows, buttons and forms stay system UI and flat. The connection pages and privacy policy keep the plain rules.
+The Mini App shares part of that finish (owner, 2026-10-16; [ADR 0007](docs/adr/0007-mini-app-display-type-and-depth.md)): Figtree for screen titles and large figures, the soft shadow on its floating layers, slowly drifting tide lines on the launch and All clear screens (not on Home), and the mark beside Home's heading. Body text, rows, buttons and forms stay system UI and flat. The connection pages and privacy policy keep the plain rules.
 
 **Key Characteristics:**
 - One brand colour (tide), used for actions, selection, focus and today.
@@ -159,7 +159,7 @@ The Mini App shares part of that finish (owner, 2026-10-16; [ADR 0007](docs/adr/
 - System UI type for reading; Figtree for the wordmark, landing headings, and Mini App titles and large figures.
 - Light and dark palettes, with the Mini App deferring to Telegram theme colours where Telegram provides them.
 - 4px spacing rhythm, 44px minimum touch targets, 12px corners on fields and buttons, 16px on Mini App cards.
-- Flat rows and lists; soft depth only on floating layers; decorative motion only on the landing page and the All clear screen.
+- Flat rows and lists; soft depth only on floating layers; decorative motion only on the landing page and the Mini App's launch and All clear screens.
 
 ## Colors
 
@@ -276,13 +276,13 @@ Plain and confident: solid tide for the one primary action, quiet everywhere els
 Raised, 12px, the toast shadow, a tide text action on the right and a 2px tide timer bar draining along the bottom edge.
 
 ### Mini App Home
-- **Heading:** the mark (cropped to its drawing, 50×27px, 12px gap, horizon on the title's baseline) beside the weekday in the Title style, with the date and how many things are left today in meta below. Faint static tide lines sit behind the heading's right side.
+- **Heading:** the mark (cropped to its drawing, 50×27px, 12px gap, horizon on the title's baseline) beside the weekday in the Title style, with the date and how many things are left today in meta below. No tide lines on Home.
 - **Next up:** a raised card: the time as a figure in a 64px tide-soft block, "Next up · in 2 hr 24 min" in tide, the title in Figtree, then a 4px bar that empties as the event approaches. The countdown and bar update each minute.
 - **Tiles:** Today (wide: events, tasks, how many are behind you, and a segment per item), Overdue (overdue soft, with the oldest one's age) and This week (a dot under each weekday with a deadline). No deadline is the first row of My lists.
 - **Quick add:** the composer as a fully round field with a fully round Add button.
 
 ### Launch
-The page's first paint, before the script runs: the full lockup (mark and Figtree wordmark at the title's size) where Home's heading will appear, with "Opening your day…" and skeleton cards in Home's layout. The skeleton pulses gently and stops under reduced motion.
+The page's first paint, before the script runs: the full lockup (mark and Figtree wordmark at the title's size) where Home's heading will appear, with "Opening your day…" and skeleton cards in Home's layout, over slowly drifting tide lines. The skeleton pulses gently; both stop under reduced motion.
 
 ### All Clear
 Shown once a day, when everything due and scheduled today is behind you and nothing is overdue. The mark centred over slowly drifting tide lines, "Nothing left to keep in your head today." in Figtree, and a primary **Back to Home** (Telegram's main button where available) with "See this week ›" below. Back also returns Home. The sun stays still; the lines stop under reduced motion.
@@ -294,7 +294,7 @@ The landing header is sticky, opaque surface with a 1px bottom line, 64px tall: 
 A half-sentence in a fully round pill: raised surface at 95%, 1px line border, 15px ink text, 40px tall, slightly tilted, resting on the soft shadow and rising 2px to the lift shadow on hover. In the field each chip bobs on its own slow loop (6-11s); on phones they scroll in two slow rows. All drift stops under reduced motion.
 
 ### Tide Lines
-Faint contour lines in tide. On the landing page they animate behind the thought field and run in white over the closing tide band. In the Mini App they sit still behind Home's heading and drift slowly on the All clear screen. Always decorative and aria-hidden; never on rows, sheets or forms.
+Faint contour lines in tide. On the landing page they animate behind the thought field and run in white over the closing tide band. In the Mini App they drift slowly behind the launch screen's lockup and across the All clear screen, and stop under reduced motion. Always decorative and aria-hidden; never on rows, sheets or forms.
 
 ## Do's and Don'ts
 
@@ -311,6 +311,6 @@ Faint contour lines in tide. On the landing page they animate behind the thought
 - **Don't** introduce a second accent colour or a gradient fill on any product surface.
 - **Don't** add shadows to rows, list groups, buttons or fields; only the next-up card, Home tiles, sheets and toasts lift.
 - **Don't** use Figtree for body text, rows, buttons or forms, or anywhere on the connection pages and privacy policy.
-- **Don't** add decorative motion outside the landing page and the All clear screen.
+- **Don't** add decorative motion outside the landing page and the Mini App's launch and All clear screens; no tide lines on Home or any working screen.
 - **Don't** use an icon set, decorative emoji, mascots or illustrations; symbols are functional and sparse.
 - **Don't** put an uppercase eyebrow or kicker above a heading; the uppercase label style is for grouping list sections only.

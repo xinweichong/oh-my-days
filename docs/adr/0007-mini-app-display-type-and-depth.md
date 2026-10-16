@@ -12,7 +12,8 @@ landing page only. The owner compared prototypes of three Home layouts, the
 other screens improved within the rules, and four rule relaxations, and chose:
 
 - Figtree for titles and large figures, and soft depth on floating layers;
-- tide lines on Home (static) and on a new All clear screen (slow drift);
+- tide lines drifting slowly on the launch screen and a new All clear screen
+  (first tried behind Home's heading; the owner removed them there the same day);
 - the logo in the app: the mark beside Home's heading, the lockup while it loads;
 - not to add list colours or icons, and not to move the sun.
 
@@ -23,8 +24,8 @@ it can't load a font from Google Fonts or from the landing page's hashed assets.
 
 - **Design system.** `DESIGN.md` and the identity doc record the relaxed rules:
   Figtree for Mini App titles and large figures; the soft shadow on the next-up
-  card, Home tiles, sheets and toasts; tide lines only behind Home's heading and
-  on All clear; 16px card corners. Body text, rows, buttons and forms stay system
+  card, Home tiles, sheets and toasts; tide lines only on the launch and All
+  clear screens; 16px card corners. Body text, rows, buttons and forms stay system
   UI and flat. The connection pages and privacy policy are unchanged.
 - **Font.** `scripts/build-app.mjs` embeds Figtree's Latin variable subset
   (`@fontsource-variable/figtree`, SIL Open Font License, about 20 KB) in the
