@@ -11,7 +11,7 @@ import { dueLabel, RECENT_DAYS, sortByDeadline } from "../application/task-flow"
 import { PROJECT_TASK } from "../application/task-projection";
 import { describeRecurrence } from "../domain/recurrence";
 import { isDueOn, isOverdue, weekStart } from "../domain/schedule";
-import { addDays, type LocalDate, localDateAt, wallPartsAt } from "../domain/time";
+import { addDays, type LocalDate, localDateAt, wallPartsAt, zonedInstant } from "../domain/time";
 import { syncSummary } from "../jobs/calendar-sync";
 import { findConnection, listStoredCalendars } from "../storage/google";
 import { reminderOverrides } from "../storage/reminders";
@@ -75,6 +75,7 @@ export interface AppEvent {
   /** Opens the event (or its day) in Google Calendar. */
   link: string;
   startsAt: number | null;
+  endsAt: number | null;
 }
 
 /** Task IDs with a deadline marker write still queued or retrying. */
@@ -187,6 +188,7 @@ function toAppEvent(
     calendarName: showCalendar ? (names.get(e.calendarId) ?? null) : null,
     link: e.htmlLink ?? dayLink(date),
     startsAt: "dateTime" in e.fields.start ? Date.parse(e.fields.start.dateTime) : null,
+    endsAt: "dateTime" in e.fields.end ? Date.parse(e.fields.end.dateTime) : null,
   };
 }
 
@@ -195,6 +197,19 @@ async function calendarNames(deps: ReadDeps, user: UserRecord) {
   return {
     names: new Map(calendars.map((c) => [c.calendarId, c.summary])),
     several: calendars.length > 1,
+  };
+}
+
+/**
+ * The user's own day and time, so the app can name days ("Today", "Mon") and
+ * offer snooze times in the user's zone rather than the phone's.
+ */
+export function localContext(user: UserRecord, now: number) {
+  const w = wallPartsAt(now, user.timezone);
+  return {
+    today: localDateAt(now, user.timezone),
+    time: `${String(w.hour).padStart(2, "0")}:${String(w.minute).padStart(2, "0")}`,
+    agendaHour: user.agendaHour,
   };
 }
 
@@ -251,6 +266,31 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
       })(),
   ).length;
   const next = nextUp(today, now, user);
+  const doneToday = recent.filter(
+    (t) => t.status === "completed" && isDueOn(t.deadline, today.date, user.timezone),
+  ).length;
+  // What's still ahead today: timed events not yet over, and open tasks due today.
+  const left = today.timed.filter((e) => (e.endsAt ?? 0) > now).length + today.due.length;
+  const total = today.allDay.length + today.timed.length + today.due.length + doneToday;
+  const overdueByList = new Map<string, number>();
+  for (const t of open) {
+    if (isOverdue(t.deadline, now, user.timezone) && !isSnoozed(t, now))
+      overdueByList.set(t.listId, (overdueByList.get(t.listId) ?? 0) + 1);
+  }
+  const weekDays = [];
+  for (let date = weekStart(today.date); date < weekEnd; date = addDays(date, 1)) {
+    weekDays.push({
+      date,
+      letter: narrowWeekday(date),
+      today: date === today.date,
+      // Only deadlines still ahead count, as in the This week total.
+      count:
+        date < today.date ? 0 : open.filter((t) => isDueOn(t.deadline, date, user.timezone)).length,
+    });
+  }
+  const overdueAges = today.overdue.flatMap((t) =>
+    t.deadline.date ? [daysFrom(t.deadline.date, today.date)] : [],
+  );
   return {
     date: today.date,
     label: today.label,
@@ -259,12 +299,27 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
     next,
     calendarClear: today.allDay.length + today.timed.length === 0,
     tiles: {
-      today: { events: today.allDay.length + today.timed.length, tasks: today.due.length },
+      today: {
+        events: today.allDay.length + today.timed.length,
+        tasks: today.due.length,
+        done: doneToday,
+        left,
+      },
       overdue: today.overdue.length,
+      overdueOldestDays: overdueAges.length ? Math.max(...overdueAges) : null,
       week: dueThisWeek,
+      weekDays,
       noDeadline: today.openEnded,
     },
-    lists: lists.map((l) => ({ id: l.id, name: l.name, open: l.openCount, inbox: l.isInbox })),
+    // Everything today is behind you and nothing is overdue (the All clear screen).
+    allClear: total > 0 && left === 0 && today.overdue.length === 0,
+    lists: lists.map((l) => ({
+      id: l.id,
+      name: l.name,
+      open: l.openCount,
+      overdue: overdueByList.get(l.id) ?? 0,
+      inbox: l.isInbox,
+    })),
     recent: recent.length,
     sync: syncLine(connection?.status ?? null, sync, today.live, now),
     tomorrowLabel: tomorrowLabel(user),
@@ -277,6 +332,7 @@ function nextUp(
   now: number,
   user: UserRecord,
 ): NextUp | null {
+  const since = waitStart(today, now, user);
   const event = today.timed.find((e) => (e.startsAt ?? 0) > now);
   if (event?.startsAt) {
     const minutes = Math.round((event.startsAt - now) / 60_000);
@@ -291,6 +347,9 @@ function nextUp(
       when,
       link: event.link,
       text: `${time} ${event.title} · ${when}`,
+      startsAt: event.startsAt,
+      until: event.endsAt ? formatTime(event.endsAt, user.timezone) : null,
+      since,
     };
   }
   const task = today.due.find((t) => t.deadline.at !== null && t.deadline.at > now);
@@ -303,6 +362,9 @@ function nextUp(
       when: "Due",
       taskId: task.id,
       text: `Due ${time}: ${task.title}`,
+      startsAt: task.deadline.at,
+      until: null,
+      since,
     };
   }
   return null;
@@ -317,6 +379,35 @@ export interface NextUp {
   link?: string;
   taskId?: string;
   text: string;
+  startsAt: number;
+  /** The event's end time ("8pm"); null for a task. */
+  until: string | null;
+  /** When the wait began: the last event that ended, else the agenda hour, else midnight. */
+  since: number;
+}
+
+/** Start of the current wait, for Next up's bar: it empties from here to the start. */
+function waitStart(
+  today: Awaited<ReturnType<typeof todayView>>,
+  now: number,
+  user: UserRecord,
+): number {
+  const ended = today.timed.flatMap((e) =>
+    e.endsAt !== null && e.endsAt <= now ? [e.endsAt] : [],
+  );
+  if (ended.length) return Math.max(...ended);
+  const hour = `${String(user.agendaHour).padStart(2, "0")}:00`;
+  const morning = zonedInstant(today.date, hour, user.timezone);
+  if (morning.ok && morning.instant <= now) return morning.instant;
+  const midnight = zonedInstant(today.date, "00:00", user.timezone);
+  return midnight.ok ? midnight.instant : now;
+}
+
+/** "M", "T", "W"…: a weekday's initial for the This week tile. */
+function narrowWeekday(date: LocalDate): string {
+  return new Intl.DateTimeFormat("en-GB", { weekday: "narrow", timeZone: "UTC" }).format(
+    new Date(`${date}T00:00:00Z`),
+  );
 }
 
 function syncLine(
@@ -397,8 +488,15 @@ export async function taskSetView(deps: ReadDeps, user: UserRecord, now: number,
         : open;
   const title =
     set.view === "overdue" ? "Overdue" : set.view === "no_deadline" ? "No deadline" : list?.name;
+  // How each recurring task shown repeats, for the folded series heading.
+  const seriesIds = [...new Set(chosen.flatMap((t) => (t.seriesId ? [t.seriesId] : [])))];
+  const found = await Promise.all(seriesIds.map((id) => findSeries(deps.db, user.id, id)));
+  const series: Record<string, string> = {};
+  for (const s of found) if (s) series[s.id] = describeRecurrence(recurrenceOf(s));
   return {
     title,
+    local: localContext(user, now),
+    series,
     showList: set.view !== "list",
     listId: list?.id ?? null,
     tomorrowLabel: tomorrowLabel(user),
@@ -432,6 +530,7 @@ export async function taskDetail(deps: ReadDeps, user: UserRecord, now: number, 
       : [];
   return {
     task: toAppTask(task, user, now, pending),
+    local: localContext(user, now),
     reminder:
       task.deadline.kind !== "datetime"
         ? null

@@ -120,6 +120,60 @@ describe("Mini App reads", () => {
     expect(String(body.sync)).toMatch(/^Synced/);
   });
 
+  it("gives Home's tiles what they show: progress, overdue age, week days, list overdue (ADR 0007)", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    await fixtures(world);
+    world.clock.current = Date.UTC(2026, 8, 25, 5, 0); // 1pm Singapore, after Standup
+    const { body } = await appApi(world, "home");
+    expect(body).toMatchObject({
+      // Standup has ended; Review and Send invoice are still ahead.
+      tiles: { today: { events: 2, tasks: 1, done: 0, left: 2 }, overdueOldestDays: 1 },
+      lists: [{ name: "Inbox", open: 4, overdue: 1 }],
+      allClear: false,
+      next: {
+        title: "Review",
+        startsAt: Date.UTC(2026, 8, 25, 6),
+        until: "3pm",
+        // The wait to Review is counted from when Standup ended.
+        since: Date.UTC(2026, 8, 25, 2),
+      },
+    });
+    const week = (body.tiles as { weekDays: { letter: string; today: boolean; count: number }[] })
+      .weekDays;
+    expect(week.map((d) => d.letter).join("")).toBe("MTWTFSS");
+    expect(week.map((d) => d.count)).toEqual([0, 0, 0, 0, 1, 0, 0]);
+    expect(week.findIndex((d) => d.today)).toBe(4);
+  });
+
+  it("calls the day clear only once everything today is behind you and nothing is overdue", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    await fixtures(world);
+    world.clock.current = Date.UTC(2026, 8, 25, 8, 0); // 4pm Singapore, after Review
+    const tasks = await rows<{ id: string; version: number; title: string }>(
+      env.DB,
+      "SELECT id, version, title FROM tasks WHERE title IN ('Send invoice', 'Pay rent')",
+    );
+    const complete = async (title: string, k: string) => {
+      const task = tasks.find((t) => t.title === title);
+      return appApi(world, `tasks/${task?.id}/complete`, {
+        method: "POST",
+        body: { key: k, version: task?.version },
+      });
+    };
+    expect((await complete("Send invoice", "test-key-clear-0001")).status).toBe(200);
+    // Today's things are behind you, but Pay rent is still overdue.
+    let home = await appApi(world, "home");
+    expect(home.body).toMatchObject({
+      tiles: { today: { events: 2, tasks: 0, done: 1, left: 0 }, overdue: 1 },
+      allClear: false,
+    });
+    expect((await complete("Pay rent", "test-key-clear-0002")).status).toBe(200);
+    home = await appApi(world, "home");
+    expect(home.body).toMatchObject({ tiles: { overdueOldestDays: null }, allClear: true });
+  });
+
   it("shows Today with the same events and tasks as /daily", async () => {
     const world = new World(env.DB);
     await setUpOwner(world);
@@ -203,6 +257,27 @@ describe("Mini App reads", () => {
       reminder: "60 minutes before",
     });
     expect((await appApi(world, "recent")).body).toMatchObject({ days: 30, tasks: [] });
+  });
+
+  it("tells task screens the user's local day and time, and how each series repeats", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    await world.send("/task");
+    await world.press("New task");
+    await world.send("Water plants");
+    await world.press("Today · Fri 25 Sep");
+    await world.press("Any time that day");
+    await world.press("Weekly");
+    await world.tick();
+    const [inbox] = await rows<{ id: string }>(env.DB, "SELECT id FROM task_lists");
+    const [series] = await rows<{ id: string }>(env.DB, "SELECT id FROM task_series");
+    const list = await appApi(world, `tasks?view=list&list=${inbox?.id}`);
+    // 9am Friday 25 Sep in Singapore, whatever zone the phone is in.
+    const local = { today: "2026-09-25", time: "09:00", agendaHour: expect.any(Number) };
+    expect(list.body).toMatchObject({ local, series: { [series?.id ?? ""]: expect.any(String) } });
+    expect(String((list.body.series as Record<string, string>)[series?.id ?? ""])).toMatch(/week/i);
+    const [task] = await rows<{ id: string }>(env.DB, "SELECT id FROM tasks LIMIT 1");
+    expect((await appApi(world, `tasks/${task?.id}`)).body).toMatchObject({ local });
   });
 });
 
