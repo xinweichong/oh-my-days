@@ -34,8 +34,18 @@ export function title(text: string, sub?: string | Node | null, ...extra: Node[]
 }
 
 export function section(label: string, ...rows: Node[]): Node | null {
+  return labelled(label, "", ...rows);
+}
+
+/** A grouped list under a label; `tone` colours the label ("overdue", "today"). */
+export function labelled(label: string, tone: string, ...rows: Node[]): Node | null {
   if (rows.length === 0) return null;
-  return h("section", {}, h("h2", { class: "label" }, label), h("ul", { class: "group" }, ...rows));
+  return h(
+    "section",
+    {},
+    h("h2", { class: `label${tone ? ` ${tone}` : ""}` }, label),
+    h("ul", { class: "group" }, ...rows),
+  );
 }
 
 export function savedCopyBanner(live: boolean): Node | null {
@@ -77,6 +87,8 @@ export interface RowOptions {
   sameDay?: boolean;
   tomorrowLabel?: string;
   selection?: Selection;
+  /** Lead with the deadline instead of the title (occurrences under their series). */
+  dateFirst?: boolean;
 }
 
 export function taskRow(task: AppTask, options: RowOptions): HTMLElement {
@@ -114,7 +126,13 @@ export function taskRow(task: AppTask, options: RowOptions): HTMLElement {
         open({ name: "task", id: task.id });
       },
     },
-    h("span", { class: "headline" }, task.title),
+    h(
+      "span",
+      { class: "headline" },
+      options.dateFirst && task.deadline.kind !== "none"
+        ? task.deadline.label.replace(/^Due /, "")
+        : task.title,
+    ),
     task.overdueLabel || lineText || task.pending
       ? h(
           "span",
@@ -381,7 +399,9 @@ export function eventRow(event: AppEvent, options: { timeColumn?: boolean } = {}
   );
 }
 
-export function navRow(label: string, detail: string, screen: Screen): HTMLElement {
+/** A row that opens a screen; `overdue` adds "2 overdue" before the count, in words and colour. */
+export function navRow(label: string, detail: string, screen: Screen, overdue = 0): HTMLElement {
+  const spoken = overdue ? `${label}, ${overdue} overdue, ${detail}` : `${label}, ${detail}`;
   return h(
     "li",
     { class: "row" },
@@ -390,11 +410,17 @@ export function navRow(label: string, detail: string, screen: Screen): HTMLEleme
       {
         class: "row-main nav",
         type: "button",
-        "aria-label": `${label}, ${detail}`,
+        "aria-label": spoken,
         onclick: () => open(screen),
       },
       h("span", { class: "headline" }, label),
-      h("span", { class: "count-sm", "aria-hidden": "true" }, detail),
+      h(
+        "span",
+        { class: "count-sm", "aria-hidden": "true" },
+        overdue ? h("span", { class: "overdue-text" }, `${overdue} overdue`) : null,
+        overdue ? " · " : null,
+        detail,
+      ),
       h("span", { class: "chevron", "aria-hidden": "true" }, "›"),
     ),
   );

@@ -1,5 +1,15 @@
 import { ApiError, api, errorText, write } from "./api";
 import { h } from "./dom";
+import {
+  addDays,
+  clockLabel,
+  dayLabel,
+  local,
+  minutesOf,
+  relativeDay,
+  wallTime,
+  weekdayShort,
+} from "./local";
 import { checkPop, collapse } from "./motion";
 import { back, current, refresh } from "./nav";
 import { haptic, telegram } from "./telegram";
@@ -80,49 +90,188 @@ export async function reopen(task: AppTask): Promise<void> {
   }
 }
 
+/** The times offered for a chosen day. */
+const TIMES = [8, 9, 12, 15, 18, 20].map((hour) => hour * 60);
+
 /**
- * The snooze choices shared by one task, a selection, and Snooze all: two
- * presets and a chosen date and time. `pick` receives the request body.
+ * The snooze choices shared by one task, a selection, and Snooze all. Presets
+ * snooze in one tap and show the time they mean; below them a day and a time
+ * can be picked, with the native pickers under Other… for anything else.
+ * Days and times are the user's own (local.ts). `pick` receives the request body.
  */
 export function snoozeChoices(
   agendaLabel: string,
   pick: (body: Record<string, unknown>) => void,
 ): Node[] {
-  const date = h("input", { type: "date", required: true }) as HTMLInputElement;
-  const time = h("input", { type: "time", required: true }) as HTMLInputElement;
-  const choice = (label: string, body: Record<string, unknown>) =>
+  const here = local();
+  const preset = (label: string, when: string, body: Record<string, unknown>) =>
     h(
       "button",
-      { class: "button secondary wide", type: "button", onclick: () => pick(body) },
-      label,
-    );
-  return [
-    h(
-      "div",
-      { class: "choice-stack" },
-      choice("In 1 hour", { preset: "hour" }),
-      choice(agendaLabel, { preset: "tomorrow" }),
-    ),
-    h(
-      "form",
       {
-        class: "pick-form",
-        onsubmit: (event) => {
-          event.preventDefault();
-          pick({ date: date.value, time: time.value });
+        class: "snooze-preset",
+        type: "button",
+        "aria-label": `${label}, ${when}`,
+        onclick: () => pick(body),
+      },
+      h("span", { class: "preset-label" }, label),
+      h("span", { class: "preset-when", "aria-hidden": "true" }, when),
+    );
+  const date = h("input", { type: "date", required: true }) as HTMLInputElement;
+  const time = h("input", { type: "time", required: true }) as HTMLInputElement;
+  const other = h(
+    "form",
+    {
+      class: "pick-form",
+      hidden: true,
+      onsubmit: (event) => {
+        event.preventDefault();
+        pick({ date: date.value, time: time.value });
+      },
+    },
+    h("label", {}, "Date", date),
+    h("label", {}, "Time", time),
+    h("button", { class: "button wide", type: "submit" }, "Snooze until then"),
+  );
+  // Without the user's day (an old response), offer what doesn't need it.
+  if (!here) {
+    other.hidden = false;
+    return [
+      h(
+        "div",
+        { class: "snooze-presets" },
+        preset("In 1 hour", "From now", { preset: "hour" }),
+        preset("Tomorrow", agendaLabel.replace(/^Tomorrow at /, ""), { preset: "tomorrow" }),
+      ),
+      other,
+    ];
+  }
+
+  const now = minutesOf(here.time);
+  const agenda = here.agendaHour * 60;
+  const tomorrow = addDays(here.today, 1);
+  // The Monday after tomorrow, so it never repeats the Tomorrow preset.
+  let monday = addDays(tomorrow, 1);
+  while (weekdayShort(monday) !== "Mon") monday = addDays(monday, 1);
+  const presets = [
+    preset("In 1 hour", `${now + 60 >= 1440 ? "Tomorrow" : "Today"} ${clockLabel(now + 60)}`, {
+      preset: "hour",
+    }),
+    now < 17 * 60
+      ? preset("This evening", `Today ${clockLabel(19 * 60)}`, {
+          date: here.today,
+          time: wallTime(19 * 60),
+        })
+      : null,
+    preset("Tomorrow", `${dayLabel(tomorrow)}, ${clockLabel(agenda)}`, { preset: "tomorrow" }),
+    preset("Monday", `${dayLabel(monday)}, ${clockLabel(agenda)}`, {
+      date: monday,
+      time: wallTime(agenda),
+    }),
+  ].filter((p): p is HTMLElement => p !== null);
+
+  // A day, then a time: the button says exactly when before it's pressed.
+  let chosenDay = TIMES.some((t) => t > now) ? here.today : tomorrow;
+  let chosenTime: number | null = null;
+  const confirm = h("button", { class: "button wide", type: "button", disabled: true }, "");
+  const dayButtons: HTMLElement[] = [];
+  const timeButtons: HTMLElement[] = [];
+  const update = () => {
+    for (const b of dayButtons) b.setAttribute("aria-pressed", String(b.dataset.day === chosenDay));
+    for (const b of timeButtons) {
+      const t = Number(b.dataset.time);
+      const past = chosenDay === here.today && t <= now;
+      (b as HTMLButtonElement).disabled = past;
+      if (past && chosenTime === t) chosenTime = null;
+      b.setAttribute("aria-pressed", String(chosenTime === t));
+    }
+    const rel = relativeDay(chosenDay, here.today);
+    const day = rel === "Today" || rel === "Tomorrow" ? rel.toLowerCase() : rel;
+    confirm.textContent =
+      chosenTime === null ? "Pick a time" : `Snooze until ${day}, ${clockLabel(chosenTime)}`;
+    (confirm as HTMLButtonElement).disabled = chosenTime === null;
+  };
+  for (let i = 0; i < 7; i++) {
+    const day = addDays(here.today, i);
+    const button = h(
+      "button",
+      {
+        class: "day-chip",
+        type: "button",
+        "data-day": day,
+        "aria-label": dayLabel(day),
+        onclick: () => {
+          chosenDay = day;
+          update();
         },
       },
-      h("label", {}, "Date", date),
-      h("label", {}, "Time", time),
-      h("button", { class: "button wide", type: "submit" }, "Snooze until then"),
+      h(
+        "span",
+        { class: "day-name", "aria-hidden": "true" },
+        i === 0 ? "Today" : weekdayShort(day),
+      ),
+      h("span", { class: "day-num", "aria-hidden": "true" }, String(Number(day.slice(8)))),
+    );
+    dayButtons.push(button);
+  }
+  for (const t of TIMES) {
+    timeButtons.push(
+      h(
+        "button",
+        {
+          class: "time-chip",
+          type: "button",
+          "data-time": String(t),
+          onclick: () => {
+            chosenTime = t;
+            update();
+          },
+        },
+        clockLabel(t),
+      ),
+    );
+  }
+  confirm.addEventListener("click", () => {
+    if (chosenTime !== null) pick({ date: chosenDay, time: wallTime(chosenTime) });
+  });
+  const otherButton = h(
+    "button",
+    {
+      class: "time-chip plain",
+      type: "button",
+      "aria-expanded": "false",
+      onclick: () => {
+        other.hidden = !other.hidden;
+        otherButton.setAttribute("aria-expanded", String(!other.hidden));
+        if (!other.hidden) date.focus();
+      },
+    },
+    "Other…",
+  );
+  update();
+  return [
+    h("div", { class: "snooze-presets" }, ...presets),
+    h("p", { class: "divider-label" }, "or pick a day and time"),
+    h("div", { class: "day-strip", role: "group", "aria-label": "Day" }, ...dayButtons),
+    h(
+      "div",
+      { class: "time-chips", role: "group", "aria-label": "Time" },
+      ...timeButtons,
+      otherButton,
     ),
+    other,
+    confirm,
   ];
 }
 
 export function snoozeSheet(task: AppTask, agendaLabel = "Tomorrow morning"): void {
+  const due = task.deadline.kind === "none" ? null : task.deadline.label.replace(/^Due /, "");
   const close = sheet(
-    "Snooze until when?",
-    h("p", { class: "caption" }, "Snooze moves the next reminder only; the deadline stays."),
+    "Snooze reminder",
+    h(
+      "p",
+      { class: "caption" },
+      due ? `The deadline stays at ${due}.` : "Snooze moves the next reminder only.",
+    ),
     ...snoozeChoices(agendaLabel, (body) => {
       close();
       void (async () => {
@@ -345,11 +494,11 @@ type AddResult =
   | { kind: "multiple" | "no_title" | "error"; message: string };
 
 /** The same quick-capture rules as typing in chat. */
-export function quickAdd(listId?: string): HTMLElement {
+export function quickAdd(listId?: string, listName?: string): HTMLElement {
   const input = h("input", {
     type: "text",
     maxlength: "200",
-    placeholder: "Add a task or event",
+    placeholder: listName ? `Add to ${listName}` : "Add a task or event",
     enterkeyhint: "done",
     "aria-label": "Add a task or event, like Dinner Fri 7pm",
   }) as HTMLInputElement;
