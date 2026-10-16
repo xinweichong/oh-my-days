@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Mini App polish** to match the landing page ([ADR 0007](docs/adr/0007-mini-app-display-type-and-depth.md)): the mark beside Home's heading; a raised Next up card with a live countdown; Today, Overdue and This week tiles that show progress, the oldest overdue age and deadline days; overdue counts on lists; Figtree titles and figures and soft depth on floating layers, served from the app's own origin
+- **Task screens**: Overdue folds recurring tasks under their series; lists group by Overdue, Today, Later and No deadline; task detail leads with the deadline and shows history as a timeline
+- **Snooze** offers one-tap presets that show the time they mean, and a day and time picker in your own time zone
+
+### Added
+
+- **All clear**: once a day, when everything today is behind you and nothing is overdue, with Back to Home
+- **Launch screen** with the logo while the app opens
+
 ## [2.1.0] - 2026-10-15
 
 A landing page, and a new production host.
