@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-10-16
+
+A polished Mini App, in the landing page's finish.
+
 ### Changed
 
 - **Mini App polish** to match the landing page ([ADR 0007](docs/adr/0007-mini-app-display-type-and-depth.md)): the mark beside Home's heading; a raised Next up card with a live countdown; Today, Overdue and This week tiles that show progress, the oldest overdue age and deadline days; overdue counts on lists; Figtree titles and figures and soft depth on floating layers, served from the app's own origin
@@ -97,7 +101,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0...v2.1.0
 [2.0.0]: https://github.com/xinweichong/oh-my-days/compare/v2.0.0-beta.1...v2.0.0
 [2.0.0-beta.1]: https://github.com/xinweichong/oh-my-days/compare/v0.1.0-beta.1...v2.0.0-beta.1
