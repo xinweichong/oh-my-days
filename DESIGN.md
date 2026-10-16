@@ -206,7 +206,7 @@ A cool, near-neutral palette tinted toward green-grey, with one deep teal-green 
 ### Hierarchy
 - **Display** (Figtree 600, 2.6rem rising to 4.5rem at 1024px, line-height 1.02, -0.03em): The landing page h1 (the tagline) only.
 - **Headline** (Figtree 600, 2.25rem rising to 3rem or 3.75rem from 768px, line-height 1.05, -0.025em): Landing section headings, held to about 16-18ch. Landing subheads step down to Figtree 600 at 1.5rem, -0.015em.
-- **Title** (Figtree 600, 34px/38px, -0.03em): Mini App screen titles; Home's weekday runs at 38px/40px. Sheet titles step down to Figtree 600 at 20px/24px, -0.015em, as do Home's tile and section headings.
+- **Title** (Figtree 600, 32px/36px, -0.03em): Mini App screen titles; Home's weekday runs at 38px/40px. Sheet titles step down to Figtree 600 at 20px/24px, -0.015em, as do Home's tile and section headings.
 - **Figure** (Figtree 600, 36-40px, -0.03em, tabular): Home's tile counts and the next-up time.
 - **Item** (500, 17px/22px): Row headlines, the next-up figure and wide tile labels.
 - **Body** (400, 16px/24px): Default product text. Landing lead paragraphs run larger (18px/28px, 20px/32px from 768px) in ink muted, held to 34-56ch.

@@ -278,6 +278,9 @@ describe("Mini App reads", () => {
     expect(String((list.body.series as Record<string, string>)[series?.id ?? ""])).toMatch(/week/i);
     const [task] = await rows<{ id: string }>(env.DB, "SELECT id FROM tasks LIMIT 1");
     expect((await appApi(world, `tasks/${task?.id}`)).body).toMatchObject({ local });
+    for (const path of ["home", "today", "week"]) {
+      expect((await appApi(world, path)).body).toMatchObject({ local });
+    }
   });
 });
 

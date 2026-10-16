@@ -50,6 +50,7 @@ export interface Home {
   date: string;
   label: string;
   heading: string;
+  local: Local;
   nextUp: string | null;
   next: {
     kind: "event" | "task";
@@ -83,6 +84,7 @@ export interface Home {
 export interface Today {
   date: string;
   label: string;
+  local: Local;
   live: boolean;
   allDay: AppEvent[];
   timed: AppEvent[];
@@ -95,6 +97,7 @@ export interface Today {
 export interface Week {
   start: string;
   label: string;
+  local: Local;
   previous: string;
   next: string;
   live: boolean;

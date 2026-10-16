@@ -13,7 +13,9 @@ export type Screen =
   | { name: "week"; start?: string }
   | { name: "tasks"; view: "overdue" | "no_deadline" | "list"; list?: string }
   | { name: "task"; id: string }
-  | { name: "recent" };
+  | { name: "recent" }
+  /** Shown once a day when everything today is behind you (ADR 0007). */
+  | { name: "clear"; total: number };
 
 export type Mode = Direction | "refresh";
 

@@ -234,6 +234,7 @@ export async function todayView(deps: ReadDeps, user: UserRecord, now: number) {
   return {
     date,
     label: `${formatDayLabel(date)} ${date.slice(0, 4)}`,
+    local: localContext(user, now),
     live,
     allDay: todays.filter((e) => e.allDay),
     timed: todays.filter((e) => !e.allDay),
@@ -295,6 +296,7 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
     date: today.date,
     label: today.label,
     heading: longDayLabel(today.date),
+    local: today.local,
     nextUp: next?.text ?? null,
     next,
     calendarClear: today.allDay.length + today.timed.length === 0,
@@ -458,6 +460,7 @@ export async function weekView(
   return {
     start: from,
     label: `Week of ${formatDayLabel(from)} ${from.slice(0, 4)}`,
+    local: localContext(user, now),
     previous: addDays(from, -7),
     next: to,
     live,

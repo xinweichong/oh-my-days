@@ -46,7 +46,8 @@ async function render(
   const loading =
     fresh && !cached
       ? window.setTimeout(() => {
-          if (token !== renderToken) return;
+          // The launch screen already says the app is opening.
+          if (token !== renderToken || root.querySelector(".launch")) return;
           root.setAttribute("aria-busy", "true");
           if (!root.firstChild || root.querySelector(".status"))
             replace(root, h("p", { class: "status" }, "Loading…"));
