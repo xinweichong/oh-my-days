@@ -601,8 +601,9 @@ Telegram object and synthetic data, not yet inside Telegram. The README and
 landing page screenshots were retaken from the same harness; the 2.1.0 ones are
 in `docs/screenshots/archive/`.
 
-Bulk import (owner, 2026-10-16): `/import` on `feature/bulk-import`, tested
-locally, not deployed. `src/domain/import.ts` reads each line with the
+Bulk import (owner, 2026-10-16): `/import`, released as 2.3.0 (#32, #33) and
+deployed to production from `main` on 2026-10-17 as Worker version `475df748`;
+the command menu re-registered with `/import` on the next maintenance tick. `src/domain/import.ts` reads each line with the
 quick-capture grammar; `src/application/import-flow.ts` previews, confirms,
 and undoes (`tests/flows/import.test.ts`, `tests/domain/import.test.ts`). The
 cap of eight tasks comes from Workers Free's 50 D1 queries per invocation:
