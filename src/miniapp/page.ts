@@ -1,4 +1,5 @@
 import { CLIENT_JS } from "./generated/client";
+import { FIGTREE_PATH, FIGTREE_WOFF2_BASE64 } from "./generated/font";
 
 /**
  * The Mini App document (ADR 0005). Colours come from Telegram's theme
@@ -7,6 +8,8 @@ import { CLIENT_JS } from "./generated/client";
  */
 
 const STYLE = `
+@font-face { font-family: "Figtree"; font-style: normal; font-weight: 300 900; font-display: swap;
+  src: url("${FIGTREE_PATH}") format("woff2"); }
 :root {
   color-scheme: light dark;
   --surface: var(--tg-theme-bg-color, #ffffff);
@@ -251,6 +254,7 @@ export function appPage(): Response {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Oh My Days</title>
+<link rel="preload" href="${FIGTREE_PATH}" as="font" type="font/woff2" crossorigin>
 <script src="https://telegram.org/js/telegram-web-app.js?64"></script>
 <style>${STYLE}</style>
 </head>
@@ -267,7 +271,7 @@ export function appPage(): Response {
       "x-content-type-options": "nosniff",
       // Telegram Web shows Mini Apps in a frame; nothing else may.
       "content-security-policy":
-        "default-src 'none'; script-src 'self' https://telegram.org; style-src 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors https://web.telegram.org https://*.telegram.org",
+        "default-src 'none'; script-src 'self' https://telegram.org; style-src 'unsafe-inline'; font-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors https://web.telegram.org https://*.telegram.org",
     },
   });
 }
@@ -277,6 +281,20 @@ export function appScript(): Response {
     headers: {
       "content-type": "text/javascript; charset=utf-8",
       "cache-control": "no-cache",
+      "x-content-type-options": "nosniff",
+    },
+  });
+}
+
+let fontBytes: Uint8Array | null = null;
+
+/** The display font (ADR 0007): its path names its content, so it never changes. */
+export function appFont(): Response {
+  fontBytes ??= Uint8Array.from(atob(FIGTREE_WOFF2_BASE64), (c) => c.charCodeAt(0));
+  return new Response(fontBytes, {
+    headers: {
+      "content-type": "font/woff2",
+      "cache-control": "public, max-age=31536000, immutable",
       "x-content-type-options": "nosniff",
     },
   });

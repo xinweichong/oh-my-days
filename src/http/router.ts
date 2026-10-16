@@ -1,5 +1,6 @@
 import { handleAppApi, type MiniAppDeps } from "../miniapp/api";
-import { appPage, appScript } from "../miniapp/page";
+import { FIGTREE_PATH } from "../miniapp/generated/font";
+import { appFont, appPage, appScript } from "../miniapp/page";
 import type { Clock } from "../shared/clock";
 import { lastTickAt, MAX_TICK_AGE_MS } from "../storage/app-state";
 import { type ConnectRouteDeps, finishOAuth, showConnectPage, startOAuth } from "./connect-routes";
@@ -36,6 +37,8 @@ export async function route(
       return request.method === "GET" ? appPage() : methodNotAllowed("GET");
     case "/app/app.js":
       return request.method === "GET" ? appScript() : methodNotAllowed("GET");
+    case FIGTREE_PATH:
+      return request.method === "GET" ? appFont() : methodNotAllowed("GET");
     case "/privacy":
       return request.method === "GET"
         ? htmlResponse(privacyPage(deps.contactEmail()))

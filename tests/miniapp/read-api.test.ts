@@ -78,6 +78,23 @@ describe("Mini App sign-in (ADR 0005)", () => {
     expect(script.headers.get("content-type")).toContain("text/javascript");
     expect((await script.text()).length).toBeGreaterThan(1000);
   });
+
+  it("serves its own display font, cached by content, and nothing from elsewhere (ADR 0007)", async () => {
+    const world = new World(env.DB);
+    const page = await world.request("/app");
+    const policy = page.headers.get("content-security-policy") ?? "";
+    expect(policy).toContain("font-src 'self'");
+    const path = /href="(\/app\/figtree-[0-9a-f]{10}\.woff2)"/.exec(await page.text())?.[1];
+    expect(path).toBeDefined();
+    const font = await world.request(path ?? "");
+    expect(font.status).toBe(200);
+    expect(font.headers.get("content-type")).toBe("font/woff2");
+    expect(font.headers.get("cache-control")).toContain("immutable");
+    const bytes = new Uint8Array(await font.arrayBuffer());
+    expect(new TextDecoder().decode(bytes.slice(0, 4))).toBe("wOF2");
+    // Any other name is unknown, so an old or guessed URL reveals nothing.
+    expect((await world.request("/app/figtree-0000000000.woff2")).status).toBe(404);
+  });
 });
 
 describe("Mini App reads", () => {
