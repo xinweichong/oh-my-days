@@ -69,7 +69,7 @@ Each message requests one action. Attributes belonging to that action are allowe
 - Supported: `Add submit expenses to Work, due Friday`.
 - Unsupported: `Lunch Friday at noon, submit expenses Monday, and buy milk`.
 
-For a message containing multiple independent instructions, explain the limit and ask the user to send them separately. Do not partially execute it or silently discard instructions.
+For a message containing multiple independent instructions, explain the limit and ask the user to send them separately. Do not partially execute it or silently discard instructions. The one exception is the explicit `/import` command below, which previews every line and acts only on one confirmation.
 
 ### Events versus tasks
 
@@ -110,6 +110,28 @@ switch between task and event; the switch removes the first item (bound to its
 version and confirmed like any removal) and then creates the other. Editing,
 deleting, or targeting existing items stays with follow-ups and their
 confirmation rules.
+
+### Importing several tasks
+
+Approved by the owner on 2026-10-16. `/import` followed by up to eight lines
+(or `/import` alone, which asks for them) adds several tasks at once, for lists
+copied from elsewhere such as course deadlines.
+
+- Each line is read with the quick-capture grammar above and must be exactly
+  one task. A line that reads as an event, has an ambiguous date or hour, holds
+  several requests, has no title, repeats an earlier line, or matches an open
+  task with the same title, list, and deadline is listed with its reason and
+  skipped. Nothing is guessed.
+- A `to <list>` naming no existing list stays in the title, as in quick capture;
+  the preview says so for that line.
+- More than eight tasks are refused whole: nothing is added, and the user is
+  asked to send them in parts. Eight keeps one confirmation within the Workers
+  Free query limit per invocation.
+- Nothing is created until the preview is confirmed. On confirmation the lists
+  are checked again: if one was deleted, nothing is added; a task added
+  meanwhile is skipped rather than duplicated.
+- The result names how many tasks went to each list and offers **Undo import**,
+  which asks first and removes only the imported tasks still unchanged.
 
 ### Follow-ups
 
@@ -244,6 +266,7 @@ These views and controls must work without AI:
 | `/overdue` | Unfinished tasks past their deadline |
 | `/health` | Google Calendar connection and synchronization health |
 | `/help` | Available commands and examples |
+| `/import` | Up to eight tasks at once, one per line, previewed and confirmed together (§4, added 2026-10-16) |
 | `/export` | A JSON file of the user's tasks (with history), lists, recurring tasks, and contacts; no Google tokens and no copy of calendar events (added 2026-10-10, [improvement D6](../plans/improvements.md#6-phase-4--further-features-d1d6)) |
 
 Weekly and monthly views use actual calendar periods, not rolling 7/30-day windows. Provide Previous/Next navigation and appropriate filtering. Natural language may request other ranges, such as the next seven days.
@@ -416,6 +439,7 @@ Use stable occurrence identities so completion, snoozing, cancellation, and remi
 | Invite a saved contact | Full email and invitation preview shown before any attendee notification |
 | Reply `Move it to 4pm` to an item | Correct item targeted; normal confirmation rules still apply |
 | Multiple instructions in one message | No partial execution; request separate messages |
+| `/import` with several task lines | One preview listing each task and each skipped line with its reason; nothing created until confirmed; one Undo for the batch |
 | `/weekly` or `/monthly` | Current calendar period with navigation; no AI dependency |
 | Gemini quota exhausted or request unsafe to sanitize | Structured fallback offered; no private content sent and no paid fallback |
 | Google temporarily unavailable | Request visibly pending, retried, and later confirmed or flagged for resolution |

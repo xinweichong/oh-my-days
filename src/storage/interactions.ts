@@ -84,6 +84,7 @@ export const PENDING_INPUT_KINDS = [
   "event_contact_email",
   "event_list_date",
   "find_query",
+  "import_list",
   "task_repeat_interval",
   "event_repeat_interval",
 ] as const;

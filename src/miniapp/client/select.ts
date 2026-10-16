@@ -1,5 +1,7 @@
+import { MAX_SELECTION } from "../limits";
 import { snoozeChoices } from "./actions";
 import { ApiError, errorText, write } from "./api";
+import { bulkSummary, inParts } from "./bulk";
 import { h } from "./dom";
 import { onBack, refresh } from "./nav";
 import type { Selection } from "./rows";
@@ -17,6 +19,7 @@ import { confirmAction, sheet, toast } from "./ui";
 
 interface BulkResult {
   summary: string;
+  applied: number;
 }
 
 let active: Controller | null = null;
@@ -34,7 +37,7 @@ class Controller implements Selection {
   private readonly chosen = new Map<string, AppTask>();
   private on = false;
   private bar: HTMLElement | null = null;
-  private readonly completeAll = () => void this.bulk("complete");
+  private readonly completeAll = () => void this.bulk("complete", "Completed");
 
   constructor(
     private readonly tasks: AppTask[],
@@ -62,7 +65,10 @@ class Controller implements Selection {
 
   toggle(task: AppTask): void {
     if (this.chosen.has(task.id)) this.chosen.delete(task.id);
-    else this.chosen.set(task.id, task);
+    else if (this.chosen.size >= MAX_SELECTION) {
+      toast(`Up to ${MAX_SELECTION} at a time.`);
+      return;
+    } else this.chosen.set(task.id, task);
     haptic("select");
     this.update();
   }
@@ -84,7 +90,7 @@ class Controller implements Selection {
 
   private update(): void {
     const n = this.chosen.size;
-    const all = n === this.tasks.length;
+    const all = n === Math.min(this.tasks.length, MAX_SELECTION);
     const native = n > 0 ? mainButton(`Complete ${n}`, this.completeAll) : mainButton(null);
     const action = (label: string, onclick: () => void, kind = "secondary") =>
       h("button", { class: `button ${kind}`, type: "button", disabled: n === 0, onclick }, label);
@@ -106,7 +112,12 @@ class Controller implements Selection {
             type: "button",
             onclick: () => {
               if (all) this.chosen.clear();
-              else for (const t of this.tasks) this.chosen.set(t.id, t);
+              else {
+                for (const t of this.tasks.slice(0, MAX_SELECTION)) this.chosen.set(t.id, t);
+                if (this.tasks.length > MAX_SELECTION) {
+                  toast(`Selected the first ${MAX_SELECTION}; up to ${MAX_SELECTION} at a time.`);
+                }
+              }
               this.update();
             },
           },
@@ -149,20 +160,20 @@ class Controller implements Selection {
     }
   }
 
-  private async bulk(action: string, extra: Record<string, unknown> = {}): Promise<void> {
+  /** One change for the whole selection, sent in parts the server accepts. */
+  private async bulk(
+    action: string,
+    verb: string,
+    extra: Record<string, unknown> = {},
+    note = "",
+  ): Promise<void> {
     if (this.chosen.size === 0) return;
-    try {
-      const result = await write<BulkResult>("tasks/bulk", {
-        action,
-        items: this.items(),
-        ...extra,
-      });
-      haptic("success");
-      toast(result.summary);
-    } catch (error) {
-      haptic("error");
-      toast(errorText(error));
-    }
+    const items = this.items();
+    const result = await inParts(items, (part) =>
+      write<BulkResult>("tasks/bulk", { action, items: part, ...extra }),
+    );
+    haptic(result.error ? "error" : "success");
+    toast(bulkSummary(verb, items.length, result, note, errorText));
     this.end();
   }
 
@@ -172,7 +183,7 @@ class Controller implements Selection {
       h("p", { class: "caption" }, "Moves the next reminders only; deadlines stay."),
       ...snoozeChoices(this.tomorrowLabel, (body) => {
         close();
-        void this.bulk("snooze", body);
+        void this.bulk("snooze", "Snoozed", body, " Deadlines unchanged.");
       }),
     );
   }
@@ -191,7 +202,7 @@ class Controller implements Selection {
               type: "button",
               onclick: () => {
                 close();
-                void this.bulk("move", { listId: l.id });
+                void this.bulk("move", `Moved to ${l.name}:`, { listId: l.id });
               },
             },
             l.name,
@@ -204,21 +215,22 @@ class Controller implements Selection {
   private async cancel(): Promise<void> {
     const items = this.items();
     try {
-      const preview = await write<{ text: string; confirmLabel: string; previewHash: string }>(
-        "tasks/bulk-cancel-preview",
-        { items },
-      );
+      // One preview for the whole selection; each part is confirmed for exactly its tasks.
+      const preview = await write<{
+        text: string;
+        confirmLabel: string;
+        chunks: { items: { id: string; version: number }[]; previewHash: string }[];
+      }>("tasks/bulk-cancel-preview", { items });
       confirmAction(preview.text, preview.confirmLabel, () => {
         void (async () => {
-          try {
-            const result = await write<BulkResult>("tasks/bulk-cancel", {
-              items,
-              previewHash: preview.previewHash,
-            });
-            toast(result.summary);
-          } catch (error) {
-            toast(errorText(error));
-          }
+          // The server's parts, one request each.
+          const result = await inParts(
+            preview.chunks,
+            async ([chunk]) =>
+              chunk ? write<BulkResult>("tasks/bulk-cancel", chunk) : { applied: 0 },
+            1,
+          );
+          toast(bulkSummary("Cancelled", items.length, result, "", errorText));
           this.end();
         })();
       });

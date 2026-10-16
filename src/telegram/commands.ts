@@ -16,6 +16,7 @@ export const BOT_COMMANDS: readonly BotCommand[] = [
   { command: "tasks", description: "Open tasks, by list, with actions" },
   { command: "app", description: "Open the app: tasks and your week" },
   { command: "find", description: "Search tasks and events by words" },
+  { command: "import", description: "Add up to 8 tasks at once, one per line" },
   { command: "daily", description: "Today's events, due and overdue tasks" },
   { command: "weekly", description: "This week, Monday to Sunday" },
   { command: "monthly", description: "This month, compactly" },

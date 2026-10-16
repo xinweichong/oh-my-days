@@ -59,6 +59,7 @@ The Telegram Mini App, opened from the chat (synthetic data).
 | | |
 |---|---|
 | **Quick capture** | Plain messages become one event or task: weekdays, `next Fri`, `in 3 days`, `end of month`, time ranges like `7-9pm`. Ambiguity gets a question with dated buttons ("Which Friday?", "3am or 3pm?") |
+| **Import** | `/import` and up to eight tasks, one per line: one preview, one confirmation, one Undo. Lines that aren't a single task are listed and skipped, and tasks you already have aren't added twice |
 | **Follow-ups** | Reply to a result with `move it to 4pm`, `rename it to …`, `delete it`, or `done` |
 | **Guided commands** | `/event` and `/task` walk through each step for anyone who prefers buttons; every question has Cancel |
 | **Undo and confirmations** | Results carry Undo; deletions, whole-series changes and guest notifications are previewed and confirmed |
