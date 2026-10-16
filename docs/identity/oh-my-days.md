@@ -107,14 +107,33 @@ colour, marigold appears only in the logo, the sun is never animated, the logo
 files are used as supplied, body text uses the system UI stack, voice rules
 apply to every line, symbols stay the design system's functional set (✓ completed,
 › opens, · separator, – range; no icon set), and demo content is synthetic and labelled where it could
-be mistaken for real data. The connection pages, privacy policy, Mini App and
-Telegram keep the rules above unchanged.
+be mistaken for real data. The connection pages, privacy policy and Telegram
+keep the rules above unchanged; the Mini App takes part of this finish (below).
 
 The page has two compositions: from 1024px the thoughts drift in an open field
 beside the headline; below that (phones and portrait tablets) they run in two
 slow rows under it, since the field needs that width to keep ten thoughts
 legible. The scroll-pinned walkthrough starts at 768px; phones get a stacked
 version that plays each step as it comes into view.
+
+## Mini App finish
+
+Approved by the owner on 2026-10-16 after comparing prototypes
+([ADR 0007](../adr/0007-mini-app-display-type-and-depth.md)), so the Mini App
+matches the landing page's polish while staying a tool:
+
+- **Figtree** for screen titles, sheet titles and large figures (tile counts,
+  the next-up time). Body text, rows, buttons and forms stay system UI.
+- **Soft depth** on the next-up card, Home's tiles, sheets and toasts only.
+  Rows and lists stay flat.
+- **Tide lines**: static behind Home's heading; drifting slowly on the All
+  clear screen, stopping under reduced motion. Nowhere else.
+- **The logo**: the mark beside Home's weekday heading (Telegram's header
+  already names the app); the full lockup on the launch screen; the mark on the
+  All clear screen. Dark themes use the reversed mark (white horizon). The sun
+  never moves and never marks the time of day.
+- **Kept**: tide as the one brand colour, marigold only in the logo, no list
+  colours and no icon set, status always in words.
 
 ## Related decisions
 
