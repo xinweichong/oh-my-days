@@ -611,8 +611,13 @@ calendar work when that update used more than 24 queries (`AFTER_ACCEPT_LIMITS`
 in `src/app.ts`, metered by `src/storage/query-meter.ts`); replies are still
 delivered at once and the minute tick does the rest.
 
-Known gap found while measuring: the Mini App's bulk actions accept up to 100
-tasks (`MAX_BULK` in `src/miniapp/writes.ts`), and each task costs about two
-statements, so a large selection can exceed the 50-query limit on Workers Free.
-Not changed here; it needs its own cap or paging.
+A gap found while measuring, fixed on the same branch: the Mini App's bulk
+actions accepted up to 100 tasks and read each one separately, about 3 queries
+per task, so completing 16 or more at once exceeded the 50-query limit. The
+selected tasks are now read in one query, one change request holds at most 20
+(`src/miniapp/limits.ts`; measured within 50 for every bulk action), and the app
+sends a selection of up to 100 in parts of 20 with one combined summary
+(`src/miniapp/client/bulk.ts`). A cancel preview still covers the whole
+selection and returns one confirmation per part, each bound to exactly its tasks
+and versions (`tests/miniapp/write-api.test.ts`, `tests/miniapp/bulk-parts.test.ts`).
 

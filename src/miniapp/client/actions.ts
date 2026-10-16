@@ -1,4 +1,5 @@
 import { ApiError, api, errorText, write } from "./api";
+import { bulkSummary, inParts } from "./bulk";
 import { h } from "./dom";
 import {
   addDays,
@@ -287,8 +288,6 @@ export function snoozeSheet(task: AppTask, agendaLabel = "Tomorrow morning"): vo
   );
 }
 
-const BULK_LIMIT = 100;
-
 /** Overdue's Snooze all: every task shown, each only if unchanged since it was shown. */
 export function snoozeAllSheet(tasks: AppTask[], agendaLabel: string): void {
   const close = sheet(
@@ -297,18 +296,12 @@ export function snoozeAllSheet(tasks: AppTask[], agendaLabel: string): void {
     ...snoozeChoices(agendaLabel, (body) => {
       close();
       void (async () => {
-        const summaries: string[] = [];
-        for (let i = 0; i < tasks.length; i += BULK_LIMIT) {
-          const items = tasks
-            .slice(i, i + BULK_LIMIT)
-            .map((t) => ({ id: t.id, version: t.version }));
-          const result = await run(() =>
-            write<{ summary: string }>("tasks/bulk", { action: "snooze", items, ...body }),
-          );
-          if (!result) break;
-          summaries.push(result.summary);
-        }
-        if (summaries.length) toast(summaries.join(" "));
+        const items = tasks.map((t) => ({ id: t.id, version: t.version }));
+        const result = await inParts(items, (part) =>
+          write<{ applied: number }>("tasks/bulk", { action: "snooze", items: part, ...body }),
+        );
+        haptic(result.error ? "error" : "success");
+        toast(bulkSummary("Snoozed", items.length, result, " Deadlines unchanged.", errorText));
         refresh();
       })();
     }),

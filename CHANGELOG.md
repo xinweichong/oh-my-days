@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Mini App: completing, snoozing, moving or cancelling many selected tasks at once no longer fails past about 15 tasks. The app sends a selection in parts of 20 and shows one result; you can select up to 100 at a time
 - Right after a message, the bot now handles that one message and, if it was a heavy one, leaves calendar updates to the next minute's run, so a single request stays within the free plan's database query limit. Replies still go out at once
 
 ## [2.2.0] - 2026-10-16
