@@ -589,7 +589,8 @@ own `/` route was removed (`tests/flows/google-setup.test.ts`). The move to the
 new host is a deploy-time step in the [deploy runbook](../runbooks/deploy.md#move-to-a-new-host).
 
 Mini App polish (owner, 2026-10-16; [ADR 0007](../adr/0007-mini-app-display-type-and-depth.md)):
-implemented and tested locally on `feature/mini-app-polish`, not deployed. The
+released as 2.2.0 (#27, #28, #30) and deployed to production from `main` on
+2026-10-16 as Worker version `ebaeda34`. The
 design rules in `DESIGN.md` and the identity doc were relaxed for display type,
 soft depth, and tide lines on the Mini App's launch and All clear screens. Figtree is served from
 `/app/figtree-<hash>.woff2`; Home's read model gained progress, overdue age,
@@ -599,3 +600,25 @@ The client screens were checked visually in headless Chromium with a stubbed
 Telegram object and synthetic data, not yet inside Telegram. The README and
 landing page screenshots were retaken from the same harness; the 2.1.0 ones are
 in `docs/screenshots/archive/`.
+
+Bulk import (owner, 2026-10-16): `/import` on `feature/bulk-import`, tested
+locally, not deployed. `src/domain/import.ts` reads each line with the
+quick-capture grammar; `src/application/import-flow.ts` previews, confirms,
+and undoes (`tests/flows/import.test.ts`, `tests/domain/import.test.ts`). The
+cap of eight tasks comes from Workers Free's 50 D1 queries per invocation:
+measured worst case (every deadline inside the reminder window) is within 50
+for eight. The webhook's after-accept work now handles one update and skips
+calendar work when that update used more than 24 queries (`AFTER_ACCEPT_LIMITS`
+in `src/app.ts`, metered by `src/storage/query-meter.ts`); replies are still
+delivered at once and the minute tick does the rest.
+
+A gap found while measuring, fixed on the same branch: the Mini App's bulk
+actions accepted up to 100 tasks and read each one separately, about 3 queries
+per task, so completing 16 or more at once exceeded the 50-query limit. The
+selected tasks are now read in one query, one change request holds at most 20
+(`src/miniapp/limits.ts`; measured within 50 for every bulk action), and the app
+sends a selection of up to 100 in parts of 20 with one combined summary
+(`src/miniapp/client/bulk.ts`). A cancel preview still covers the whole
+selection and returns one confirmation per part, each bound to exactly its tasks
+and versions (`tests/miniapp/write-api.test.ts`, `tests/miniapp/bulk-parts.test.ts`).
+

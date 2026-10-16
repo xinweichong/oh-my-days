@@ -22,6 +22,7 @@ import { findSeries } from "../storage/series";
 import {
   ensureInboxStatement,
   findTask,
+  findTasks,
   listTaskLists,
   snoozeIfUnchangedStatement,
   type TaskChanges,
@@ -30,6 +31,7 @@ import {
 import type { UserRecord } from "../storage/users";
 import { formatDayLabel, formatWallTime } from "../telegram/format";
 import { apiError, json, type MiniAppDeps } from "./api";
+import { MAX_BULK_WRITE, MAX_SELECTION } from "./limits";
 import { pendingTaskIds, toAppTask } from "./views";
 
 /**
@@ -544,15 +546,16 @@ async function seriesAction(
 
 // --- Several tasks (step 5c) ----------------------------------------------------------
 
-const MAX_BULK = 100;
+// A cancel preview returns one confirmation per part of MAX_BULK_WRITE tasks.
+export { MAX_BULK_WRITE, MAX_SELECTION };
 
 interface BulkItem {
   id: string;
   version: number;
 }
 
-function bulkItems(value: unknown): BulkItem[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_BULK) return null;
+function bulkItems(value: unknown, max: number): BulkItem[] | null {
+  if (!Array.isArray(value) || value.length === 0 || value.length > max) return null;
   const items: BulkItem[] = [];
   const seen = new Set<string>();
   for (const raw of value) {
@@ -588,22 +591,42 @@ async function bulk(
   body: Body,
   key: string | null,
 ): Promise<Response> {
-  const items = bulkItems(body.items);
+  const preview = action === "bulk-cancel-preview";
+  const items = bulkItems(body.items, preview ? MAX_SELECTION : MAX_BULK_WRITE);
   if (!items) return apiError("bad_request", 400);
   const now = deps.clock.now();
-  // Only this user's tasks: anything else counts as gone.
-  const tasks = (await Promise.all(items.map((i) => findTask(deps.db, user.id, i.id)))).flatMap(
-    (t, i) => (t && t.version === items[i]?.version && t.status === "open" ? [t] : []),
+  // Only this user's tasks, read in one query: anything else counts as gone.
+  const found = new Map(
+    (
+      await findTasks(
+        deps.db,
+        user.id,
+        items.map((i) => i.id),
+      )
+    ).map((t) => [t.id, t]),
   );
-  const bound = { action: "cancel", items: items.map((i) => [i.id, i.version]) };
+  const tasks = items.flatMap((i) => {
+    const t = found.get(i.id);
+    return t && t.version === i.version && t.status === "open" ? [t] : [];
+  });
+  const bound = (part: BulkItem[]) => ({
+    action: "cancel",
+    items: part.map((i) => [i.id, i.version]),
+  });
 
-  if (action === "bulk-cancel-preview") {
+  if (preview) {
     if (tasks.length !== items.length) return json({ error: "stale" }, 409);
     const marked = tasks.filter((t) => t.deadline.kind !== "none").length;
+    // Each part is confirmed for exactly its tasks and versions.
+    const chunks = [];
+    for (let i = 0; i < items.length; i += MAX_BULK_WRITE) {
+      const part = items.slice(i, i + MAX_BULK_WRITE);
+      chunks.push({ items: part, previewHash: await previewHash(bound(part)) });
+    }
     return json({
       text: `Cancel ${count(tasks.length)}?${marked ? ` Deadlines are removed from Google Calendar for ${count(marked)}.` : ""}`,
       confirmLabel: `Cancel ${count(tasks.length)}`,
-      previewHash: await previewHash(bound),
+      chunks,
     });
   }
   if (!key) return apiError("bad_request", 400);
@@ -632,7 +655,9 @@ async function bulk(
       }
       break;
     case "bulk-cancel":
-      if (body.previewHash !== (await previewHash(bound))) return json({ error: "stale" }, 409);
+      if (body.previewHash !== (await previewHash(bound(items)))) {
+        return json({ error: "stale" }, 409);
+      }
       changes = { status: "cancelled" };
       verb = "Cancelled";
       break;

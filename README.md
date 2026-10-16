@@ -7,7 +7,7 @@
 
 A Telegram assistant for your events and tasks, with **Google Calendar as the calendar**. Type what you need to remember, and it lands in your calendar or your task lists, then comes back as a morning agenda and reminders. It runs on free tiers only and works fully without AI.
 
-[![Version](https://img.shields.io/badge/version-2.2.0-0b6b62?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.3.0-0b6b62?style=flat-square)](CHANGELOG.md)
 [![Check](https://img.shields.io/github/actions/workflow/status/xinweichong/oh-my-days/check.yml?branch=main&label=check&style=flat-square)](https://github.com/xinweichong/oh-my-days/actions/workflows/check.yml)
 [![Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-51605d?style=flat-square)](https://workers.cloudflare.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-51605d?style=flat-square)](tsconfig.json)
@@ -59,6 +59,7 @@ The Telegram Mini App, opened from the chat (synthetic data).
 | | |
 |---|---|
 | **Quick capture** | Plain messages become one event or task: weekdays, `next Fri`, `in 3 days`, `end of month`, time ranges like `7-9pm`. Ambiguity gets a question with dated buttons ("Which Friday?", "3am or 3pm?") |
+| **Import** | `/import` and up to eight tasks, one per line: one preview, one confirmation, one Undo. Lines that aren't a single task are listed and skipped, and tasks you already have aren't added twice |
 | **Follow-ups** | Reply to a result with `move it to 4pm`, `rename it to …`, `delete it`, or `done` |
 | **Guided commands** | `/event` and `/task` walk through each step for anyone who prefers buttons; every question has Cancel |
 | **Undo and confirmations** | Results carry Undo; deletions, whole-series changes and guest notifications are previewed and confirmed |

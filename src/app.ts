@@ -24,6 +24,7 @@ import { appUrl } from "./miniapp/entry";
 import { createTokenCipher, type TokenCipher } from "./security/token-cipher";
 import { type Clock, systemClock } from "./shared/clock";
 import { type IdGenerator, randomIds } from "./shared/ids";
+import { meteredDb } from "./storage/query-meter";
 import { findUserByTelegramId } from "./storage/users";
 import { createTelegramClient, type TelegramClient } from "./telegram/client";
 import type { UpdateHandler } from "./telegram/router";
@@ -51,12 +52,19 @@ export interface GoogleServices {
   calendarApi: (tokens: AccessTokenSource) => GoogleCalendarApi;
 }
 
-/** Bounds for the processing started right after a webhook is acknowledged. */
+/**
+ * Bounds for the processing started right after a webhook is acknowledged.
+ * It runs in the webhook's own invocation, which Workers Free limits to 50 D1
+ * queries: one update (its own webhook handles each, and ticks catch any
+ * left), then calendar work only while the update was light, then replies.
+ */
 export const AFTER_ACCEPT_LIMITS = {
-  updates: 3,
+  updates: 1,
   operations: 2,
   calendars: 2,
   deliveries: 5,
+  /** Above this many queries, calendar work waits for the next tick (about a minute). */
+  lightUpdateQueries: 24,
 } as const;
 
 export function createServices(env: Env): Services {
@@ -181,13 +189,18 @@ export function httpDeps(services: () => Services): HttpDeps {
         clock: s.clock,
         ids: s.ids,
         afterAccept: async (telegramUserId) => {
-          const user = await findUserByTelegramId(s.db, telegramUserId);
+          const meter = meteredDb(s.db);
+          const m: Services = { ...s, db: meter.db };
+          const user = await findUserByTelegramId(m.db, telegramUserId);
           if (!user) return;
-          await processUserInbox(inboxDeps(s), user.id, AFTER_ACCEPT_LIMITS.updates);
-          await runDueOperations(runnerDeps(s), AFTER_ACCEPT_LIMITS.operations, user.id);
-          // Runs only calendars already due, e.g. after Force poll.
-          await syncDueCalendars(syncDeps(s), AFTER_ACCEPT_LIMITS.calendars, user.id);
-          await deliverDue(deliveryDeps(s), AFTER_ACCEPT_LIMITS.deliveries, user.id);
+          await processUserInbox(inboxDeps(m), user.id, AFTER_ACCEPT_LIMITS.updates);
+          if (meter.used() <= AFTER_ACCEPT_LIMITS.lightUpdateQueries) {
+            await runDueOperations(runnerDeps(m), AFTER_ACCEPT_LIMITS.operations, user.id);
+            // Runs only calendars already due, e.g. after Force poll.
+            await syncDueCalendars(syncDeps(m), AFTER_ACCEPT_LIMITS.calendars, user.id);
+          }
+          // Replies always go now, so a heavy update still answers at once.
+          await deliverDue(deliveryDeps(m), AFTER_ACCEPT_LIMITS.deliveries, user.id);
         },
       };
     },

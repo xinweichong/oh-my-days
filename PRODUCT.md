@@ -61,7 +61,7 @@ guilt. Logo design deferred. See [identity](docs/identity/oh-my-days.md).
 
 ## Evidence on Hand
 
-Released as 2.2.0 (2026-10-16; 2.0.0 on 2026-10-14) and in daily use by the owner. Product
+Released as 2.3.0 (2026-10-17; 2.0.0 on 2026-10-14) and in daily use by the owner. Product
 specification, backend plan and its implementation record, the approved logo and
 design system, the [experience brief](docs/design/experience.md), the
 [acceptance matrix](docs/acceptance.md), and [capacity measurements](docs/capacity.md).

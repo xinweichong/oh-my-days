@@ -1,5 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { MAX_BULK_WRITE, MAX_SELECTION } from "../../src/miniapp/writes";
+import { countingDb } from "../support/counting-db";
 import { rows } from "../support/db";
 import { OTHER_USER } from "../support/fakes";
 import { appApi } from "../support/miniapp";
@@ -400,14 +402,16 @@ describe("Mini App bulk actions (D7 5c)", () => {
       text: "Cancel 3 tasks? Deadlines are removed from Google Calendar for 2 tasks.",
       confirmLabel: "Cancel 3 tasks",
     });
+    const [chunk] = preview.body.chunks as { items: unknown[]; previewHash: string }[];
+    expect(chunk?.items).toHaveLength(3);
     const fewer = await appApi(world, "tasks/bulk-cancel", {
       method: "POST",
-      body: { key: key(), items: items.slice(1), previewHash: preview.body.previewHash },
+      body: { key: key(), items: items.slice(1), previewHash: chunk?.previewHash },
     });
     expect(fewer.status).toBe(409);
     const done = await appApi(world, "tasks/bulk-cancel", {
       method: "POST",
-      body: { key: key(), items, previewHash: preview.body.previewHash },
+      body: { key: key(), items, previewHash: chunk?.previewHash },
     });
     expect(done.body).toMatchObject({ summary: "Cancelled 3 tasks." });
   });
@@ -432,6 +436,137 @@ describe("Mini App bulk actions (D7 5c)", () => {
     expect(result.body).toMatchObject({ applied: 0 });
     const statuses = await rows<{ status: string }>(env.DB, "SELECT DISTINCT status FROM tasks");
     expect(statuses.map((s) => s.status)).toEqual(["open"]);
+  });
+});
+
+describe("Mini App bulk actions within the D1 query limit", () => {
+  /** Tasks with deadlines, created through /import (8 per import). */
+  async function many(world: World, n: number) {
+    for (let start = 0; start < n; start += 8) {
+      const lines = Array.from(
+        { length: Math.min(8, n - start) },
+        (_, i) => `Task ${String(start + i + 1).padStart(3, "0")} by 30 Oct 5pm`,
+      );
+      await world.send(["/import", ...lines].join("\n"));
+      await world.press(/^Import \d+ tasks?$/);
+    }
+    return rows<{ id: string; version: number }>(
+      env.DB,
+      "SELECT id, version FROM tasks ORDER BY title",
+    );
+  }
+
+  it(`changes up to ${MAX_BULK_WRITE} tasks per request within Workers Free's 50 queries`, async () => {
+    const counter = countingDb(env.DB);
+    const world = new World(counter.db);
+    await setUpOwner(world);
+    await world.send("/task");
+    await world.press("Lists");
+    await world.press("New list");
+    await world.send("Work");
+    const [work] = await rows<{ id: string }>(
+      env.DB,
+      "SELECT id FROM task_lists WHERE name = 'Work'",
+    );
+    await many(world, MAX_BULK_WRITE);
+    const current = async () =>
+      (await rows<{ id: string; version: number }>(env.DB, "SELECT id, version FROM tasks")).map(
+        (t) => ({ id: t.id, version: t.version }),
+      );
+    const cost = async (path: string, body: Record<string, unknown>) => {
+      const before = counter.queries.length;
+      const result = await appApi(world, path, { method: "POST", body });
+      return { queries: counter.queries.length - before, result };
+    };
+    // Each step changes all twenty: the costliest case for each action.
+    const snooze = await cost("tasks/bulk", {
+      key: key(),
+      action: "snooze",
+      preset: "hour",
+      items: await current(),
+    });
+    const move = await cost("tasks/bulk", {
+      key: key(),
+      action: "move",
+      listId: work?.id,
+      items: await current(),
+    });
+    const preview = await cost("tasks/bulk-cancel-preview", { items: await current() });
+    const [chunk] = preview.result.body.chunks as { items: unknown[]; previewHash: string }[];
+    const cancel = await cost("tasks/bulk-cancel", {
+      key: key(),
+      items: chunk?.items,
+      previewHash: chunk?.previewHash,
+    });
+    await env.DB.prepare("UPDATE tasks SET status = 'open', cancelled_at = NULL").run();
+    const complete = await cost("tasks/bulk", {
+      key: key(),
+      action: "complete",
+      items: await current(),
+    });
+    for (const [name, step] of Object.entries({ snooze, move, preview, cancel, complete })) {
+      expect([name, step.result.status]).toEqual([name, 200]);
+      expect([name, step.queries <= 50]).toEqual([name, true]);
+    }
+    expect(complete.result.body).toMatchObject({ applied: MAX_BULK_WRITE });
+  });
+
+  it(`refuses more than ${MAX_BULK_WRITE} tasks in one change, so the app sends them in parts`, async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const items = Array.from({ length: MAX_BULK_WRITE + 1 }, (_, i) => ({
+      id: `t${i}`,
+      version: 1,
+    }));
+    for (const path of ["tasks/bulk", "tasks/bulk-cancel"]) {
+      const result = await appApi(world, path, {
+        method: "POST",
+        body: { key: key(), action: "complete", previewHash: "x", items },
+      });
+      expect(result.status).toBe(400);
+    }
+    const selection = Array.from({ length: MAX_SELECTION + 1 }, (_, i) => ({
+      id: `t${i}`,
+      version: 1,
+    }));
+    const tooMany = await appApi(world, "tasks/bulk-cancel-preview", {
+      method: "POST",
+      body: { items: selection },
+    });
+    expect(tooMany.status).toBe(400);
+  });
+
+  it("previews cancelling a large selection once, confirmed group by group for exactly those tasks", async () => {
+    const world = new World(env.DB);
+    await setUpOwner(world);
+    const tasks = await many(world, MAX_BULK_WRITE + 4);
+    const items = tasks.map((t) => ({ id: t.id, version: t.version }));
+    const preview = await appApi(world, "tasks/bulk-cancel-preview", {
+      method: "POST",
+      body: { items },
+    });
+    expect(preview.body).toMatchObject({ confirmLabel: `Cancel ${MAX_BULK_WRITE + 4} tasks` });
+    const chunks = preview.body.chunks as { items: { id: string }[]; previewHash: string }[];
+    expect(chunks.map((c) => c.items.length)).toEqual([MAX_BULK_WRITE, 4]);
+    // Together the groups are exactly the selection, each task once.
+    expect(chunks.flatMap((c) => c.items.map((i) => i.id)).sort()).toEqual(
+      items.map((i) => i.id).sort(),
+    );
+    // A group's confirmation doesn't carry over to another group.
+    const swapped = await appApi(world, "tasks/bulk-cancel", {
+      method: "POST",
+      body: { key: key(), items: chunks[1]?.items, previewHash: chunks[0]?.previewHash },
+    });
+    expect(swapped.status).toBe(409);
+    for (const chunk of chunks) {
+      const done = await appApi(world, "tasks/bulk-cancel", {
+        method: "POST",
+        body: { key: key(), items: chunk.items, previewHash: chunk.previewHash },
+      });
+      expect(done.status).toBe(200);
+    }
+    const open = await rows(env.DB, "SELECT id FROM tasks WHERE status = 'open'");
+    expect(open).toEqual([]);
   });
 });
 
