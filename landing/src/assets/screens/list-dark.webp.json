@@ -1,4 +1,4 @@
 {
-  "prompt": "Origin: pre-existing screenshot docs/screenshots/mini-app-list-dark.png (Oh My Days Mini App, synthetic demo data), converted with cwebp -q 80 -m 6. Not generated.",
-  "createdAt": "2026-10-15T07:48:56.769Z"
+  "prompt": "Origin: screenshot docs/screenshots/mini-app-list-dark.png (Oh My Days Mini App after the 2.2.0 polish, synthetic demo data, captured in headless Chromium with a stubbed Telegram object), converted with cwebp -q 80 -m 6. Not generated.",
+  "createdAt": "2026-10-16T01:35:58.000Z"
 }

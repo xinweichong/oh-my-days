@@ -597,4 +597,5 @@ week days, list overdue counts and an `allClear` flag, and task screens gained
 the user's local time and series labels (`tests/miniapp/read-api.test.ts`).
 The client screens were checked visually in headless Chromium with a stubbed
 Telegram object and synthetic data, not yet inside Telegram. The README and
-landing page screenshots still show the previous design.
+landing page screenshots were retaken from the same harness; the 2.1.0 ones are
+in `docs/screenshots/archive/`.
