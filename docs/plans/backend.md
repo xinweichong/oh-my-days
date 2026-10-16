@@ -599,3 +599,20 @@ The client screens were checked visually in headless Chromium with a stubbed
 Telegram object and synthetic data, not yet inside Telegram. The README and
 landing page screenshots were retaken from the same harness; the 2.1.0 ones are
 in `docs/screenshots/archive/`.
+
+Bulk import (owner, 2026-10-16): `/import` on `feature/bulk-import`, tested
+locally, not deployed. `src/domain/import.ts` reads each line with the
+quick-capture grammar; `src/application/import-flow.ts` previews, confirms,
+and undoes (`tests/flows/import.test.ts`, `tests/domain/import.test.ts`). The
+cap of eight tasks comes from Workers Free's 50 D1 queries per invocation:
+measured worst case (every deadline inside the reminder window) is within 50
+for eight. The webhook's after-accept work now handles one update and skips
+calendar work when that update used more than 24 queries (`AFTER_ACCEPT_LIMITS`
+in `src/app.ts`, metered by `src/storage/query-meter.ts`); replies are still
+delivered at once and the minute tick does the rest.
+
+Known gap found while measuring: the Mini App's bulk actions accept up to 100
+tasks (`MAX_BULK` in `src/miniapp/writes.ts`), and each task costs about two
+statements, so a large selection can exceed the 50-query limit on Workers Free.
+Not changed here; it needs its own cap or paging.
+

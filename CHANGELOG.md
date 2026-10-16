@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/import`**: up to eight tasks at once, one per line, written as you would one at a time (`Essay by Fri 23 Oct 11:59pm to CS2040S`). One preview lists each task with its deadline and list, and every skipped line with the reason; nothing is added until you confirm. A task you already have is skipped, so importing the same list twice adds nothing new. **Undo import** removes the batch after asking, keeping any task changed since
+
+### Changed
+
+- Right after a message, the bot now handles that one message and, if it was a heavy one, leaves calendar updates to the next minute's run, so a single request stays within the free plan's database query limit. Replies still go out at once
+
 ## [2.2.0] - 2026-10-16
 
 A polished Mini App, in the landing page's finish.
