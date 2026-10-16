@@ -325,6 +325,21 @@ export async function findTask(
   return row ? toTask(row) : null;
 }
 
+/** This user's tasks with the given IDs, in one query; IDs that aren't theirs are absent. */
+export async function findTasks(
+  db: D1Database,
+  userId: string,
+  taskIds: readonly string[],
+): Promise<TaskRecord[]> {
+  if (taskIds.length === 0) return [];
+  const placeholders = taskIds.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(`SELECT ${TASK_COLUMNS} ${FROM} WHERE t.user_id = ? AND t.id IN (${placeholders})`)
+    .bind(userId, ...taskIds)
+    .all<TaskRow>();
+  return results.map(toTask);
+}
+
 /** Tasks linked to the given markers in one calendar. */
 export async function findTasksByMarkers(
   db: D1Database,
