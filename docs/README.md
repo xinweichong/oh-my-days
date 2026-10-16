@@ -21,7 +21,7 @@ became of it.
 | [Identity](identity/oh-my-days.md) | Name, voice, copy rules, logo, the repository banner, and the landing page's marketing exception | Current |
 | [Logo files](identity/logo/) | Mark, lockups, avatar, and banner (SVG and PNG); superseded concepts in `archive/` | Current |
 | [Experience brief](design/experience.md) | Telegram flows, connection pages, and the Mini App's layout and behaviour | Current |
-| [Screenshots](screenshots/) | Mini App captures with synthetic data, used in the README | Current |
+| [Screenshots](screenshots/) | Mini App captures with synthetic data, used in the README and on the landing page; earlier versions in `archive/` | Current |
 
 ## Engineering
 

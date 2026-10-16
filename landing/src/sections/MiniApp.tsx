@@ -18,7 +18,7 @@ const SOURCES: Record<(typeof MINI_APP_SCREENS)[number]["id"], string> = {
 const POINTS = [
   {
     title: "What's next, at a glance.",
-    body: "The next event or deadline, then Today, Overdue, This week and No deadline with their counts.",
+    body: "The next event or deadline with a countdown, then Today, Overdue and This week, and your lists.",
   },
   {
     title: "One tap to complete.",

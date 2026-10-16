@@ -232,21 +232,21 @@ export const MINI_APP_SCREENS = [
   {
     id: "home",
     label: "Home",
-    alt: "Mini App home: Wednesday 14 Oct, Gym next at 7pm, quick add, Today 6, Overdue 3, This week 4, No deadline 3, and lists",
+    alt: "Mini App home: the logo beside Wednesday, Gym next at 7pm in 2 hr 24 min, quick add, Today 6, Overdue 3 (oldest 62 days), This week 4, and lists with overdue counts",
   },
   {
     id: "overdue",
     label: "Overdue",
-    alt: "Overdue screen: Pay rent twice overdue and File expense report one day overdue, with check circles",
+    alt: "Overdue screen: Pay rent missed twice, folded under its monthly series, and File expense report one day overdue",
   },
   {
     id: "list",
     label: "List",
-    alt: "The Work list in dark mode: four open tasks with their deadlines",
+    alt: "The Work list in dark mode: four open tasks grouped into Overdue, Today and Later",
   },
   {
     id: "snooze",
     label: "Snooze",
-    alt: "Snooze sheet for Send invoice to Northwind: In 1 hour, Tomorrow at 8am, or a date and time; the deadline stays",
+    alt: "Snooze sheet for Send invoice to Northwind: In 1 hour, This evening, Tomorrow or Monday, each with its time, or a day and time; the deadline stays",
   },
 ] as const;
