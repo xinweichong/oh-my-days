@@ -589,7 +589,8 @@ own `/` route was removed (`tests/flows/google-setup.test.ts`). The move to the
 new host is a deploy-time step in the [deploy runbook](../runbooks/deploy.md#move-to-a-new-host).
 
 Mini App polish (owner, 2026-10-16; [ADR 0007](../adr/0007-mini-app-display-type-and-depth.md)):
-implemented and tested locally on `feature/mini-app-polish`, not deployed. The
+released as 2.2.0 (#27, #28, #30) and deployed to production from `main` on
+2026-10-16 as Worker version `ebaeda34`. The
 design rules in `DESIGN.md` and the identity doc were relaxed for display type,
 soft depth, and tide lines on the Mini App's launch and All clear screens. Figtree is served from
 `/app/figtree-<hash>.woff2`; Home's read model gained progress, overdue age,
