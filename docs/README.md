@@ -1,7 +1,7 @@
 # Documentation
 
 Everything about how Oh My Days is meant to work, how it was built, and how to
-run it. **Current** documents describe the product as released (2.3.0); a
+run it. **Current** documents describe the product as released (2.4.0); a
 **record** is a plan or check kept as written, with a status line saying what
 became of it.
 
