@@ -39,5 +39,6 @@ became of it.
 |---|---|---|
 | [Deploy runbook](runbooks/deploy.md) | Deploying, secrets, webhook, Mini App setup, releasing a version, rollback | Current |
 | [Operations runbook](runbooks/operations.md) | Restore, data deletion, and recovery drills | Current |
+| [Onboarding runbook](runbooks/onboarding.md) | Adding and removing up to four more users on the same deployment | Current |
 | [Changelog](../CHANGELOG.md) | What changed in each release | Current |
 | [AGENTS.md](../AGENTS.md) | Rules for contributors and coding agents | Current |

@@ -74,7 +74,8 @@ in `src/jobs/tick.ts` first.
 Add their numeric Telegram ID to `TELEGRAM_ALLOWED_USER_IDS` (comma-separated)
 with `npx wrangler secret put TELEGRAM_ALLOWED_USER_IDS`. They also need to be a
 test user on the OAuth consent screen while the app is in Testing (100-user cap).
-Recheck [capacity](../capacity.md) before adding many users.
+Recheck [capacity](../capacity.md) before adding many users. The full steps, the invite text, and removal are in
+[onboarding.md](onboarding.md).
 
 ## Backup and restore
 
@@ -138,6 +139,8 @@ DELETE FROM telegram_inbox WHERE user_id = '<id>';
 DELETE FROM users WHERE id = '<id>';
 ```
 
-Also remove their ID from `TELEGRAM_ALLOWED_USER_IDS`. Markers in their Google
+Also remove their ID from `TELEGRAM_ALLOWED_USER_IDS`. Removing the ID alone does
+not stop their agendas, reminders, or syncs: scheduled work runs for every user
+record. Markers in their Google
 Calendar remain theirs; they can revoke access at
 https://myaccount.google.com/connections.
