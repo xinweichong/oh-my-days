@@ -57,11 +57,23 @@ Two consequences to tell people before inviting them:
    in `src/jobs/tick.ts` only after checking `cpuTime` (Workers Free allows
    10 ms per run).
 
-3. **Set a contact address.** Make sure `CONTACT_EMAIL` is set in
+3. **Know the per-run query limit.** Workers Free allows 50 D1 queries in
+   each invocation, and each minute's run does all its work inside that: inbox,
+   changes, one calendar sync, then the agendas and reminders of every user
+   due (up to 20). A morning agenda takes about 13 queries. If several people
+   get their agenda in the same minute (the same timezone and agenda hour),
+   one run may go over the limit. This hasn't been measured with more than one
+   user. The run would then stop partway. The agendas already queued are kept,
+   the rest follow in the next minutes, and messages may go out a few minutes
+   late. To spread the load, ask people to pick different agenda hours in
+   `/settings` (6–11am), and check `wrangler tail` for failed runs around 8am
+   after each new user.
+
+4. **Set a contact address.** Make sure `CONTACT_EMAIL` is set in
    `wrangler.production.local.json` so `/privacy` shows where to ask for
    deletion. You have to delete within 30 days of a request.
 
-4. **Keep the allowlist somewhere safe.** `TELEGRAM_ALLOWED_USER_IDS` is a
+5. **Keep the allowlist somewhere safe.** `TELEGRAM_ALLOWED_USER_IDS` is a
    Worker secret, and secrets can't be read back. Keep the current list
    (including your own ID) in a password manager, because every change replaces
    the whole value.
