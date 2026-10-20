@@ -1,7 +1,7 @@
 # Documentation
 
 Everything about how Oh My Days is meant to work, how it was built, and how to
-run it. **Current** documents describe the product as released (2.3.0); a
+run it. **Current** documents describe the product as released (2.4.0); a
 **record** is a plan or check kept as written, with a status line saying what
 became of it.
 
@@ -28,7 +28,7 @@ became of it.
 | Document | What it holds | Kind |
 |---|---|---|
 | [Backend plan](plans/backend.md) | Architecture, data model, and delivery gates; §10 is the implementation record | Current (§10), record (plan) |
-| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets, Mini App display type and depth | Current |
+| [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets, Mini App display type and depth, several reminders per item (proposed) | Current |
 | [Improvement plan](plans/improvements.md) | The post-beta improvements, all released in 2.0.0 | Record |
 | [Connection-page plan](plans/connection-pages.md) | Layout and states of the Google connection pages, as built | Record |
 | [Stage 0 feasibility](feasibility/stage-0.md) | Checks made before anything was provisioned | Record |
@@ -39,5 +39,6 @@ became of it.
 |---|---|---|
 | [Deploy runbook](runbooks/deploy.md) | Deploying, secrets, webhook, Mini App setup, releasing a version, rollback | Current |
 | [Operations runbook](runbooks/operations.md) | Restore, data deletion, and recovery drills | Current |
+| [Onboarding runbook](runbooks/onboarding.md) | Adding and removing up to four more users on the same deployment | Current |
 | [Changelog](../CHANGELOG.md) | What changed in each release | Current |
 | [AGENTS.md](../AGENTS.md) | Rules for contributors and coding agents | Current |

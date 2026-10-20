@@ -24,7 +24,7 @@ describe("/help", () => {
     for (const example of ["Dinner Fri 7pm", "Buy milk", "Pay rent by 1 Nov"]) {
       expect(capture(example, ctx).kind, example).toBe("create");
     }
-    for (const followUp of ["move it to 4pm", "done"]) {
+    for (const followUp of ["move it to 4pm", "remind me 1 day before 6pm", "done"]) {
       expect(parseFollowUp(followUp, ctx.today), followUp).not.toBeNull();
     }
   });

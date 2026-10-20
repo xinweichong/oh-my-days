@@ -99,8 +99,8 @@ describe("skipping idle users (B4)", () => {
     await world.send("/event");
     await world.press("Change an event");
     await world.press(/Lunch$/);
-    await world.press("Reminder");
-    await world.press("1 day before"); // now due today at 9:30
+    await world.press("Reminders");
+    await world.press("1 day"); // added to the default; due today at 9:30
     await minutes(world, 20);
     expect(world.lastText()).toBe("In 1 day: Lunch\nSat 26 Sep 2026, 9:30–10:30am");
   });

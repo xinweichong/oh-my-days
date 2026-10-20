@@ -7,7 +7,7 @@
 
 A Telegram assistant for your events and tasks, with **Google Calendar as the calendar**. Type what you need to remember, and it lands in your calendar or your task lists, then comes back as a morning agenda and reminders. It runs on free tiers only and works fully without AI.
 
-[![Version](https://img.shields.io/badge/version-2.3.0-0b6b62?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.4.0-0b6b62?style=flat-square)](CHANGELOG.md)
 [![Check](https://img.shields.io/github/actions/workflow/status/xinweichong/oh-my-days/check.yml?branch=main&label=check&style=flat-square)](https://github.com/xinweichong/oh-my-days/actions/workflows/check.yml)
 [![Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-51605d?style=flat-square)](https://workers.cloudflare.com)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-51605d?style=flat-square)](tsconfig.json)
@@ -80,7 +80,7 @@ The Telegram Mini App, opened from the chat (synthetic data).
 | | |
 |---|---|
 | **Morning agenda** | Today's events, due and overdue tasks at a time you choose, with a catch-up if it was missed |
-| **Reminders** | Before events and exact deadlines, with location, call link, Done and Snooze; quiet hours hold them |
+| **Reminders** | Before events and exact deadlines, with location, call link, Done and Snooze; quiet hours hold them. Up to five per event or task, including date-only deadlines: presets, typed ones (`45m`, `1 day before 6pm`, `Thu 9am`), or a reply like "remind me 2h" |
 | **Views** | `/daily`, `/weekly`, `/monthly`, `/overdue`, `/reminders`, `/find`, read live from Google with a labelled fallback |
 | **Mini App** | Tasks and a read-only day and week overview inside Telegram: swipe to snooze, multi-select, quick add |
 

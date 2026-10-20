@@ -601,8 +601,9 @@ Telegram object and synthetic data, not yet inside Telegram. The README and
 landing page screenshots were retaken from the same harness; the 2.1.0 ones are
 in `docs/screenshots/archive/`.
 
-Bulk import (owner, 2026-10-16): `/import` on `feature/bulk-import`, tested
-locally, not deployed. `src/domain/import.ts` reads each line with the
+Bulk import (owner, 2026-10-16): `/import`, released as 2.3.0 (#32, #33) and
+deployed to production from `main` on 2026-10-17 as Worker version `475df748`;
+the command menu re-registered with `/import` on the next maintenance tick. `src/domain/import.ts` reads each line with the
 quick-capture grammar; `src/application/import-flow.ts` previews, confirms,
 and undoes (`tests/flows/import.test.ts`, `tests/domain/import.test.ts`). The
 cap of eight tasks comes from Workers Free's 50 D1 queries per invocation:
@@ -622,3 +623,25 @@ sends a selection of up to 100 in parts of 20 with one combined summary
 selection and returns one confirmation per part, each bound to exactly its tasks
 and versions (`tests/miniapp/write-api.test.ts`, `tests/miniapp/bulk-parts.test.ts`).
 
+Several reminders per item (owner, 2026-10-20): on `feature/item-reminders`,
+tested locally, not deployed ([ADR 0008](../adr/0008-several-reminders-per-item.md),
+migration 0023). An event or task has up to five reminders: a lead time, a time
+on its day or up to 7 days before, or a fixed time. Date-only deadlines can
+have them too (`src/domain/reminders.ts`, one parser for chat and the Mini
+App). `src/application/reminder-plan.ts` plans every reminder for the reminder
+pass, `/reminders`, and the Mini App. Events beyond the 26-hour horizon (and
+all-day events) are scheduled from the start kept with their reminders, then
+re-read from Google before sending; a moved event's kept start is updated. The
+chat has a toggle menu with Custom…, Default, and None, plus "remind me …"
+follow-ups (`src/application/reminder-flow.ts`). The Mini App has
+`GET event-reminders` and `POST reminders`, version-checked and idempotent
+(`src/miniapp/reminders.ts`), a sheet on task detail, and a sheet when an event
+is tapped. A user's pass handles at most 8 due reminders, so a pass with twenty
+due (and that day's agenda) stays within 50 queries
+(`tests/flows/item-reminders.test.ts` "query budget"). Tests:
+`tests/domain/reminders.test.ts`, `tests/flows/item-reminders.test.ts`,
+`tests/miniapp/reminders-api.test.ts`, and a purge case in
+`tests/jobs/tick.test.ts`. The Mini App sheets were checked in headless
+Chromium with a stubbed Telegram object and API responses taken from the test
+world (synthetic data): task detail, the reminders sheet, adding a typed
+reminder, and the event sheet. They have not been tried inside Telegram.

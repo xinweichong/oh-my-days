@@ -1,4 +1,5 @@
 import { parseWhen, type When } from "./parse-input";
+import { parseReminders } from "./reminders";
 import type { LocalDate } from "./time";
 
 /**
@@ -11,7 +12,9 @@ export type FollowUp =
   | { kind: "choose_move"; options: When[] }
   | { kind: "rename"; title: string }
   | { kind: "delete" }
-  | { kind: "done" };
+  | { kind: "done" }
+  /** "Remind me 1 day before 6pm", "no reminders": the item's own reminders. */
+  | { kind: "remind"; text: string };
 
 export function parseFollowUp(input: string, today: LocalDate): FollowUp | null {
   const text = input
@@ -35,6 +38,18 @@ export function parseFollowUp(input: string, today: LocalDate): FollowUp | null 
   if (/^(?:delete|cancel|remove)(?: it| this)?$/i.test(text)) return { kind: "delete" };
   if (/^(?:done|finished|complete(?: it)?|mark (?:it |this )?(?:as )?done)$/i.test(text)) {
     return { kind: "done" };
+  }
+  if (/^(?:no reminders?|don'?t remind me|stop reminding me|reminders? off)\.?$/i.test(text)) {
+    return { kind: "remind", text: "none" };
+  }
+  // "Remind me to call Sam" is a new task, not a follow-up: only a message that
+  // reads entirely as reminders is taken as one.
+  m = /^(?:remind me|reminders?|set reminders?|alert me)(?: (?:about )?(?:it|this))?:? (.+)$/i.exec(
+    text,
+  );
+  if (m && !/^to /i.test(m[1] ?? "")) {
+    const rest = (m[1] ?? "").replace(/^only /i, "");
+    if (parseReminders(rest, today).kind !== "error") return { kind: "remind", text: m[1] ?? "" };
   }
   return null;
 }

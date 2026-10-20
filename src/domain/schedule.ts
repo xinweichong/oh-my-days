@@ -157,12 +157,16 @@ export function agendaKind(
 
 /**
  * Reminder keys identify one logical reminder. They include the target's time
- * and the offset, so moving an event or changing its reminder schedules a new
- * reminder instead of suppressing it.
+ * and the rule, so moving an event or changing its reminders schedules a new
+ * reminder instead of suppressing it. A lead time is written as bare minutes,
+ * as it was before items had several reminders.
  */
 export const reminderKeys = {
-  event: (calendarId: string, eventId: string, startsAt: number, minutes: number) =>
-    `event:${calendarId}/${eventId}:${startsAt}:${minutes}`,
-  taskDue: (taskId: string, dueAt: number, minutes: number) => `task:${taskId}:${dueAt}:${minutes}`,
+  /** `when` is the start instant (or an all-day date); `rule` the minutes or a rule code. */
+  event: (calendarId: string, eventId: string, when: number | string, rule: number | string) =>
+    `event:${calendarId}/${eventId}:${when}:${rule}`,
+  /** `when` is the exact deadline (or a date-only deadline's date). */
+  taskDue: (taskId: string, when: number | string, rule: number | string) =>
+    `task:${taskId}:${when}:${rule}`,
   snooze: (taskId: string, until: number) => `snooze:${taskId}:${until}`,
 };

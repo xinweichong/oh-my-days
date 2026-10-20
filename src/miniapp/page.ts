@@ -360,6 +360,15 @@ body.selecting .toast { bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + 136
 .time-chip[aria-pressed="true"] { border-color: var(--tide); background: var(--tide-soft); color: var(--tide); font-weight: 600; }
 .time-chip:disabled { opacity: 0.4; cursor: default; }
 .time-chip.plain { border-color: transparent; background: none; color: var(--tide); font-weight: 600; }
+
+/* Reminders: the item's own, removable; presets as chips */
+.reminder-list { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--surface-sunk); }
+.reminder-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 4px 6px 4px 14px; }
+.reminder-list li + li { border-top: 1px solid var(--line); }
+.reminder-none { margin: 0; color: var(--ink-muted); }
+.reminder-sheet { display: flex; flex-direction: column; gap: 12px; }
+.reminder-sheet .stack-form { margin-top: 4px; }
 .sheet-body { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 8px; }
 .sheet-body > .caption { margin: 0; text-align: center; }
 .sheet-text { margin: 0; }

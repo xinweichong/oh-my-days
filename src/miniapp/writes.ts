@@ -32,6 +32,7 @@ import type { UserRecord } from "../storage/users";
 import { formatDayLabel, formatWallTime } from "../telegram/format";
 import { apiError, json, type MiniAppDeps } from "./api";
 import { MAX_BULK_WRITE, MAX_SELECTION } from "./limits";
+import { writeReminders } from "./reminders";
 import { pendingTaskIds, toAppTask } from "./views";
 
 /**
@@ -69,6 +70,10 @@ export async function handleWrite(
   const key = typeof body.key === "string" && KEY.test(body.key) ? body.key : null;
 
   if (path === "reconnect-link") return reconnectLink(deps, user);
+  if (path === "reminders") {
+    if (!key) return apiError("bad_request", 400);
+    return writeReminders(deps, user, body, key);
+  }
   if (path === "tasks") {
     if (!key) return apiError("bad_request", 400);
     return quickAdd(deps, user, body, key);

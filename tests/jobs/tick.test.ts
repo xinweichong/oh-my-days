@@ -49,12 +49,29 @@ describe("scheduled tick", () => {
     await acceptUpdate(env.DB, textUpdate(OWNER, "/help"), clock.now(), ids);
     await runTick(tickDeps(services));
     expect(await count(env.DB, "telegram_inbox")).toBe(1);
+    // Events' own reminder settings: two long over, one ahead; a task's has no start.
+    const later = clock.now() + FINISHED_RETENTION_MS + 1;
+    const setting = env.DB.prepare(
+      `INSERT INTO reminder_overrides (user_id, target_kind, target_key, rules, anchor_at,
+         anchor_date, updated_at)
+       SELECT id, ?, ?, '[]', ?, ?, 0 FROM users`,
+    );
+    await env.DB.batch([
+      setting.bind("event", "cal/over", clock.now(), null),
+      setting.bind("event", "cal/all-day-over", null, "2026-09-25"),
+      setting.bind("event", "cal/ahead", later + 86_400_000, null),
+      setting.bind("task", "task-1", null, null),
+    ]);
 
     clock.advance(FINISHED_RETENTION_MS + 1);
     await runTick(tickDeps(services)); // frequent maintenance first
     await runTick(tickDeps(services)); // then cleanup
     expect(await count(env.DB, "telegram_inbox")).toBe(0);
     expect(await count(env.DB, "telegram_outbox")).toBe(0);
+    const kept = await env.DB.prepare(
+      "SELECT target_key FROM reminder_overrides ORDER BY target_key",
+    ).all<{ target_key: string }>();
+    expect(kept.results.map((r) => r.target_key)).toEqual(["cal/ahead", "task-1"]);
   });
 });
 

@@ -1,4 +1,6 @@
+import type { EventFields } from "../domain/calendar-event";
 import { parseWhen } from "../domain/parse-input";
+import type { ReminderAnchor } from "../domain/reminders";
 import {
   isOverdue,
   monthStart,
@@ -8,14 +10,14 @@ import {
 } from "../domain/schedule";
 import { addDays, type LocalDate, localDateAt, zonedInstant } from "../domain/time";
 import { appButton, appUrl } from "../miniapp/entry";
-import { findCachedEvent } from "../storage/events";
+import { findCachedEvents } from "../storage/events";
 import { listStoredCalendars } from "../storage/google";
 import {
   clearPendingInputStatement,
   type PendingInput,
   type UiAction,
 } from "../storage/interactions";
-import { horizonEvents, reminderOverrides, setOverrideStatement } from "../storage/reminders";
+import { allReminderSettings, horizonEvents, type ReminderSetting } from "../storage/reminders";
 import {
   findTask,
   listOpenTasks,
@@ -38,14 +40,16 @@ import {
 import { guidedPrompt } from "./cancel";
 import { whenLabel, whenQuestion } from "./choices";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { ruleLabel, ruleLabels, taskAnchor } from "./reminder-flow";
+import { eventTargetKey, planReminders } from "./reminder-plan";
 import type { SetupDeps } from "./setup";
 import { dueLabel, sortByDeadline, taskLabel } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
 /**
  * Deterministic views (no AI) and reminder controls: /daily, /weekly,
- * /monthly, /calendars, /overdue, /reminders, Snooze, and per-item reminder
- * overrides. Weekly and monthly views use actual calendar periods.
+ * /monthly, /calendars, /overdue, /reminders, and Snooze. Per-item reminders
+ * are in reminder-flow.ts. Weekly and monthly views use actual calendar periods.
  */
 
 export interface ViewFlowDeps extends SetupDeps {
@@ -376,96 +380,80 @@ export async function overdueView(deps: ViewFlowDeps, user: UserRecord): Promise
   };
 }
 
-function minutesText(minutes: number | null): string {
-  if (minutes === null) return "no reminder";
-  if (minutes === 0) return "at the time";
-  if (minutes % 1440 === 0)
-    return minutes === 1440 ? "1 day before" : `${minutes / 1440} days before`;
-  if (minutes % 60 === 0) return minutes === 60 ? "1 hour before" : `${minutes / 60} hours before`;
-  return `${minutes} minutes before`;
-}
-
-/** Upcoming reminders, snoozed tasks, and custom reminder settings. */
+/** Upcoming reminders, snoozed tasks, and items with their own reminders. */
 export async function remindersView(deps: ViewFlowDeps, user: UserRecord): Promise<Reaction> {
   const stop = blocked(user);
   if (stop) return stop;
   const now = deps.clock.now();
-  const eventOverrides = await reminderOverrides(deps.db, user.id, "event");
-  const taskOverrides = await reminderOverrides(deps.db, user.id, "task");
-  const upcoming: { at: number; line: string }[] = [];
-
-  for (const e of await horizonEvents(deps.db, user.id, now, now + 26 * 3_600_000)) {
-    if (e.declined) continue;
-    const key = `${e.calendarId}/${e.eventId}`;
-    const minutes = eventOverrides.has(key)
-      ? (eventOverrides.get(key) ?? null)
-      : user.reminderMinutes;
-    if (minutes === null) continue;
-    const at = e.startsAt - minutes * 60_000;
-    if (at < now) continue;
-    upcoming.push({ at, line: `${e.summary} (${minutesText(minutes)})` });
+  const [settings, horizon, tasks] = await Promise.all([
+    allReminderSettings(deps.db, user.id),
+    horizonEvents(deps.db, user.id, now, now + 7 * 86_400_000),
+    listOpenTasks(deps.db, user.id, null),
+  ]);
+  // Titles of events with their own reminders: the synced copy, else the horizon.
+  const known = new Map<string, { summary: string; fields: EventFields }>();
+  const cached = await findCachedEvents(deps.db, user.id, [...settings.event.keys()]);
+  for (const [key, event] of cached) {
+    known.set(key, { summary: event.fields.summary, fields: event.fields });
   }
-  const tasks = await listOpenTasks(deps.db, user.id, null);
-  const snoozed: string[] = [];
-  for (const t of tasks) {
-    if (t.snoozedUntil !== null && t.snoozedUntil > now) {
-      snoozed.push(`• [${t.listName}] ${t.title} · until ${when(t.snoozedUntil, user)}`);
-      continue;
-    }
-    if (t.deadline.kind !== "datetime" || t.deadline.at <= now) continue;
-    const minutes = taskOverrides.has(t.id)
-      ? (taskOverrides.get(t.id) ?? null)
-      : user.reminderMinutes;
-    if (minutes === null) continue;
-    const at = t.deadline.at - minutes * 60_000;
-    if (at >= now && at < now + 7 * 86_400_000) {
-      upcoming.push({
-        at,
-        line: `[${t.listName}] ${t.title} (${minutesText(minutes)} the deadline)`,
-      });
-    }
-  }
+  const planned = planReminders({ user, now, settings, horizon, tasks, known });
 
   const lines = ["Upcoming reminders"];
-  const sorted = upcoming.sort((a, b) => a.at - b.at);
+  const upcoming = planned.filter((p) => p.at > now && p.at <= now + 7 * 86_400_000);
   lines.push(
-    ...(sorted.length
-      ? sorted.slice(0, 20).map((u) => `• ${when(u.at, user)} — ${u.line}`)
-      : ["None in the next day."]),
+    ...(upcoming.length
+      ? upcoming.slice(0, 20).map((p) => {
+          const label = ruleLabel(p.rule, user.timezone);
+          const what = p.event
+            ? `${p.event.summary} (${label})`
+            : `[${p.task?.listName}] ${p.task?.title} (${label}${p.rule.kind === "before" ? " the deadline" : ""})`;
+          return `• ${when(p.at, user)} — ${what}`;
+        })
+      : ["None coming up."]),
   );
-  lines.push("", `Date-only deadlines are in the ${agendaTimeLabel(user)} agenda.`);
+  lines.push(
+    "",
+    `Date-only deadlines are in the ${agendaTimeLabel(user)} agenda, unless they have their own reminders.`,
+  );
+  const snoozed = tasks
+    .filter((t) => t.snoozedUntil !== null && t.snoozedUntil > now)
+    .map((t) => `• [${t.listName}] ${t.title} · until ${when(t.snoozedUntil as number, user)}`);
   if (snoozed.length) lines.push("", "Snoozed", ...snoozed);
 
   const custom: string[] = [];
-  for (const [key, minutes] of eventOverrides) {
-    const [calendarId = "", eventId = ""] = splitKey(key);
-    const event = await findCachedEvent(deps.db, user.id, calendarId, eventId);
-    const title =
-      event?.fields.summary ?? (await horizonTitle(deps, user, calendarId, eventId)) ?? "An event";
-    custom.push(`• ${title}: ${minutesText(minutes)}`);
+  const horizonTitles = new Map<string, string>(
+    horizon.map((e) => [eventTargetKey(e.calendarId, e.eventId), e.summary]),
+  );
+  for (const [key, setting] of settings.event) {
+    const anchor = setting.anchor;
+    const past = anchor
+      ? anchor.kind === "instant"
+        ? anchor.at <= now
+        : anchor.date < localDateAt(now, user.timezone)
+      : false;
+    if (past) continue;
+    const title = known.get(key)?.summary ?? horizonTitles.get(key) ?? "An event";
+    custom.push(`• ${title}: ${describeRules(setting, anchor, user)}`);
   }
-  for (const [taskId, minutes] of taskOverrides) {
-    const task = await findTask(deps.db, user.id, taskId);
-    if (task && task.status === "open")
-      custom.push(`• [${task.listName}] ${task.title}: ${minutesText(minutes)}`);
+  for (const task of tasks) {
+    const setting = settings.task.get(task.id);
+    if (setting) {
+      custom.push(
+        `• [${task.listName}] ${task.title}: ${describeRules(setting, taskAnchor(task), user)}`,
+      );
+    }
   }
-  if (custom.length) lines.push("", "Custom reminders", ...custom.slice(0, 20));
+  if (custom.length) lines.push("", "Own reminders", ...custom.slice(0, 20));
   return message(user.privateChatId, lines.join("\n"));
 }
 
-function splitKey(key: string): [string, string] {
-  const index = key.lastIndexOf("/");
-  return [key.slice(0, index), key.slice(index + 1)];
-}
-
-async function horizonTitle(
-  deps: ViewFlowDeps,
+function describeRules(
+  setting: ReminderSetting,
+  anchor: ReminderAnchor | null,
   user: UserRecord,
-  calendarId: string,
-  eventId: string,
-) {
-  const events = await horizonEvents(deps.db, user.id, 0, Number.MAX_SAFE_INTEGER);
-  return events.find((e) => e.calendarId === calendarId && e.eventId === eventId)?.summary ?? null;
+): string {
+  const labels = ruleLabels(setting.rules, anchor, user.timezone);
+  return labels.length ? labels.join("; ") : "none";
 }
 
 function when(instant: number, user: UserRecord): string {
@@ -533,40 +521,10 @@ async function snooze(
   };
 }
 
-export function reminderMenu(
-  deps: SetupDeps,
-  user: UserRecord,
-  kind: "event" | "task",
-  targetKey: string,
-  title: string,
-): Reaction {
-  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
-  const option = (label: string, minutes: number | null) =>
-    buttons.button(label, "reminder_set", { kind, targetKey, title, minutes });
-  return {
-    replies: [
-      keyboardMessage(
-        user,
-        `Remind me about ${title}:`,
-        {
-          inline_keyboard: [
-            [option("10 min before", 10), option("30 min before", 30), option("1 hour before", 60)],
-            [option("1 day before", 1440), option("No reminder", null)],
-          ],
-        },
-        null,
-      ),
-    ],
-    statements: (db, guard) => buttons.statements(db, guard),
-  };
-}
-
 // --- Routing -------------------------------------------------------------------
 
 export function isViewAction(action: string): boolean {
-  return (
-    action.startsWith("view_") || action.startsWith("snooze_") || action.startsWith("reminder_")
-  );
+  return action.startsWith("view_") || action.startsWith("snooze_");
 }
 
 export async function handleViewAction(
@@ -648,36 +606,6 @@ export async function handleViewAction(
           "Send a date and time, like tomorrow 9am or Fri 14:00.",
         ),
       );
-    case "reminder_menu":
-      return combine(
-        ack(),
-        reminderMenu(
-          deps,
-          user,
-          payload.kind === "task" ? "task" : "event",
-          String(payload.targetKey ?? ""),
-          String(payload.title ?? "this"),
-        ),
-      );
-    case "reminder_set": {
-      const minutes = typeof payload.minutes === "number" ? payload.minutes : null;
-      const kind = payload.kind === "task" ? "task" : "event";
-      const now = deps.clock.now();
-      return combine(ack(), removeButtons(user, callback), {
-        replies: [
-          {
-            method: "sendMessage",
-            params: {
-              chat_id: user.privateChatId,
-              text: `Reminder for ${String(payload.title ?? "this")}: ${minutesText(minutes)}.`,
-            },
-          },
-        ],
-        statements: (db) => [
-          setOverrideStatement(db, user.id, kind, String(payload.targetKey ?? ""), minutes, now),
-        ],
-      });
-    }
     default:
       return ack("This button is no longer valid.");
   }

@@ -2,7 +2,8 @@ import { complete, reopen, snoozeSheet } from "./actions";
 import { h } from "./dom";
 import { slideX } from "./motion";
 import { onBack, open, type Screen } from "./nav";
-import { haptic, telegram, verticalSwipes } from "./telegram";
+import { eventSheet } from "./reminders";
+import { haptic, verticalSwipes } from "./telegram";
 import type { AppEvent, AppTask } from "./types";
 
 /**
@@ -380,12 +381,8 @@ export function eventRow(event: AppEvent, options: { timeColumn?: boolean } = {}
       {
         class: `row-main${column ? " with-time" : ""}`,
         type: "button",
-        "aria-label": `${event.timeLabel} ${event.title}, opens Google Calendar`,
-        onclick: () => {
-          const tg = telegram();
-          if (tg) tg.openLink(event.link);
-          else window.open(event.link, "_blank", "noopener");
-        },
+        "aria-label": `${event.timeLabel} ${event.title}, reminders and Google Calendar`,
+        onclick: () => void eventSheet(event),
       },
       column ? h("span", { class: "time-col" }, event.timeLabel) : null,
       h(

@@ -254,7 +254,7 @@ describe("Mini App reads", () => {
     const detail = await appApi(world, `tasks/${task?.id}`);
     expect(detail.body).toMatchObject({
       task: { title: "Send invoice", deadline: { kind: "datetime", label: "Due Fri 25 Sep, 5pm" } },
-      reminder: "60 minutes before",
+      reminders: { summary: "1 hour before (default)", custom: false, timed: true, version: 0 },
     });
     expect((await appApi(world, "recent")).body).toMatchObject({ days: 30, tasks: [] });
   });

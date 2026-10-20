@@ -481,10 +481,6 @@ export function isSnoozed(task: Pick<TaskRecord, "snoozedUntil">, now: number): 
   return task.snoozedUntil !== null && task.snoozedUntil > now;
 }
 
-/**
- * Open tasks that could need a reminder now: exact deadlines within the next
- * 25 hours (longest built-in offer is one day), and snoozes that just ended.
- */
 /** The earliest snooze still to end, for scheduling the reminder pass. */
 export async function nextSnoozeEnd(
   db: D1Database,
@@ -500,6 +496,11 @@ export async function nextSnoozeEnd(
   return row?.at ?? null;
 }
 
+/**
+ * Open tasks that could need a reminder now: exact deadlines within the next
+ * 25 hours (the default lead is at most 2 hours), snoozes that just ended, and
+ * any task with a deadline and its own reminders (ADR 0008).
+ */
 export async function reminderCandidateTasks(
   db: D1Database,
   userId: string,
@@ -511,7 +512,9 @@ export async function reminderCandidateTasks(
       `SELECT ${TASK_COLUMNS} ${FROM}
        WHERE t.user_id = ?1 AND t.status = 'open' AND (
          (t.due_kind = 'datetime' AND t.due_at > ?2 AND t.due_at <= ?2 + 90000000)
-         OR (t.snoozed_until IS NOT NULL AND t.snoozed_until <= ?2 AND t.snoozed_until > ?2 - ?3))
+         OR (t.snoozed_until IS NOT NULL AND t.snoozed_until <= ?2 AND t.snoozed_until > ?2 - ?3)
+         OR (t.due_kind <> 'none' AND EXISTS (SELECT 1 FROM reminder_overrides o
+               WHERE o.user_id = t.user_id AND o.target_kind = 'task' AND o.target_key = t.id)))
        LIMIT 200`,
     )
     .bind(userId, now, snoozeWindowMs)

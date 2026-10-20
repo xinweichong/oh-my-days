@@ -33,6 +33,7 @@ import {
 } from "./invite-flow";
 import type { HandlerRegistry } from "./operation-types";
 import { message, type Reaction, UI_PREFIX } from "./reactions";
+import { handleReminderAction, handleReminderInput, isReminderAction } from "./reminder-flow";
 import {
   handlePendingInput,
   handleUiAction,
@@ -95,6 +96,8 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
       if (isFollowUpAction(action.action))
         return handleFollowUpAction(deps, user, callback, action);
       if (isTaskAction(action.action)) return handleTaskAction(deps, user, callback, action);
+      if (isReminderAction(action.action))
+        return handleReminderAction(deps, user, callback, action);
       if (isViewAction(action.action)) return handleViewAction(deps, user, callback, action);
       return handleUiAction(deps, user, callback, action);
     }
@@ -153,6 +156,8 @@ export function createConversation(deps: ConversationDeps): UpdateHandler {
         return handleEventInput(deps, user, input, pending);
       }
       if (pending?.kind === "task_snooze") return handleSnoozeInput(deps, user, input, pending);
+      if (pending?.kind === "reminder_input")
+        return handleReminderInput(deps, user, input, pending);
       if (pending?.kind === "find_query") return handleFindInput(deps, user, input, pending);
       if (pending?.kind === "import_list") return handleImportInput(deps, user, input, pending);
       if (pending && isTaskInput(pending.kind)) {
