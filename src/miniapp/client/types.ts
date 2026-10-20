@@ -116,10 +116,33 @@ export interface TaskSet {
   lists: ListSummary[];
 }
 
+/** One item's reminders (ADR 0008); writes carry `version`. */
+export interface ReminderPanel {
+  version: number;
+  custom: boolean;
+  timed: boolean;
+  items: { code: string; label: string }[];
+  presets: { code: string; label: string; on: boolean }[];
+  summary: string;
+  max: number;
+}
+
+export type ReminderTarget =
+  | { kind: "task"; taskId: string }
+  | { kind: "event"; calendarId: string; eventId: string };
+
+export interface EventReminders {
+  title: string;
+  when: string;
+  target: ReminderTarget;
+  reminders: ReminderPanel;
+}
+
 export interface TaskDetail {
   task: AppTask;
   local: Local;
-  reminder: string | null;
+  /** Null without a deadline, or when the task isn't open. */
+  reminders: ReminderPanel | null;
   repeat: { seriesId: string; version: number; label: string; active: boolean } | null;
   workTime: string[];
   tomorrowLabel: string;

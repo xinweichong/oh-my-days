@@ -19,6 +19,7 @@ import {
   restriction,
 } from "./event-flow";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { applyTypedReminders, eventTarget, taskTarget } from "./reminder-flow";
 import { change, confirmPrompt, dueLabel } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
 
@@ -140,6 +141,15 @@ async function eventFollowUp(
   const calendar = (await listStoredCalendars(deps.db, user.id)).find(
     (c) => c.calendarId === target.calendarId,
   );
+  // Reminders change nothing in Google, so view-only events can have them.
+  if (followUp.kind === "remind") {
+    return applyTypedReminders(
+      deps,
+      user,
+      eventTarget(event.calendarId, event.eventId, event.fields),
+      followUp.text,
+    );
+  }
   const blocked = restriction(event, calendar);
   if (blocked) return message(user.privateChatId, blocked);
 
@@ -207,6 +217,8 @@ async function taskFollowUp(
     );
   }
   switch (followUp.kind) {
+    case "remind":
+      return applyTypedReminders(deps, user, taskTarget(task), followUp.text);
     case "done":
       if (task.status !== "open")
         return message(user.privateChatId, `${task.title} is already ${task.status}.`);

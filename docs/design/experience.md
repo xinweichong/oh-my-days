@@ -179,11 +179,11 @@ without a tap. Today's count includes events and tasks, split on the sub-line.
 
 | Screen | Content |
 |---|---|
-| Today | All-day events, timed events in order, overdue then due tasks; events read-only, tapping opens Google Calendar |
+| Today | All-day events, timed events in order, overdue then due tasks; events read-only; tapping one opens its reminders and **Open in Google Calendar** |
 | Week | Monday–Sunday sections, previous/next week, today highlighted, empty days folded into one line |
 | Overdue | Grouped per task; recurring occurrences grouped (`Rent · 2 overdue`) with per-occurrence actions; **Snooze all**, never moving deadlines |
 | No deadline, List | Open tasks in that set |
-| Task detail | Title, deadline, list, reminder, repeat rule, history; rename, change or remove deadline, move, cancel or restore, series actions |
+| Task detail | Title, deadline, list, reminders (changed in a sheet: presets, typed, Default, None), repeat rule, history; rename, change or remove deadline, move, cancel or restore, series actions |
 | Recent | Completed and cancelled in the last 30 days; Reopen, Restore |
 
 Out of scope: event editing, time or month grids, settings, offline use, widgets.

@@ -15,10 +15,20 @@ import { mark, tideLines } from "./brand";
 import { h } from "./dom";
 import { clockLabel, countdown, daysBetween, minutesOf, relativeDay, setLocal } from "./local";
 import { back, current, open, refresh, type Screen, swap } from "./nav";
+import { remindersSheet } from "./reminders";
 import { eventRow, labelled, navRow, savedCopyBanner, section, taskRow, title } from "./rows";
 import { selection } from "./select";
 import { mainButton, telegram } from "./telegram";
-import type { AppTask, Home, Recent, TaskDetail, TaskSet, Today, Week } from "./types";
+import type {
+  AppTask,
+  Home,
+  Recent,
+  ReminderPanel,
+  TaskDetail,
+  TaskSet,
+  Today,
+  Week,
+} from "./types";
 import { sheet } from "./ui";
 
 /** Each screen fetches its data and returns its content. */
@@ -610,7 +620,7 @@ function taskScreen(detail: TaskDetail): Node {
   const t = detail.task;
   const isOpen = t.status === "open";
   const facts: [string, string][] = [["List", t.list.name]];
-  if (detail.reminder) facts.unshift(["Reminder", detail.reminder]);
+  if (detail.reminders) facts.unshift(["Reminders", detail.reminders.summary]);
   if (detail.repeat)
     facts.push(["Repeats", `${detail.repeat.label}${detail.repeat.active ? "" : " (stopped)"}`]);
   if (t.snoozeLabel) facts.push(["Snooze", t.snoozeLabel]);
@@ -670,6 +680,15 @@ function taskScreen(detail: TaskDetail): Node {
       { class: "actions" },
       native ? null : button(primaryLabel, primary, ""),
       isOpen ? button("Snooze…", () => snoozeSheet(t, detail.tomorrowLabel)) : null,
+      detail.reminders
+        ? button("Reminders…", () =>
+            remindersSheet(
+              t.title,
+              { kind: "task", taskId: t.id },
+              detail.reminders as ReminderPanel,
+            ),
+          )
+        : null,
     ),
     repeat?.active
       ? section(

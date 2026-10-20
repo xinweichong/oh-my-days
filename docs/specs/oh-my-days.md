@@ -160,7 +160,7 @@ Undo must restore the prior state only when it remains valid. It must not overwr
 - Default Telegram reminder: **one hour before the event**. The user can change this default in `/settings` (amended 2026-10-10, [improvement D1](../plans/improvements.md#6-phase-4--further-features-d1d6)); it also applies to exact-time task deadlines.
 - Apply this reminder to all timed events in selected calendars, including events created outside the bot.
 - Exclude cancelled events and invitations the user has declined.
-- Permit per-event reminder overrides in natural language or structured input.
+- Permit per-item reminders in natural language or structured input: up to five per event or task, each a lead time ("2 hours before"), a time on the item's day or a day before it ("1 day before 6pm"), or a fixed time ("Thu 9am"); or none. They replace the default for that item (amended 2026-10-20, [ADR 0008](../adr/0008-several-reminders-per-item.md)).
 - Detect overlaps against selected calendars. Task deadline markers do not reserve time and must not generate scheduling conflicts.
 - Fixed recurring events are supported. Distinguish editing one occurrence from editing a series.
 
@@ -183,6 +183,8 @@ Deadlines show when work is due; they do not reserve work time. A separate expli
 Use ordinary calendar entries in **Tasks - Oh My Days** as the task deadline projection. The application owns task state, including open-ended tasks, lists, snoozes, and recurrence occurrence status. This is not a Google Tasks integration.
 
 Entries created directly in the dedicated task calendar become tasks. Ordinary entries in other selected calendars remain events.
+
+Any task with a deadline, date-only included, can also have its own reminders (§5); a date-only deadline's reminders fall on or before its day (amended 2026-10-20).
 
 Proposed date semantics: a date-only task becomes overdue after the end of its due date in its applicable timezone; an exact-time task becomes overdue after that instant. The 8am reminder is not itself a deadline.
 
@@ -241,7 +243,7 @@ References to "8am" below mean the configured agenda time. The agenda is keyed b
 
 Date-only due reminders and the overdue summary are combined into this message. Do not send duplicate 8am task messages for the same items. Overdue tasks continue to appear daily until completed, cancelled, snoozed, or rescheduled.
 
-Event reminders and exact-time task reminders remain separate one-hour-before notifications. Reminder overrides must be shown in `/reminders`.
+Event reminders and exact-time task reminders remain separate one-hour-before notifications. An item's own reminders (§5) are separate notifications too, and must be shown in `/reminders`.
 
 ### Evening preview
 
@@ -328,7 +330,7 @@ Proposed implementation definition: count failures of completed sync attempts, n
 
 ### Missed reminders
 
-After bot downtime, send one catch-up summary for overdue tasks and still-upcoming events whose reminders were missed. Do not send a burst of stale alerts. Skip old one-hour-before event warnings once the events have started.
+After bot downtime, send one catch-up summary for overdue tasks and still-upcoming events whose reminders were missed. Do not send a burst of stale alerts. Skip old one-hour-before event warnings once the events have started. More than eight reminders due for one user at once arrive over consecutive minutes, to stay within the per-invocation query limit (amended 2026-10-20, [ADR 0008](../adr/0008-several-reminders-per-item.md)).
 
 A late daily agenda (clarified 2026-10-09, [improvement B5](../plans/improvements.md#b5-late-agenda-cutoff)): if the agenda has not gone out by 12:00 local time, send it as **Catch-up: today so far** with only events that have not ended and the still-open tasks; after 20:00, skip it and count the date as covered. When setup finishes after 08:00, the first agenda is the next day's.
 

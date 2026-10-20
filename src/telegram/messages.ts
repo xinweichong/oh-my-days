@@ -17,6 +17,7 @@ export function helpText(): string {
     "",
     "Then reply to the result to change it, for example:",
     "move it to 4pm",
+    "remind me 1 day before 6pm",
     "done",
     "",
     "Commands:",

@@ -1,8 +1,16 @@
 import { renderDay, tasksForDay } from "../application/calendar-view";
 import { ActionButtons } from "../application/reactions";
+import {
+  eventTargetKey,
+  type PlannedEvent,
+  type PlannedReminder,
+  planReminders,
+} from "../application/reminder-plan";
 import { dueLabel } from "../application/task-flow";
 import { dayButtons } from "../application/view-flow";
-import type { CalendarPort, CalendarSyncSource, EventDisplay } from "../calendar/port";
+import type { CalendarPort, CalendarSyncSource } from "../calendar/port";
+import type { EventFields } from "../domain/calendar-event";
+import type { ReminderAnchor, ReminderRule } from "../domain/reminders";
 import {
   agendaKind,
   eveningDueDate,
@@ -15,24 +23,21 @@ import { addDays, localDateAt } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { findCachedEvents } from "../storage/events";
 import { unguarded } from "../storage/guard";
 import { enqueueStatement } from "../storage/outbox";
 import {
   agendaClaimGuard,
   agendaSent,
   allClaimedGuard,
-  allReminderOverrides,
+  allReminderSettings,
   claimAgendaStatement,
   claimReminderStatement,
   horizonEvents,
   loggedReminderKeys,
+  reanchorStatement,
 } from "../storage/reminders";
-import {
-  isSnoozed,
-  nextSnoozeEnd,
-  reminderCandidateTasks,
-  type TaskRecord,
-} from "../storage/tasks";
+import { nextSnoozeEnd, reminderCandidateTasks, type TaskRecord } from "../storage/tasks";
 import {
   findUserById,
   setNextDueStatement,
@@ -40,12 +45,20 @@ import {
   usersDueForReminders,
 } from "../storage/users";
 import type { InlineKeyboardButton } from "../telegram/api";
-import { formatEventRange } from "../telegram/format";
+import { formatDayLabel, formatEventRange, formatTime } from "../telegram/format";
 
 /** A reminder this late counts as missed: it joins a single catch-up summary. */
 export const LATE_AFTER_MS = 10 * 60_000;
 /** Snooze reminders older than this are not sent at all. */
 const SNOOZE_STALE_MS = 24 * 60 * 60_000;
+/** Item reminders older than this are not sent at all (the log keeps keys for 30 days). */
+const STALE_REMINDER_MS = 7 * 24 * 60 * 60_000;
+/**
+ * Reminders handled per user per tick. Each is a D1 claim, and Workers Free
+ * allows 50 queries per invocation, so a backlog (after downtime, or many items
+ * due at once) goes out over consecutive minutes rather than failing the tick.
+ */
+export const MAX_DUE_PER_PASS = 8;
 /** Bounds Google reads for revalidation per user per tick. */
 const MAX_REVALIDATIONS = 5;
 
@@ -63,20 +76,16 @@ export type ReminderSource = CalendarSyncSource & Pick<CalendarPort, "getEvent">
 
 interface Due {
   key: string;
+  /** Other reminders of the same item due at the same moment, claimed together. */
+  alsoKeys: string[];
   dueAt: number;
   kind: "event" | "task" | "snooze";
   line: string;
-  /** For events: what to revalidate. */
-  event?: {
-    calendarId: string;
-    eventId: string;
-    startsAt: number;
-    text: string;
-    /** Location and links, refreshed from the live read when there is one. */
-    display: EventDisplay;
-  };
+  /** For events: what to revalidate, and the message. */
+  event?: PlannedEvent & { text: string };
   task?: TaskRecord;
-  minutes?: number;
+  /** The rule that fired (not for snoozes). */
+  rule?: ReminderRule;
 }
 
 /**
@@ -257,7 +266,6 @@ function minutesLabel(minutes: number): string {
   return `In ${minutes} minutes`;
 }
 
-/** Reminders due now (not yet handled), and when the next one falls due. */
 /** An event reminder with where it is, the call link, and Open in Calendar. */
 function eventReminder(event: NonNullable<Due["event"]>): {
   text: string;
@@ -273,6 +281,39 @@ function eventReminder(event: NonNullable<Due["event"]>): {
   return { text: lines.join("\n"), keyboard: row.length ? [row] : [] };
 }
 
+/** "In 1 hour" for a lead time; otherwise a plain reminder. */
+function heading(rule: ReminderRule): string {
+  return rule.kind === "before" ? minutesLabel(rule.minutes) : "Reminder";
+}
+
+/** The when-line of an event reminder, from its start and end when known. */
+function eventWhen(
+  fields: Pick<EventFields, "start" | "end"> | null,
+  anchor: ReminderAnchor,
+  timeZone: string,
+): string {
+  if (fields) return formatEventRange(fields, timeZone);
+  if (anchor.kind === "date") return formatDayLabel(anchor.date);
+  return `${formatDayLabel(localDateAt(anchor.at, timeZone))}, ${formatTime(anchor.at, timeZone)}`;
+}
+
+function eventDue(planned: PlannedReminder, event: PlannedEvent, timeZone: string): Due {
+  const range = eventWhen(event.fields, event.anchor, timeZone);
+  return {
+    key: planned.key,
+    alsoKeys: [],
+    dueAt: planned.at,
+    kind: "event",
+    rule: planned.rule,
+    line: `${event.summary} · ${range}`,
+    event: {
+      ...event,
+      text: `${heading(planned.rule)}: ${event.summary}\n${range}`,
+    },
+  };
+}
+
+/** Reminders due now (not yet handled), and when the next one falls due. */
 async function collectDue(
   deps: ReminderDeps,
   user: UserRecord,
@@ -283,46 +324,13 @@ async function collectDue(
   const later = (at: number) => {
     next = next === null ? at : Math.min(next, at);
   };
-  const overrides = await allReminderOverrides(deps.db, user.id);
-  const eventOverrides = overrides.event;
-  for (const e of await horizonEvents(deps.db, user.id, now, now + 7 * 86_400_000)) {
-    if (e.declined) continue;
-    const targetKey = `${e.calendarId}/${e.eventId}`;
-    const minutes = eventOverrides.has(targetKey)
-      ? eventOverrides.get(targetKey)
-      : user.reminderMinutes;
-    if (minutes === null || minutes === undefined) continue;
-    const dueAt = e.startsAt - minutes * 60_000;
-    if (dueAt > now) {
-      later(dueAt); // not yet; events already started are outside the window
-      continue;
-    }
-    const range = formatEventRange(
-      {
-        start: { dateTime: new Date(e.startsAt).toISOString(), timeZone: user.timezone },
-        end: { dateTime: new Date(e.endsAt).toISOString(), timeZone: user.timezone },
-      },
-      user.timezone,
-    );
-    due.push({
-      key: reminderKeys.event(e.calendarId, e.eventId, e.startsAt, minutes),
-      dueAt,
-      kind: "event",
-      minutes,
-      line: `${e.summary} · ${range}`,
-      event: {
-        calendarId: e.calendarId,
-        eventId: e.eventId,
-        startsAt: e.startsAt,
-        text: `${minutesLabel(minutes)}: ${e.summary}\n${range}`,
-        display: e.display,
-      },
-    });
-  }
+  const [settings, horizon, tasks] = await Promise.all([
+    allReminderSettings(deps.db, user.id),
+    horizonEvents(deps.db, user.id, now, now + 7 * 86_400_000),
+    reminderCandidateTasks(deps.db, user.id, now, SNOOZE_STALE_MS),
+  ]);
 
-  const taskOverrides = overrides.task;
-  for (const task of await reminderCandidateTasks(deps.db, user.id, now, SNOOZE_STALE_MS)) {
-    const label = `[${task.listName}] ${task.title}`;
+  for (const task of tasks) {
     if (
       task.snoozedUntil !== null &&
       task.snoozedUntil <= now &&
@@ -330,29 +338,52 @@ async function collectDue(
     ) {
       due.push({
         key: reminderKeys.snooze(task.id, task.snoozedUntil),
+        alsoKeys: [],
         dueAt: task.snoozedUntil,
         kind: "snooze",
         task,
-        line: `${label} · ${dueLabel(task.deadline, user.timezone)}`,
+        line: `[${task.listName}] ${task.title} · ${dueLabel(task.deadline, user.timezone)}`,
       });
     }
-    if (task.deadline.kind !== "datetime" || task.deadline.at <= now || isSnoozed(task, now))
-      continue;
-    const minutes = taskOverrides.has(task.id) ? taskOverrides.get(task.id) : user.reminderMinutes;
-    if (minutes === null || minutes === undefined) continue;
-    const dueAt = task.deadline.at - minutes * 60_000;
-    if (dueAt > now) {
-      later(dueAt);
+  }
+
+  const ready: PlannedReminder[] = [];
+  for (const planned of planReminders({ user, now, settings, horizon, tasks })) {
+    if (planned.at > now) {
+      later(planned.at);
       continue;
     }
-    due.push({
-      key: reminderKeys.taskDue(task.id, task.deadline.at, minutes),
-      dueAt,
-      kind: "task",
-      task,
-      minutes,
-      line: `${label} · ${dueLabel(task.deadline, user.timezone)}`,
-    });
+    // Already past when the item's reminders were set, or too old to be useful.
+    if (planned.setAt !== null && planned.at < planned.setAt) continue;
+    if (now - planned.at > STALE_REMINDER_MS) continue;
+    ready.push(planned);
+  }
+  // Events known only by their kept start: titles and times from the synced copy, in one read.
+  const unlisted = ready.flatMap((p) =>
+    p.event && !p.event.fromHorizon ? [eventTargetKey(p.event.calendarId, p.event.eventId)] : [],
+  );
+  const cached = await findCachedEvents(deps.db, user.id, unlisted);
+  for (const planned of ready) {
+    if (planned.event) {
+      const known = planned.event.fromHorizon
+        ? undefined
+        : cached.get(eventTargetKey(planned.event.calendarId, planned.event.eventId));
+      const event = known
+        ? { ...planned.event, summary: known.fields.summary, fields: known.fields }
+        : planned.event;
+      due.push(eventDue(planned, event, user.timezone));
+    } else if (planned.task) {
+      const task = planned.task;
+      due.push({
+        key: planned.key,
+        alsoKeys: [],
+        dueAt: planned.at,
+        kind: "task",
+        task,
+        rule: planned.rule,
+        line: `[${task.listName}] ${task.title} · ${dueLabel(task.deadline, user.timezone)}`,
+      });
+    }
   }
 
   const logged = await loggedReminderKeys(
@@ -360,22 +391,41 @@ async function collectDue(
     user.id,
     due.map((d) => d.key),
   );
-  return { due: due.filter((d) => !logged.has(d.key)).sort((a, b) => a.dueAt - b.dueAt), next };
+  // Two of an item's reminders falling due together are one message.
+  const merged = new Map<string, Due>();
+  for (const d of due.filter((d) => !logged.has(d.key))) {
+    const item = d.event ? `e:${d.event.calendarId}/${d.event.eventId}` : `t:${d.task?.id}`;
+    const slot = `${item}:${d.dueAt}:${d.kind === "snooze" ? "snooze" : "item"}`;
+    const same = merged.get(slot);
+    if (same) same.alsoKeys.push(d.key);
+    else merged.set(slot, d);
+  }
+  const all = [...merged.values()].sort((a, b) => a.dueAt - b.dueAt);
+  // Each reminder is a claim statement; the rest go out on the next tick.
+  if (all.length > MAX_DUE_PER_PASS) later(now);
+  return { due: all.slice(0, MAX_DUE_PER_PASS), next };
+}
+
+function sameAnchor(a: ReminderAnchor, b: ReminderAnchor): boolean {
+  if (a.kind === "instant") return b.kind === "instant" && a.at === b.at;
+  return b.kind === "date" && a.date === b.date;
 }
 
 /**
  * Re-reads events before reminding: a cancelled or moved event is skipped (a
- * moved event gets its own reminder at the new time). If Google cannot be
- * reached, the reminder is sent from the horizon rather than missed.
+ * moved event gets its own reminder at the new time; for one beyond the
+ * horizon, its kept start is updated). If Google cannot be reached, the
+ * reminder is sent from what is known rather than missed.
  */
 async function revalidate(
   deps: ReminderDeps,
   user: UserRecord,
   items: Due[],
-): Promise<{ keep: Due[]; skip: Due[] }> {
+): Promise<{ keep: Due[]; skip: Due[]; moved: D1PreparedStatement[] }> {
   const source = await deps.sourceFor(user.id);
   const keep: Due[] = [];
   const skip: Due[] = [];
+  const moved: D1PreparedStatement[] = [];
   let checks = 0;
   for (const item of items) {
     if (!item.event || !source || checks >= MAX_REVALIDATIONS) {
@@ -389,15 +439,40 @@ async function revalidate(
       continue;
     }
     const start = current.value.fields.start;
-    const moved = !("dateTime" in start) || Date.parse(start.dateTime) !== item.event.startsAt;
-    if (current.value.status === "cancelled" || moved) {
+    const anchor: ReminderAnchor =
+      "dateTime" in start
+        ? { kind: "instant", at: Date.parse(start.dateTime) }
+        : { kind: "date", date: start.date };
+    const changed = !sameAnchor(anchor, item.event.anchor);
+    if (current.value.status === "cancelled" || changed) {
+      if (changed && current.value.status !== "cancelled" && !item.event.fromHorizon) {
+        moved.push(
+          reanchorStatement(
+            deps.db,
+            user.id,
+            eventTargetKey(item.event.calendarId, item.event.eventId),
+            anchor,
+          ),
+        );
+      }
       skip.push(item);
       continue;
     }
     const display = current.value.display ?? item.event.display;
-    keep.push({ ...item, event: { ...item.event, display } });
+    const fields = current.value.fields;
+    const refreshed = eventDue(
+      {
+        key: item.key,
+        at: item.dueAt,
+        rule: item.rule ?? { kind: "at", at: item.dueAt },
+        setAt: null,
+      },
+      { ...item.event, summary: fields.summary, fields, display },
+      user.timezone,
+    );
+    keep.push({ ...refreshed, alsoKeys: item.alsoKeys });
   }
-  return { keep, skip };
+  return { keep, skip, moved };
 }
 
 async function sendReminders(
@@ -410,11 +485,16 @@ async function sendReminders(
   if (window?.active) return { sent: 0, next: window.to };
   const { due: candidates, next } = await collectDue(deps, user, now);
   if (candidates.length === 0) return { sent: 0, next };
-  const { keep, skip } = await revalidate(deps, user, candidates);
+  const { keep, skip, moved } = await revalidate(deps, user, candidates);
   const claim = deps.ids.next();
-  const statements = skip.map((s) =>
-    claimReminderStatement(deps.db, user.id, s.key, "skipped", claim, now, unguarded),
-  );
+  const statements = [
+    ...moved,
+    ...skip.flatMap((s) =>
+      [s.key, ...s.alsoKeys].map((key) =>
+        claimReminderStatement(deps.db, user.id, key, "skipped", claim, now, unguarded),
+      ),
+    ),
+  ];
   if (keep.length === 0) {
     await deps.db.batch(statements);
     return { sent: 0, next };
@@ -430,11 +510,11 @@ async function sendReminders(
   if (single?.event) {
     ({ text, keyboard } = eventReminder(single.event));
   } else if (single?.task) {
-    const heading =
-      single.kind === "snooze"
+    const title =
+      single.kind === "snooze" || single.rule?.kind !== "before"
         ? "Reminder"
-        : `Due ${minutesLabel(single.minutes ?? 0).toLowerCase()}`;
-    text = `${heading}: [${single.task.listName}] ${single.task.title}\n${dueLabel(single.task.deadline, user.timezone)}`;
+        : `Due ${minutesLabel(single.rule.minutes).toLowerCase()}`;
+    text = `${title}: [${single.task.listName}] ${single.task.title}\n${dueLabel(single.task.deadline, user.timezone)}`;
     keyboard = [
       [
         buttons.button("Done", "task_done", {
@@ -460,10 +540,11 @@ async function sendReminders(
   }
 
   const outcome = single ? "sent" : "summarized";
-  const claims = keep.map((k) =>
-    claimReminderStatement(deps.db, user.id, k.key, outcome, claim, now, unguarded),
+  const keys = (items: Due[]) => items.flatMap((k) => [k.key, ...k.alsoKeys]);
+  const claims = keys(keep).map((key) =>
+    claimReminderStatement(deps.db, user.id, key, outcome, claim, now, unguarded),
   );
-  const guard = allClaimedGuard(user.id, claim, skip.length + keep.length);
+  const guard = allClaimedGuard(user.id, claim, keys(skip).length + keys(keep).length);
   await deps.db.batch([
     ...statements,
     ...claims,

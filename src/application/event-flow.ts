@@ -55,6 +55,7 @@ import {
 import { withTypingHint } from "./hints";
 import { prepareProposal } from "./proposals";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { eventTarget } from "./reminder-flow";
 import type { SetupDeps } from "./setup";
 import { readRepeat, repeatRows } from "./task-flow";
 import { answer, keyboardMessage, removeButtons } from "./ui";
@@ -652,10 +653,8 @@ async function eventCard(
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const target = { calendarId, eventId };
   // Reminders can be set even for events that can't be changed here.
-  const reminder = buttons.button("Reminder", "reminder_menu", {
-    kind: "event",
-    targetKey: `${calendarId}/${eventId}`,
-    title: event.fields.summary,
+  const reminder = buttons.button("Reminders", "reminder_menu", {
+    target: eventTarget(calendarId, eventId, event.fields),
   });
   const recurring = event.recurringEventId !== null;
   const occurrence = recurring ? " this" : "";
