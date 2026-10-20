@@ -87,6 +87,7 @@ export const PENDING_INPUT_KINDS = [
   "import_list",
   "task_repeat_interval",
   "event_repeat_interval",
+  "reminder_input",
 ] as const;
 
 export type PendingInputKind = (typeof PENDING_INPUT_KINDS)[number];
@@ -131,6 +132,15 @@ export async function findPendingInput(
 
 export function clearPendingInputStatement(db: D1Database, userId: string): D1PreparedStatement {
   return db.prepare("DELETE FROM pending_inputs WHERE user_id = ?").bind(userId);
+}
+
+/** Clears the open question only if it is this kind, leaving any other flow alone. */
+export function clearPendingInputOfKindStatement(
+  db: D1Database,
+  userId: string,
+  kind: PendingInputKind,
+): D1PreparedStatement {
+  return db.prepare("DELETE FROM pending_inputs WHERE user_id = ? AND kind = ?").bind(userId, kind);
 }
 
 export function purgeExpiredInteractionsStatements(

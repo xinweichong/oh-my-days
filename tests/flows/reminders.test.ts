@@ -177,9 +177,20 @@ describe("reminders", () => {
     await world.send("/event");
     await world.press("Change an event");
     await world.press(/Dinner$/);
-    await world.press("Reminder");
-    await world.press("30 min before");
-    expect(world.lastText()).toBe("Reminder for Dinner: 30 minutes before.");
+    await world.press("Reminders");
+    await world.press("✓ 1 hour"); // off: the default goes
+    await world.press("30 min");
+    expect(world.lastText()).toBe(
+      [
+        "Reminders for Dinner",
+        "Fri 25 Sep, 8pm",
+        "",
+        "• 30 minutes before",
+        "",
+        "Tap to add or remove (up to 5). Custom… takes your own, like 45m, 1 day before 6pm, or Thu 9am.",
+      ].join("\n"),
+    );
+    expect(world.telegram.calls.at(-1)?.method).toBe("editMessageText");
 
     await until(world, sgt(25, 19));
     expect(world.texts().some((t) => t.includes("Declined"))).toBe(false);
@@ -188,7 +199,7 @@ describe("reminders", () => {
     expect(world.lastText()).toBe("In 30 minutes: Dinner\nFri 25 Sep 2026, 8–9pm");
 
     await world.send("/reminders");
-    expect(world.lastText()).toContain("Custom reminders\n• Dinner: 30 minutes before");
+    expect(world.lastText()).toContain("Own reminders\n• Dinner: 30 minutes before");
   });
 
   it("shows where, the video call, and an Open in Calendar button (C2)", async () => {
@@ -374,7 +385,7 @@ describe("views", () => {
         "Upcoming reminders",
         "• Fri 25 Sep 6pm — Dinner (1 hour before)",
         "",
-        "Date-only deadlines are in the 8am agenda.",
+        "Date-only deadlines are in the 8am agenda, unless they have their own reminders.",
         "",
         "Snoozed",
         "• [Inbox] Buy milk · until Sat 26 Sep 8am",

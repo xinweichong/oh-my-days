@@ -104,6 +104,8 @@ export function describePending(kind: PendingInputKind, payload: Record<string, 
       return title ? `adding the task ${title}` : "adding a task";
     case "event_repeat_interval":
       return "adding an event";
+    case "reminder_input":
+      return "setting reminders";
   }
 }
 

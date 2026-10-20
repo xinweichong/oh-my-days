@@ -6,6 +6,7 @@ import {
   tasksForDay,
   viewCalendars,
 } from "../application/calendar-view";
+import { reminderPanel, reminderState, taskTarget } from "../application/reminder-flow";
 import { recurrenceOf } from "../application/series";
 import { dueLabel, RECENT_DAYS, sortByDeadline } from "../application/task-flow";
 import { PROJECT_TASK } from "../application/task-projection";
@@ -14,7 +15,6 @@ import { isDueOn, isOverdue, weekStart } from "../domain/schedule";
 import { addDays, type LocalDate, localDateAt, wallPartsAt, zonedInstant } from "../domain/time";
 import { syncSummary } from "../jobs/calendar-sync";
 import { findConnection, listStoredCalendars } from "../storage/google";
-import { reminderOverrides } from "../storage/reminders";
 import { findSeries } from "../storage/series";
 import { upcomingSessions } from "../storage/sessions";
 import {
@@ -511,14 +511,15 @@ export async function taskSetView(deps: ReadDeps, user: UserRecord, now: number,
 export async function taskDetail(deps: ReadDeps, user: UserRecord, now: number, taskId: string) {
   const task = await findTask(deps.db, user.id, taskId);
   if (!task) return null;
-  const [pending, series, overrides, sessions, lists] = await Promise.all([
+  const [pending, series, reminders, sessions, lists] = await Promise.all([
     pendingTaskIds(deps.db, user.id),
     task.seriesId ? findSeries(deps.db, user.id, task.seriesId) : Promise.resolve(null),
-    reminderOverrides(deps.db, user.id, "task"),
+    task.status === "open" && task.deadline.kind !== "none"
+      ? reminderState(deps, user, taskTarget(task))
+      : Promise.resolve(null),
     upcomingSessions(deps.db, user.id, task.id, now, 3),
     listTaskLists(deps.db, user.id),
   ]);
-  const override = overrides.get(task.id);
   const history = await deps.db
     .prepare(
       "SELECT created_at, completed_at, cancelled_at FROM tasks WHERE id = ? AND user_id = ?",
@@ -534,12 +535,7 @@ export async function taskDetail(deps: ReadDeps, user: UserRecord, now: number, 
   return {
     task: toAppTask(task, user, now, pending),
     local: localContext(user, now),
-    reminder:
-      task.deadline.kind !== "datetime"
-        ? null
-        : override === null
-          ? "No reminder"
-          : `${override ?? user.reminderMinutes} minutes before`,
+    reminders: reminders && !("error" in reminders) ? reminderPanel(user, reminders) : null,
     repeat: series
       ? {
           seriesId: series.id,

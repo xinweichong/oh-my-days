@@ -55,6 +55,7 @@ import { cancelRow, guidedPrompt } from "./cancel";
 import { dateChoiceLabel, whenQuestion } from "./choices";
 import { withTypingHint } from "./hints";
 import { ActionButtons, combine, message, type Reaction } from "./reactions";
+import { taskTarget } from "./reminder-flow";
 import { occurrenceDeadline, recurrenceOf } from "./series";
 import type { SetupDeps } from "./setup";
 import { projectTaskStatement } from "./task-projection";
@@ -295,14 +296,8 @@ async function taskCard(deps: SetupDeps, user: UserRecord, taskId: string): Prom
             buttons.button("Edit", "task_edit", ref),
           ],
           [
-            ...(task.deadline.kind === "datetime"
-              ? [
-                  buttons.button("Reminder", "reminder_menu", {
-                    kind: "task",
-                    targetKey: task.id,
-                    title: task.title,
-                  }),
-                ]
+            ...(task.deadline.kind !== "none"
+              ? [buttons.button("Reminders", "reminder_menu", { target: taskTarget(task) })]
               : []),
             buttons.button("Schedule time", "event_session_new", { taskId: task.id }),
             buttons.button("Cancel task", "task_cancel", ref),

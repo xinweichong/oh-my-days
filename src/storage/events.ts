@@ -172,6 +172,25 @@ export async function findCachedEvent(
   return row ? toCached(row) : null;
 }
 
+/** Several cached events in one query, by "<calendarId>/<eventId>" (at most 50). */
+export async function findCachedEvents(
+  db: D1Database,
+  userId: string,
+  keys: readonly string[],
+): Promise<Map<string, CachedEvent>> {
+  const wanted = keys.slice(0, 50);
+  if (wanted.length === 0) return new Map();
+  const placeholders = wanted.map(() => "?").join(", ");
+  const { results } = await db
+    .prepare(
+      `SELECT ${COLUMNS} FROM event_cache
+       WHERE user_id = ? AND calendar_id || '/' || event_id IN (${placeholders})`,
+    )
+    .bind(userId, ...wanted)
+    .all<CachedRow>();
+  return new Map(results.map((r) => [`${r.calendar_id}/${r.event_id}`, toCached(r)]));
+}
+
 /**
  * Events from the given calendars overlapping [from, to) for timed events or
  * [fromDate, toDate) for all-day events, ordered by start.

@@ -13,7 +13,7 @@ import {
   purgeFinishedOperationsStatements,
 } from "../storage/operations";
 import { purgeFinishedDeliveriesStatement, recoverExpiredDeliveries } from "../storage/outbox";
-import { purgeOldReminderStatements } from "../storage/reminders";
+import { purgeOldReminderStatements, purgePastEventRemindersStatement } from "../storage/reminders";
 import { type AccessExpiryDeps, warnBeforeAccessEnds } from "./access-expiry";
 import { syncBotCommands } from "./bot-commands";
 import {
@@ -50,6 +50,9 @@ export const TICK_LIMITS = {
 export const FINISHED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 /** Finished operations (request snapshots) are kept this long (privacy policy). */
 export const OPERATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** An event's own reminder settings are dropped this long after it started. */
+export const PAST_EVENT_REMINDERS_MS = 2 * 24 * 60 * 60 * 1000;
 
 export interface TickDeps {
   db: D1Database;
@@ -177,6 +180,13 @@ async function purge(db: D1Database, later: number): Promise<void> {
     ...purgeExpiredAuthStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeExpiredInteractionsStatements(db, later, TICK_LIMITS.purgeRows),
     ...purgeOldReminderStatements(db, later - OPERATION_RETENTION_MS, TICK_LIMITS.purgeRows),
+    // Reminder settings of events that are over; days of slack cover any zone.
+    purgePastEventRemindersStatement(
+      db,
+      later - PAST_EVENT_REMINDERS_MS,
+      new Date(later - PAST_EVENT_REMINDERS_MS - 86_400_000).toISOString().slice(0, 10),
+      TICK_LIMITS.purgeRows,
+    ),
     purgeAppRequestsStatement(db, cutoff, TICK_LIMITS.purgeRows),
   ]);
 }
