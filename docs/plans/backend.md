@@ -623,8 +623,9 @@ sends a selection of up to 100 in parts of 20 with one combined summary
 selection and returns one confirmation per part, each bound to exactly its tasks
 and versions (`tests/miniapp/write-api.test.ts`, `tests/miniapp/bulk-parts.test.ts`).
 
-Several reminders per item (owner, 2026-10-20): on `feature/item-reminders`,
-tested locally, not deployed ([ADR 0008](../adr/0008-several-reminders-per-item.md),
+Several reminders per item (owner, 2026-10-20): released as 2.4.0 (#37, #38)
+and deployed to production from `main` on 2026-10-20 as Worker version
+`56d2e0e6`, after migration 0023; the owner checked it in Telegram ([ADR 0008](../adr/0008-several-reminders-per-item.md),
 migration 0023). An event or task has up to five reminders: a lead time, a time
 on its day or up to 7 days before, or a fixed time. Date-only deadlines can
 have them too (`src/domain/reminders.ts`, one parser for chat and the Mini
@@ -644,4 +645,5 @@ due (and that day's agenda) stays within 50 queries
 `tests/jobs/tick.test.ts`. The Mini App sheets were checked in headless
 Chromium with a stubbed Telegram object and API responses taken from the test
 world (synthetic data): task detail, the reminders sheet, adding a typed
-reminder, and the event sheet. They have not been tried inside Telegram.
+reminder, and the event sheet; the owner then checked them inside Telegram
+after the deploy.
