@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Several reminders per event or task**, up to five each ([ADR 0008](docs/adr/0008-several-reminders-per-item.md)). **Reminders** on an event or task opens a menu: tap presets on and off, **Custom…** for your own (`45m`, `2 hours`, `1 day before 6pm`, `9am on the day`, `Thu 9am`; start with `only` to replace), **Default**, or **None**. A reply works too: "remind me 1 day before 6pm and 2h", "no reminders"
+- **Fixed-time reminders** ("Sun 8pm") alongside lead times
+- **Reminders on date-only deadlines**, such as the day before at 6pm or on the day at noon. Without any, they stay in the morning agenda only
+- **Mini App**: a task's reminders can be changed from its detail screen; tapping an event opens its reminders and **Open in Google Calendar**
+
+### Changed
+
+- Reminders set long ahead, and reminders for all-day events, are scheduled from the event's start, which is checked with Google before sending; a moved event's reminders follow it
+- `/reminders` lists each item's own reminders, and date-only deadlines that have them
+- More than eight reminders due at once (for example after downtime) go out over consecutive minutes, to stay within Workers Free's query limit
+
 ## [2.3.0] - 2026-10-17
 
 Import several tasks at once, and requests that stay within the free plan.

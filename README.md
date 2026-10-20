@@ -80,7 +80,7 @@ The Telegram Mini App, opened from the chat (synthetic data).
 | | |
 |---|---|
 | **Morning agenda** | Today's events, due and overdue tasks at a time you choose, with a catch-up if it was missed |
-| **Reminders** | Before events and exact deadlines, with location, call link, Done and Snooze; quiet hours hold them |
+| **Reminders** | Before events and exact deadlines, with location, call link, Done and Snooze; quiet hours hold them. Up to five per event or task, including date-only deadlines: presets, typed ones (`45m`, `1 day before 6pm`, `Thu 9am`), or a reply like "remind me 2h" |
 | **Views** | `/daily`, `/weekly`, `/monthly`, `/overdue`, `/reminders`, `/find`, read live from Google with a labelled fallback |
 | **Mini App** | Tasks and a read-only day and week overview inside Telegram: swipe to snooze, multi-select, quick add |
 
