@@ -7,6 +7,11 @@
   // plain `wrangler deploy` with this file fails on the placeholder database ID.
   "name": "oh-my-days",
   "main": "src/worker.ts",
+  // Minified: each fresh isolate parses the whole bundle, and that startup counts
+  // toward the 10 ms CPU limit of every cron run (docs/capacity.md). Source maps
+  // are uploaded so errors still point at the TypeScript.
+  "minify": true,
+  "upload_source_maps": true,
   // Bundles the Mini App client into src/miniapp/generated (ADR 0005) and builds
   // the landing page into landing/dist before each build (ADR 0006).
   "build": { "command": "npm run build:app && npm run build:landing" },
