@@ -26,14 +26,23 @@ limit regularly, lower `EVENT_PAGE_SIZE` or `MAX_PAGES_PER_RUN`.
 
 ## D1 (Workers Free daily allowances)
 
-| Metric | Measured (24 h, before tuning) | Operating target | Allowance |
-|---|---:|---:|---:|
-| Rows read | 416,421 | 2,500,000 | 5,000,000 |
-| Rows written | 5,218 | 50,000 | 100,000 |
-| Database size | 0.4 MB | 2.5 GB aggregate | 500 MB per database |
+| Metric | 2026-10-04, before tuning | 2026-10-21, 2.4.0 | Operating target | Allowance |
+|---|---:|---:|---:|---:|
+| Rows read | 416,421 | 83,719 | 2,500,000 | 5,000,000 |
+| Rows written | 5,218 | 4,917 | 50,000 | 100,000 |
+| Read / write queries | — | 17,424 / 3,725 | — | — |
+| Database size | 0.4 MB | 0.67 MB | 2.5 GB aggregate | 500 MB per database |
 
-Reads come mostly from the minute cron; the tuning above removed roughly half
-of its queries, so reads should fall. Recheck with `npx wrangler d1 info
+The 2026-10-21 figures are `wrangler d1 info` at about 11:10 UTC: one user (the
+owner), the last 24 hours, about 21 of them on 2.4.0 (deployed 2026-10-20 13:51
+UTC). Rows read fell about 80% since the first measurement, after the CPU tuning
+and the idle reminder pass (B4). They are 3% of the operating target and 1.7% of
+the allowance; rows written are 10% of the target. If usage grows in proportion
+to users, five such users would read about 420,000 rows and write about 25,000
+a day, within the targets. That is a rough projection: calendars, messages,
+and Mini App use vary per person.
+
+Reads come mostly from the minute cron. Recheck with `npx wrangler d1 info
 oh-my-days --config wrangler.production.jsonc` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
@@ -51,10 +60,9 @@ counted at `prepare`):
 | All statements | 2,419 | 1,707 |
 
 The remaining statements are the rest of each tick (inbox, operations,
-deliveries, maintenance). Rows read and CPU have **not** been re-measured live:
-the plan's 24-hour `wrangler d1 info` and `wrangler tail` measurement needs the
-change deployed, which awaits the owner's approval. Do that before adding a
-second user.
+deliveries, maintenance). Rows read were measured live on 2026-10-21 (table
+above). CPU has not been re-measured live with `wrangler tail`; do that before
+adding a second user.
 
 Scheduler liveness (improvement B3, deployed 2026-10-10) writes one `app_state`
 row per tick: about 1,440 rows written a day, under 3% of the operating target.
