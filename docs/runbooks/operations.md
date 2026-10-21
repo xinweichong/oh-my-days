@@ -4,7 +4,10 @@ Production: Worker `oh-my-days` on a custom domain (`<host>` below; set in the
 untracked `wrangler.production.local.json`), D1 database `oh-my-days` (APAC), one
 cron trigger every minute. Deploying is covered in
 [deploy.md](deploy.md). Commands run from the repository root after
-`npx wrangler login`.
+`npx wrangler login`. D1 commands need `--config wrangler.production.jsonc`
+(written by `node scripts/production-config.mjs`); without it Wrangler uses the
+placeholder database ID and Cloudflare answers with a misleading
+"Authentication error [code: 10000]".
 
 ## Routine checks
 
@@ -14,13 +17,13 @@ cron trigger every minute. Deploying is covered in
 - Counts only (no personal data):
 
   ```sh
-  npx wrangler d1 execute oh-my-days --remote --command "SELECT
+  npx wrangler d1 execute oh-my-days --remote --config wrangler.production.jsonc --command "SELECT
     (SELECT COUNT(*) FROM calendar_sync WHERE consecutive_failures > 0) AS failing_sync,
     (SELECT COUNT(*) FROM telegram_outbox WHERE status IN ('failed','unknown')) AS undelivered,
     (SELECT COUNT(*) FROM operations WHERE status IN ('needs_resolution','failed')) AS problem_operations"
   ```
 
-- `npx wrangler d1 info oh-my-days` for size and 24-hour rows read/written;
+- `npx wrangler d1 info oh-my-days --config wrangler.production.jsonc` for size and 24-hour rows read/written;
   compare with [capacity](../capacity.md).
 - `npx wrangler tail oh-my-days --format json` shows each invocation's `cpuTime`
   and logs (identifiers, counts, and error classes only).
@@ -83,13 +86,13 @@ Recheck [capacity](../capacity.md) before adding many users. The full steps, the
   retention window (7 days on the Free plan, last checked 2026-10-04):
 
   ```sh
-  npx wrangler d1 time-travel info oh-my-days            # current bookmark
-  npx wrangler d1 time-travel restore oh-my-days --timestamp=<unix-or-RFC3339>
+  npx wrangler d1 time-travel info oh-my-days --config wrangler.production.jsonc   # current bookmark
+  npx wrangler d1 time-travel restore oh-my-days --config wrangler.production.jsonc --timestamp=<unix-or-RFC3339>
   ```
 
   Restoring overwrites the live database; take a fresh bookmark first so the
   restore itself can be undone.
-- **Export:** `npx wrangler d1 export oh-my-days --remote --output backup.sql`
+- **Export:** `npx wrangler d1 export oh-my-days --remote --config wrangler.production.jsonc --output backup.sql`
   writes a full SQL dump. It contains personal data and encrypted tokens: keep
   it out of the repository and delete it when no longer needed.
 

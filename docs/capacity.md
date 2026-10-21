@@ -11,9 +11,24 @@ synced calendars, and the minute cron. Sources: `wrangler tail` (`cpuTime`),
 | Before tuning | 6 | 10–22 ms (every run at or above the limit) |
 | Periodic work staggered, reminder queries trimmed | 10 | 5–7 ms most runs; 14–22 ms with maintenance; 10–15 ms with syncs |
 | At most one heavy job per run (one calendar sync, maintenance, or cleanup) | 12 | idle 5 ms; sync 7–8 ms; maintenance 7 ms; median 8 ms. The first two runs after a deploy took 11–14 ms (warm-up) |
+| 2.4.0, live (2026-10-21, about 53 minutes) | 53 | median 13 ms, mean 14.5 ms, range 7–31 ms; 12 of 53 at or under 10 ms, 7 over 20 ms. Outcomes not yet captured |
 
-All runs completed (`outcome: ok`). Wall time is 3–7 seconds, dominated by D1
+**2026-10-21: CPU has risen since the tuning** and most runs are over the
+Workers Free limit; several releases came in between, so the cause is not yet
+known. Before adding users, capture outcomes (`exceededCpu`) and the
+`tick.finished` summary per run, find the costly step, and fix it.
+
+On 2026-10-04 all runs completed (`outcome: ok`). Wall time is 3–7 seconds, dominated by D1
 round trips; scheduled invocations are not limited by wall time.
+
+Worker size since the first measurement, from `wrangler deploy --dry-run`:
+348 KiB (2026-10-04) → 557 KiB (2.0.0) → 622 KiB (2.3.0) → 663 KiB (2.4.0), all
+our own code; no large dependencies. Each fresh isolate parses the whole bundle,
+and that counts toward a run's CPU time, which fits idle runs roughly doubling
+(5 ms → 8–16 ms). From 2026-10-21 the bundle is minified (`minify` in
+`wrangler.jsonc`, 425 KiB) with source maps uploaded; CPU to be re-measured after
+that deploy. The next step, if needed, is serving the Mini App script and font
+(about 86 KB embedded as strings) as static assets.
 
 Design rules that keep CPU down (`src/jobs/tick.ts`): one calendar sync per run;
 frequent maintenance (calendar lists, sync health, menu, confirmation expiry)
@@ -26,15 +41,24 @@ limit regularly, lower `EVENT_PAGE_SIZE` or `MAX_PAGES_PER_RUN`.
 
 ## D1 (Workers Free daily allowances)
 
-| Metric | Measured (24 h, before tuning) | Operating target | Allowance |
-|---|---:|---:|---:|
-| Rows read | 416,421 | 2,500,000 | 5,000,000 |
-| Rows written | 5,218 | 50,000 | 100,000 |
-| Database size | 0.4 MB | 2.5 GB aggregate | 500 MB per database |
+| Metric | 2026-10-04, before tuning | 2026-10-21, 2.4.0 | Operating target | Allowance |
+|---|---:|---:|---:|---:|
+| Rows read | 416,421 | 83,719 | 2,500,000 | 5,000,000 |
+| Rows written | 5,218 | 4,917 | 50,000 | 100,000 |
+| Read / write queries | — | 17,424 / 3,725 | — | — |
+| Database size | 0.4 MB | 0.67 MB | 2.5 GB aggregate | 500 MB per database |
 
-Reads come mostly from the minute cron; the tuning above removed roughly half
-of its queries, so reads should fall. Recheck with `npx wrangler d1 info
-oh-my-days` after 24 hours, and before adding users: reads grow roughly
+The 2026-10-21 figures are `wrangler d1 info` at about 11:10 UTC: one user (the
+owner), the last 24 hours, about 21 of them on 2.4.0 (deployed 2026-10-20 13:51
+UTC). Rows read fell about 80% since the first measurement, after the CPU tuning
+and the idle reminder pass (B4). They are 3% of the operating target and 1.7% of
+the allowance; rows written are 10% of the target. If usage grows in proportion
+to users, five such users would read about 420,000 rows and write about 25,000
+a day, within the targets. That is a rough projection: calendars, messages,
+and Mini App use vary per person.
+
+Reads come mostly from the minute cron. Recheck with `npx wrangler d1 info
+oh-my-days --config wrangler.production.jsonc` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
 ## Idle reminder pass (improvement B4, deployed 2026-10-10)
@@ -51,10 +75,9 @@ counted at `prepare`):
 | All statements | 2,419 | 1,707 |
 
 The remaining statements are the rest of each tick (inbox, operations,
-deliveries, maintenance). Rows read and CPU have **not** been re-measured live:
-the plan's 24-hour `wrangler d1 info` and `wrangler tail` measurement needs the
-change deployed, which awaits the owner's approval. Do that before adding a
-second user.
+deliveries, maintenance). Rows read were measured live on 2026-10-21 (table
+above). CPU has not been re-measured live with `wrangler tail`; do that before
+adding a second user.
 
 Scheduler liveness (improvement B3, deployed 2026-10-10) writes one `app_state`
 row per tick: about 1,440 rows written a day, under 3% of the operating target.

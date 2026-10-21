@@ -15,7 +15,7 @@ Read these documents before changing behavior:
 - `docs/README.md`: index of every document and whether it is current or historical.
 
 The spec takes precedence over implementation proposals. Flag contradictions;
-do not silently reduce scope. Version 2.4.0 is released; natural-language input
+do not silently reduce scope. Version 2.4.1 is released; natural-language input
 through Gemini is the one deferred stage. `docs/plans/backend.md` §10 records what
 exists, `CHANGELOG.md` records releases, and `README.md` lists the check commands
 (`npm run check`).
