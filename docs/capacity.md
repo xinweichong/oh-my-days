@@ -34,7 +34,7 @@ limit regularly, lower `EVENT_PAGE_SIZE` or `MAX_PAGES_PER_RUN`.
 
 Reads come mostly from the minute cron; the tuning above removed roughly half
 of its queries, so reads should fall. Recheck with `npx wrangler d1 info
-oh-my-days` after 24 hours, and before adding users: reads grow roughly
+oh-my-days --config wrangler.production.jsonc` after 24 hours, and before adding users: reads grow roughly
 linearly with users and synced calendars.
 
 ## Idle reminder pass (improvement B4, deployed 2026-10-10)

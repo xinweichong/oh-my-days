@@ -38,7 +38,8 @@ Two consequences to tell people before inviting them:
    now:
 
    ```sh
-   npx wrangler d1 info oh-my-days     # rows read/written in the last 24 h
+   node scripts/production-config.mjs   # writes wrangler.production.jsonc
+   npx wrangler d1 info oh-my-days --config wrangler.production.jsonc   # rows read/written in the last 24 h
    npx wrangler tail oh-my-days --format json   # watch cpuTime for ~15 minutes
    ```
 
@@ -153,7 +154,7 @@ Copy and adjust:
   If `selected_calendars` is well above five, expect slower outside-change
   detection (§2.2).
 
-- Next day: `npx wrangler d1 info oh-my-days`, then record rows read in
+- Next day: `npx wrangler d1 info oh-my-days --config wrangler.production.jsonc`, then record rows read in
   `docs/capacity.md`.
 
 ## 4. Running it with several users
