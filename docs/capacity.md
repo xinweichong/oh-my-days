@@ -11,8 +11,14 @@ synced calendars, and the minute cron. Sources: `wrangler tail` (`cpuTime`),
 | Before tuning | 6 | 10–22 ms (every run at or above the limit) |
 | Periodic work staggered, reminder queries trimmed | 10 | 5–7 ms most runs; 14–22 ms with maintenance; 10–15 ms with syncs |
 | At most one heavy job per run (one calendar sync, maintenance, or cleanup) | 12 | idle 5 ms; sync 7–8 ms; maintenance 7 ms; median 8 ms. The first two runs after a deploy took 11–14 ms (warm-up) |
+| 2.4.0, live (2026-10-21, about 53 minutes) | 53 | median 13 ms, mean 14.5 ms, range 7–31 ms; 12 of 53 at or under 10 ms, 7 over 20 ms. Outcomes not yet captured |
 
-All runs completed (`outcome: ok`). Wall time is 3–7 seconds, dominated by D1
+**2026-10-21: CPU has risen since the tuning** and most runs are over the
+Workers Free limit; several releases came in between, so the cause is not yet
+known. Before adding users, capture outcomes (`exceededCpu`) and the
+`tick.finished` summary per run, find the costly step, and fix it.
+
+On 2026-10-04 all runs completed (`outcome: ok`). Wall time is 3–7 seconds, dominated by D1
 round trips; scheduled invocations are not limited by wall time.
 
 Design rules that keep CPU down (`src/jobs/tick.ts`): one calendar sync per run;
