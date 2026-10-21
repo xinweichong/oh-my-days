@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-10-21
+
+Lighter scheduled runs.
+
+### Changed
+
+- The Worker is minified (663 KiB to 425 KiB), so each fresh start does less work inside the free plan's CPU limit; error locations still map to the source
+- Runbooks: D1 commands pass the production config, which avoids a misleading "Authentication error"
+
 ## [2.4.0] - 2026-10-20
 
 Several reminders per event or task, fixed-time reminders, and reminders on date-only deadlines.
@@ -133,7 +142,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.4.1...HEAD
+[2.4.1]: https://github.com/xinweichong/oh-my-days/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/xinweichong/oh-my-days/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/xinweichong/oh-my-days/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/xinweichong/oh-my-days/compare/v2.1.0...v2.2.0
