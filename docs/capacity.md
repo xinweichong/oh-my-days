@@ -15,6 +15,15 @@ synced calendars, and the minute cron. Sources: `wrangler tail` (`cpuTime`),
 All runs completed (`outcome: ok`). Wall time is 3–7 seconds, dominated by D1
 round trips; scheduled invocations are not limited by wall time.
 
+Worker size since the first measurement, from `wrangler deploy --dry-run`:
+348 KiB (2026-10-04) → 557 KiB (2.0.0) → 622 KiB (2.3.0) → 663 KiB (2.4.0), all
+our own code; no large dependencies. Each fresh isolate parses the whole bundle,
+and that counts toward a run's CPU time, which fits idle runs roughly doubling
+(5 ms → 8–16 ms). From 2026-10-21 the bundle is minified (`minify` in
+`wrangler.jsonc`, 425 KiB) with source maps uploaded; CPU to be re-measured after
+that deploy. The next step, if needed, is serving the Mini App script and font
+(about 86 KB embedded as strings) as static assets.
+
 Design rules that keep CPU down (`src/jobs/tick.ts`): one calendar sync per run;
 frequent maintenance (calendar lists, sync health, menu, confirmation expiry)
 every 5 minutes and cleanup every 30 minutes, run on ticks without a sync unless
