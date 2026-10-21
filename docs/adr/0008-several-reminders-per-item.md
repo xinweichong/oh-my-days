@@ -1,6 +1,6 @@
 # ADR 0008: Several reminders per item, fixed times, and date-only deadlines
 
-Status: Proposed (implemented on `feature/item-reminders`, not yet deployed)
+Status: Accepted (owner, 2026-10-20); released in 2.4.0 and deployed 2026-10-20
 Date: 2026-10-20
 
 ## Context
