@@ -58,17 +58,20 @@ Two consequences to tell people before inviting them:
    in `src/jobs/tick.ts` only after checking `cpuTime` (Workers Free allows
    10 ms per run).
 
-3. **Know the per-run query limit.** Workers Free allows 50 D1 queries in
-   each invocation, and each minute's run does all its work inside that: inbox,
-   changes, one calendar sync, then the agendas and reminders of every user
-   due (up to 20). A morning agenda takes about 13 queries. If several people
-   get their agenda in the same minute (the same timezone and agenda hour),
-   one run may go over the limit. This hasn't been measured with more than one
-   user. The run would then stop partway. The agendas already queued are kept,
-   the rest follow in the next minutes, and messages may go out a few minutes
-   late. To spread the load, ask people to pick different agenda hours in
-   `/settings` (6–11am), and check `wrangler tail` for failed runs around 8am
-   after each new user.
+3. **Know the per-run limits.** Workers Free allows 50 D1 queries and 50
+   Google or Telegram calls in each invocation. Since ADR 0009, each minute's
+   run counts both and starts a piece of work only if it fits; the rest waits
+   for the next minute. Expect:
+   - When several people get their agenda in the same minute (the same
+     timezone and agenda hour), some arrive a minute or a few minutes later.
+     Different agenda hours in `/settings` (6–11am) avoid this.
+   - A new person's **first calendar sync** runs in small pages, about one a
+     minute, so a big calendar takes up to an hour or so. Views read Google
+     live in the meantime, so they see their events at once.
+
+   Each run's `tick.finished` log shows the `queries` and `calls` it used.
+   After each new user, check `wrangler tail` for runs near 47, and for any
+   `exception` or `exceededCpu` outcome.
 
 4. **Set a contact address.** Make sure `CONTACT_EMAIL` is set in
    `wrangler.production.local.json` so `/privacy` shows where to ask for

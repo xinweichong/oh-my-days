@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Each scheduled run stays within Workers Free's per-invocation limits** (50 database queries and 50 Google or Telegram calls; [ADR 0009](docs/adr/0009-per-invocation-budget.md)). Work is done in priority order (replies, agendas and reminders, sending, calendar changes, sync, upkeep), and whatever doesn't fit waits for the next minute instead of failing the run
+- Calendar sync reads 20 events per page (6 in the task calendar), so a large first sync spreads over several minutes instead of failing every time
+- A new daily repeating task creates its occurrences over a few runs
+- Each run's log line shows the queries and calls it used
+
 ## [2.4.1] - 2026-10-21
 
 Lighter scheduled runs.

@@ -141,3 +141,26 @@ user is roughly 2,000 requests a day, well inside the 50,000 operating target.
 `wrangler rollback`, confirmed `/healthz` and `/privacy` served, then rolled
 forward to the current version. Migrations are additive, so the older version
 ran against the newer schema without errors.
+
+## Per-invocation budget (ADR 0009, 2026-10-22, not yet deployed)
+
+Workers Free allows 50 D1 queries (each statement in a batch counting) and 50
+subrequests per invocation. Measured in the test world before the change:
+
+| Work | D1 statements |
+|---|---:|
+| Idle run | 14–28 |
+| One message, whole webhook invocation | 15–22 |
+| One user's reminder pass with the morning agenda | 33 (37 with 20 reminders due) |
+| One user's horizon refresh (busy day) | 22 |
+| First sync of a 120-event calendar, before | 127 in one run |
+| A new daily task's first occurrences, before | about 63 in one run |
+
+Since the change, every run counts its statements and calls and starts a unit
+only if its worst case fits (`UNIT_COSTS` in `src/shared/run-budget.ts`). In
+`tests/jobs/run-budget.test.ts`, no run exceeded 50 queries in any of these
+cases: a 120-event first sync (spread over about 13 runs), five agendas in the
+same minute (all sent within 5 runs), a new daily task, a 30-message backlog
+under a nearly spent budget, and everything due at once. After deploying,
+`tick.finished` logs `queries` and `calls` for every run; record the live
+figures here.
