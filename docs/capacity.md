@@ -25,10 +25,19 @@ Worker size since the first measurement, from `wrangler deploy --dry-run`:
 348 KiB (2026-10-04) → 557 KiB (2.0.0) → 622 KiB (2.3.0) → 663 KiB (2.4.0), all
 our own code; no large dependencies. Each fresh isolate parses the whole bundle,
 and that counts toward a run's CPU time, which fits idle runs roughly doubling
-(5 ms → 8–16 ms). From 2026-10-21 the bundle is minified (`minify` in
-`wrangler.jsonc`, 425 KiB) with source maps uploaded; CPU to be re-measured after
-that deploy. The next step, if needed, is serving the Mini App script and font
-(about 86 KB embedded as strings) as static assets.
+(5 ms → 8–16 ms). From 2.4.1 (2026-10-21) the bundle is minified (`minify` in
+`wrangler.jsonc`, 425 KiB), with source maps uploaded. **This did not lower CPU**
+(2026-10-22, 55 runs): idle median 11 ms (7–24), sync median 23 ms (11–38),
+maintenance median 22.5 ms (14–44). Bundle size is not the main cost, so
+serving the Mini App script and font as assets is not expected to help either.
+No run in about two hours of captures was cut off for CPU (`exceededCpu`); runs
+of 30–44 ms finished `ok`, so the 10 ms limit is not applied per run. One run
+ended in `exception` (2026-10-21 13:33 UTC): a transient
+`D1_ERROR: Network connection lost.` while claiming a delivery, not CPU and not
+a code fault; the outbox kept the message and a later run sent it (a claim
+whose reply is lost expires and is recovered). Each run syncs at most one calendar
+whatever the number of users, so more users mainly means more runs that sync,
+not heavier ones. Watch outcomes after each new user.
 
 Design rules that keep CPU down (`src/jobs/tick.ts`): one calendar sync per run;
 frequent maintenance (calendar lists, sync health, menu, confirmation expiry)
