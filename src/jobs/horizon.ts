@@ -2,6 +2,7 @@ import { viewCalendars } from "../application/calendar-view";
 import type { CalendarSyncSource } from "../calendar/port";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import { listStoredCalendars } from "../storage/google";
 import { type HorizonEvent, replaceHorizonStatements } from "../storage/reminders";
 import { findUserById } from "../storage/users";
@@ -17,6 +18,8 @@ export interface HorizonDeps {
   db: D1Database;
   clock: Clock;
   sourceFor: (userId: string) => Promise<CalendarSyncSource | null>;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /**
@@ -37,6 +40,7 @@ export async function refreshHorizons(deps: HorizonDeps, limit: number): Promise
     .all<{ id: string }>();
 
   for (const { id } of results) {
+    if (!fits(deps.budget, UNIT_COSTS.horizon)) break;
     const user = await findUserById(deps.db, id);
     const source = await deps.sourceFor(id);
     if (!user || !source) continue;
@@ -72,7 +76,18 @@ export async function refreshHorizons(deps: HorizonDeps, limit: number): Promise
         .run();
       continue;
     }
-    await deps.db.batch(replaceHorizonStatements(deps.db, id, events, now));
+    // One statement per event plus two: keep the earliest that fit this run (ADR
+    // 0009); later ones enter as the window moves on.
+    const room = deps.budget ? deps.budget.queriesLeft() - 2 : events.length;
+    if (room < 1) break;
+    const kept =
+      events.length > room
+        ? [...events].sort((a, b) => a.startsAt - b.startsAt).slice(0, room)
+        : events;
+    if (kept.length < events.length) {
+      logEvent("horizon.trimmed", { userId: id, kept: kept.length, total: events.length });
+    }
+    await deps.db.batch(replaceHorizonStatements(deps.db, id, kept, now));
   }
   return results.length;
 }

@@ -1,6 +1,7 @@
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import {
   type ClaimedUpdate,
   claimNextUpdate,
@@ -22,6 +23,8 @@ export interface InboxDeps {
   clock: Clock;
   ids: IdGenerator;
   handler: UpdateHandler;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /** Processes up to `limit` of one user's updates in order. Returns the number finished. */
@@ -32,6 +35,7 @@ export async function processUserInbox(
 ): Promise<number> {
   let finished = 0;
   while (finished < limit) {
+    if (!fits(deps.budget, UNIT_COSTS.inboxUpdate)) break;
     const claim = await claimNextUpdate(
       deps.db,
       userId,

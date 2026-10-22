@@ -170,7 +170,9 @@ describe("calendar sync", () => {
     const f = fixture();
     const userId = await setupUser(f, OWNER);
     const calendar = f.calendars.get(userId) as FakeCalendar;
-    for (const name of ["A", "B", "C", "D", "E"]) calendar.seed(CAL, name, event(name));
+    // More one-event pages than one run reads, so the rebuild spans two runs.
+    const names = "ABCDEFGHIJ".slice(0, MAX_PAGES_PER_RUN + 3).split("");
+    for (const name of names) calendar.seed(CAL, name, event(name));
     await syncDueCalendars(f, 10);
 
     // While the token is invalid, an event vanishes without a cancellation record.
@@ -180,7 +182,7 @@ describe("calendar sync", () => {
     await later(f);
     expect(await cachedSummaries(userId)).toContain("A"); // rebuild incomplete
     await later(f, CONTINUE_DELAY_MS);
-    expect(await cachedSummaries(userId)).toEqual(["B", "C", "D", "E"]);
+    expect(await cachedSummaries(userId)).toEqual(names.slice(1));
   });
 
   it("counts failed checks with backoff and leaves the cache untouched", async () => {
