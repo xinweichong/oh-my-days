@@ -24,7 +24,7 @@ import { appUrl } from "./miniapp/entry";
 import { createTokenCipher, type TokenCipher } from "./security/token-cipher";
 import { type Clock, systemClock } from "./shared/clock";
 import { type IdGenerator, randomIds } from "./shared/ids";
-import { meteredDb } from "./storage/query-meter";
+import { RunBudget } from "./shared/run-budget";
 import { findUserByTelegramId } from "./storage/users";
 import { createTelegramClient, type TelegramClient } from "./telegram/client";
 import type { UpdateHandler } from "./telegram/router";
@@ -44,6 +44,8 @@ export interface Services {
   directoryFor?: CalendarDirectoryFactory;
   /** Built from the other services unless overridden. */
   handler?: UpdateHandler;
+  /** Set for a scheduled run: its per-invocation budget (ADR 0009). */
+  budget?: RunBudget;
 }
 
 export interface GoogleServices {
@@ -67,28 +69,37 @@ export const AFTER_ACCEPT_LIMITS = {
   lightUpdateQueries: 24,
 } as const;
 
-export function createServices(env: Env): Services {
+/**
+ * With a budget, every D1 statement and outgoing request is counted against it
+ * (a scheduled run, ADR 0009).
+ */
+export function createServices(env: Env, budget?: RunBudget): Services {
   const config = readConfig(env);
+  const fetchImpl = budget ? budget.wrapFetch(fetch) : fetch;
   return {
     config,
-    db: env.DB,
+    db: budget ? budget.wrapDb(env.DB) : env.DB,
+    ...(budget ? { budget } : {}),
     clock: systemClock,
     ids: randomIds,
     random: Math.random,
-    telegram: createTelegramClient(config.telegramBotToken),
+    telegram: createTelegramClient(config.telegramBotToken, fetchImpl),
     handlers: registry(
       ...eventOperationHandlers,
       createCalendarHandler(config),
       projectTaskHandler,
     ),
     google: {
-      oauth: createGoogleOAuth({
-        clientId: config.googleClientId,
-        clientSecret: config.googleClientSecret,
-        redirectUri: `${config.publicBaseUrl}/oauth/callback`,
-      }),
+      oauth: createGoogleOAuth(
+        {
+          clientId: config.googleClientId,
+          clientSecret: config.googleClientSecret,
+          redirectUri: `${config.publicBaseUrl}/oauth/callback`,
+        },
+        fetchImpl,
+      ),
       cipher: memoize(() => createTokenCipher(config.tokenEncryptionKey)),
-      calendarApi: (tokens) => createGoogleCalendar(tokens),
+      calendarApi: (tokens) => createGoogleCalendar(tokens, fetchImpl),
     },
   };
 }
@@ -129,7 +140,7 @@ export function updateHandler(s: Services): UpdateHandler {
 }
 
 export function inboxDeps(s: Services): InboxDeps {
-  return { db: s.db, clock: s.clock, ids: s.ids, handler: updateHandler(s) };
+  return { db: s.db, clock: s.clock, ids: s.ids, handler: updateHandler(s), budget: s.budget };
 }
 
 export function runnerDeps(s: Services): RunnerDeps {
@@ -141,6 +152,7 @@ export function runnerDeps(s: Services): RunnerDeps {
     handlers: s.handlers,
     calendarFor: s.calendarFor ?? ((userId) => connectedCalendar(connectionDeps(s), userId)),
     directoryFor: s.directoryFor ?? ((userId) => connectedCalendar(connectionDeps(s), userId)),
+    budget: s.budget,
   };
 }
 
@@ -153,17 +165,26 @@ export function syncDeps(s: Services): SyncDeps {
     sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
     reconcile: (userId, calendarId, items, now, guard) =>
       reconcileTaskMarkers({ db: s.db, ids: s.ids }, userId, calendarId, items, now, guard),
+    budget: s.budget,
   };
 }
 
 export function deliveryDeps(s: Services): DeliveryDeps {
-  return { db: s.db, clock: s.clock, ids: s.ids, telegram: s.telegram, random: s.random };
+  return {
+    db: s.db,
+    clock: s.clock,
+    ids: s.ids,
+    telegram: s.telegram,
+    random: s.random,
+    budget: s.budget,
+  };
 }
 
 export function tickDeps(s: Services): TickDeps {
   return {
     db: s.db,
     clock: s.clock,
+    budget: s.budget,
     inbox: inboxDeps(s),
     runner: runnerDeps(s),
     delivery: deliveryDeps(s),
@@ -174,6 +195,7 @@ export function tickDeps(s: Services): TickDeps {
       ids: s.ids,
       sourceFor: (userId) => connectedCalendar(connectionDeps(s), userId),
       appUrl: appUrl(s.config),
+      budget: s.budget,
     },
     expiry: { db: s.db, clock: s.clock, ids: s.ids, ttlDays: s.config.testingTokenTtlDays },
   };
@@ -189,12 +211,13 @@ export function httpDeps(services: () => Services): HttpDeps {
         clock: s.clock,
         ids: s.ids,
         afterAccept: async (telegramUserId) => {
-          const meter = meteredDb(s.db);
-          const m: Services = { ...s, db: meter.db };
+          // The webhook's own invocation, budgeted like a scheduled run (ADR 0009).
+          const budget = new RunBudget();
+          const m: Services = { ...s, db: budget.wrapDb(s.db), budget };
           const user = await findUserByTelegramId(m.db, telegramUserId);
           if (!user) return;
           await processUserInbox(inboxDeps(m), user.id, AFTER_ACCEPT_LIMITS.updates);
-          if (meter.used() <= AFTER_ACCEPT_LIMITS.lightUpdateQueries) {
+          if (budget.used().queries <= AFTER_ACCEPT_LIMITS.lightUpdateQueries) {
             await runDueOperations(runnerDeps(m), AFTER_ACCEPT_LIMITS.operations, user.id);
             // Runs only calendars already due, e.g. after Force poll.
             await syncDueCalendars(syncDeps(m), AFTER_ACCEPT_LIMITS.calendars, user.id);

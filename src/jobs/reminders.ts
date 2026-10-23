@@ -23,6 +23,7 @@ import { addDays, localDateAt } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import { findCachedEvents } from "../storage/events";
 import { unguarded } from "../storage/guard";
 import { enqueueStatement } from "../storage/outbox";
@@ -70,6 +71,8 @@ export interface ReminderDeps {
   sourceFor: (userId: string) => Promise<ReminderSource | null>;
   /** The Mini App, offered under the agenda (null where it can't open). */
   appUrl?: string | null;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 export type ReminderSource = CalendarSyncSource & Pick<CalendarPort, "getEvent">;
@@ -101,6 +104,8 @@ export const MAX_IDLE_MS = 60 * 60_000;
 export async function runReminders(deps: ReminderDeps, limit: number): Promise<number> {
   let sent = 0;
   for (const { id, dueVersion } of await usersDueForReminders(deps.db, deps.clock.now(), limit)) {
+    // A user left for lack of budget keeps their past due time: first in the next run.
+    if (!fits(deps.budget, UNIT_COSTS.reminderPass)) break;
     const user = await findUserById(deps.db, id);
     if (!user) continue;
     sent += (await sendAgenda(deps, user)) ? 1 : 0;

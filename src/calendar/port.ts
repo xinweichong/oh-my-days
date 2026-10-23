@@ -163,7 +163,7 @@ export interface CalendarSyncSource {
   /** One page of changes (with a sync token) or of all events (without one). */
   listEventPage(
     calendarId: string,
-    cursor: { syncToken: string | null; pageToken: string | null },
+    cursor: { syncToken: string | null; pageToken: string | null; pageSize?: number },
   ): Promise<EventPageResult>;
   /**
    * Event occurrences overlapping a time window, recurring instances expanded.
