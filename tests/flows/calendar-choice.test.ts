@@ -93,3 +93,46 @@ describe("choosing the calendar of a new event (C4)", () => {
     expect(world.answers().at(-1)).toBe("This button is no longer valid.");
   });
 });
+
+describe("creating a calendar from settings", () => {
+  async function toNamePrompt(world: World) {
+    await setUp(world);
+    await world.send("/settings");
+    await world.press("Default calendar");
+    await world.press("Create a new calendar");
+    await world.send("Projects");
+  }
+
+  it("asks whether it becomes the default, and keeps the current default on request", async () => {
+    const world = new World(env.DB);
+    await toNamePrompt(world);
+    expect(world.lastText()).toBe("Create Projects. Should new events go there?");
+    await world.press("Keep my current default");
+    expect(world.texts()).toContain(
+      "Created Projects. It's shown in your views; new events still go to your default calendar.",
+    );
+    await world.send("/settings");
+    expect(world.lastText()).toContain(`Default for new events: ${PRIMARY.summary}`);
+    expect(world.lastText()).toContain("Projects");
+  });
+
+  it("makes it the default when chosen", async () => {
+    const world = new World(env.DB);
+    await toNamePrompt(world);
+    await world.press("Make it the default");
+    await world.send("/settings");
+    expect(world.lastText()).toContain("Default for new events: Projects");
+  });
+
+  it("refuses a name you already have", async () => {
+    const world = new World(env.DB);
+    await setUp(world);
+    await world.send("/settings");
+    await world.press("Default calendar");
+    await world.press("Create a new calendar");
+    await world.send("work");
+    expect(world.lastText()).toBe(
+      "You already have a calendar with that name. Send a different name.",
+    );
+  });
+});

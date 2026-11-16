@@ -12,7 +12,6 @@ import { deleteContactStatement, listContacts } from "../storage/contacts";
 import {
   findConnection,
   listStoredCalendars,
-  type StoredCalendar,
   setCalendarSelectedStatement,
 } from "../storage/google";
 import {
@@ -39,6 +38,13 @@ import { formatShortStart, formatWallTime } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
+import {
+  checkCalendarName,
+  MAX_CALENDAR_NAME,
+  planDefaultChange,
+  planSelection,
+  selectableCalendars,
+} from "./calendar-settings";
 import { guidedPrompt } from "./cancel";
 import { connectMessage } from "./google-connection";
 import { prepareProposal } from "./proposals";
@@ -118,12 +124,6 @@ async function advance(
 
 // --- Calendars ---------------------------------------------------------------
 
-function eventCalendars(user: UserRecord, calendars: StoredCalendar[]): StoredCalendar[] {
-  return calendars.filter(
-    (c) => c.listed && c.accessRole !== "freeBusyReader" && c.calendarId !== user.taskCalendarId,
-  );
-}
-
 async function calendarPicker(
   deps: SetupDeps,
   user: UserRecord,
@@ -131,7 +131,7 @@ async function calendarPicker(
   editMessageId: number | null,
   overrides: Map<string, boolean> = new Map(),
 ): Promise<Reaction> {
-  const all = eventCalendars(user, await listStoredCalendars(deps.db, user.id));
+  const all = selectableCalendars(user, await listStoredCalendars(deps.db, user.id));
   const shown = all.slice(0, MAX_PICKER_CALENDARS);
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const rows: InlineKeyboardButton[][] = shown.map((c) => {
@@ -155,7 +155,7 @@ async function calendarPicker(
 // --- Default calendar --------------------------------------------------------
 
 async function defaultPicker(deps: SetupDeps, user: UserRecord, mode: Mode): Promise<Reaction> {
-  const writable = eventCalendars(user, await listStoredCalendars(deps.db, user.id))
+  const writable = selectableCalendars(user, await listStoredCalendars(deps.db, user.id))
     .filter((c) => isWritable(c.accessRole))
     .sort((a, b) => Number(b.selected) - Number(a.selected))
     .slice(0, MAX_PICKER_CALENDARS);
@@ -244,7 +244,7 @@ async function settingsLines(deps: SetupDeps, user: UserRecord): Promise<string[
   const calendars = await listStoredCalendars(deps.db, user.id);
   const name = (id: string | null) =>
     calendars.find((c) => c.calendarId === id)?.summary ?? "Not set";
-  const selected = eventCalendars(user, calendars).filter((c) => c.selected);
+  const selected = selectableCalendars(user, calendars).filter((c) => c.selected);
   return [
     `Calendars: ${selected.map((c) => c.summary).join(", ") || "None selected"}`,
     `Default for new events: ${name(user.defaultCalendarId)}`,
@@ -516,33 +516,31 @@ export async function handleUiAction(
 
   switch (action) {
     case "toggle_calendar": {
-      const calendars = eventCalendars(user, await listStoredCalendars(deps.db, user.id));
-      const target = calendars.find((c) => c.calendarId === calendarId);
-      if (!target) return ack("This calendar is no longer available.");
       const select = payload.select === true;
+      const change = planSelection(
+        user,
+        await listStoredCalendars(deps.db, user.id),
+        calendarId ?? "",
+        select,
+        now,
+        { keepOne: false },
+      );
+      if (!change.ok) return ack("This calendar is no longer available.");
       const picker = await calendarPicker(
         deps,
         user,
         mode,
         callback.messageId,
-        new Map([[target.calendarId, select]]),
+        new Map([[calendarId ?? "", select]]),
       );
-      return combine(
-        ack(),
-        {
-          replies: [],
-          statements: (db) => [
-            setCalendarSelectedStatement(db, user.id, target.calendarId, select, now),
-          ],
-        },
-        picker,
-      );
+      return combine(ack(), { replies: [], statements: change.statements }, picker);
     }
 
     case "calendars_done": {
-      const selected = eventCalendars(user, await listStoredCalendars(deps.db, user.id)).filter(
-        (c) => c.selected,
-      );
+      const selected = selectableCalendars(
+        user,
+        await listStoredCalendars(deps.db, user.id),
+      ).filter((c) => c.selected);
       if (selected.length === 0) return ack("Select at least one calendar.");
       const done = combine(ack(), removeButtons(user, callback));
       if (mode === "settings") {
@@ -558,26 +556,21 @@ export async function handleUiAction(
     }
 
     case "choose_default": {
-      const target = (await listStoredCalendars(deps.db, user.id)).find(
-        (c) => c.calendarId === calendarId && c.listed,
+      const change = planDefaultChange(
+        user,
+        await listStoredCalendars(deps.db, user.id),
+        calendarId ?? "",
+        now,
       );
-      if (!target || !isWritable(target.accessRole)) {
-        return ack("You can't add events to this calendar.");
-      }
-      const update: Reaction = {
-        replies: [],
-        statements: (db, guard) => [
-          setUserCalendarStatement(db, user.id, "default", target.calendarId, now, guard),
-          setCalendarSelectedStatement(db, user.id, target.calendarId, true, now),
-        ],
-      };
+      if (!change.ok) return ack("You can't add events to this calendar.");
+      const update: Reaction = { replies: [], statements: change.statements };
       const confirmation = message(
         user.privateChatId,
-        `New events go to ${target.summary} unless you name another calendar.`,
+        `New events go to ${change.summary} unless you name another calendar.`,
       );
       const next =
         mode === "setup"
-          ? await advance(deps, user, "default", { defaultCalendarId: target.calendarId })
+          ? await advance(deps, user, "default", { defaultCalendarId: calendarId ?? "" })
           : { replies: [] };
       return combine(ack(), removeButtons(user, callback), update, confirmation, next);
     }
@@ -606,6 +599,26 @@ export async function handleUiAction(
         },
         message(user.privateChatId, `Task deadlines will appear in ${target.summary}.`),
         await advance(deps, user, "task_calendar", { taskCalendarId: target.calendarId }),
+      );
+    }
+
+    case "create_calendar": {
+      const checked = checkCalendarName(
+        typeof payload.name === "string" ? payload.name : "",
+        await listStoredCalendars(deps.db, user.id),
+      );
+      if (!checked.ok) return ack("That name is no longer available.");
+      const makeDefault = payload.makeDefault === true || !user.defaultCalendarId;
+      return combine(
+        ack("Creating the calendar."),
+        removeButtons(user, callback),
+        await proposeCalendar(
+          deps,
+          user,
+          makeDefault ? "default" : "extra",
+          checked.name,
+          `new-calendar:${callback.data}`,
+        ),
       );
     }
 
@@ -901,16 +914,58 @@ export async function handlePendingInput(
   }
 
   // new_default_calendar_name
-  if (text.length === 0 || text.length > 100 || text.startsWith("/")) {
-    return message(user.privateChatId, "Send a calendar name of up to 100 characters.");
+  const checked = checkCalendarName(text, await listStoredCalendars(deps.db, user.id));
+  if (!checked.ok) {
+    return message(
+      user.privateChatId,
+      checked.reason === "name_taken"
+        ? "You already have a calendar with that name. Send a different name."
+        : `Send a calendar name of up to ${MAX_CALENDAR_NAME} characters.`,
+    );
   }
-  return combine(
-    clear,
-    await proposeCalendar(deps, user, "default", text, `default-calendar:${input.messageId}`),
-  );
+  // With no default yet (setup), the new calendar becomes it. Otherwise ask.
+  if (!user.defaultCalendarId) {
+    return combine(
+      clear,
+      await proposeCalendar(
+        deps,
+        user,
+        "default",
+        checked.name,
+        `default-calendar:${input.messageId}`,
+      ),
+    );
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  return combine(clear, {
+    replies: [
+      keyboardMessage(
+        user,
+        `Create ${checked.name}. Should new events go there?`,
+        {
+          inline_keyboard: [
+            [
+              buttons.button("Make it the default", "create_calendar", {
+                name: checked.name,
+                makeDefault: true,
+              }),
+            ],
+            [
+              buttons.button("Keep my current default", "create_calendar", {
+                name: checked.name,
+                makeDefault: false,
+              }),
+            ],
+          ],
+        },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  });
 }
 
-async function proposeCalendar(
+export async function proposeCalendar(
   deps: SetupDeps,
   user: UserRecord,
   purpose: CreateCalendarIntent["purpose"],
@@ -941,6 +996,13 @@ export async function calendarCreated(
   calendarId: string,
 ): Promise<Reaction> {
   const now = deps.clock.now();
+  if (purpose === "extra") {
+    // Shown in views, and the default stays where it was.
+    return {
+      replies: [],
+      statements: (db) => [setCalendarSelectedStatement(db, user.id, calendarId, true, now)],
+    };
+  }
   const update: Reaction = {
     replies: [],
     statements: (db, guard) => [

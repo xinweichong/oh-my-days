@@ -661,3 +661,27 @@ calls used. `src/storage/query-meter.ts` is replaced by the budget. Tests:
 `tests/jobs/run-budget.test.ts` (large first sync, five same-minute agendas,
 new daily series, backlog under a tight budget, everything at once; every run
 within 50 queries).
+
+Event calendar choice and Mini App calendars (owner, 2026-11-16): the guided
+`/event` flow asks which calendar when more than one writable event calendar
+exists (PR 45, merged). On `feature/miniapp-calendars`, tested locally, not
+deployed: a Calendars screen in the Mini App ([plan](miniapp-calendars.md)).
+Selecting calendars, choosing the default, and the creation rules moved into
+`src/application/calendar-settings.ts`, shared with Telegram's pickers
+(`src/application/setup.ts`). The Mini App API is `GET calendars` and
+`POST calendars/select`, `calendars/default`, `calendars/sync`, and
+`calendars/create` (`src/miniapp/calendars.ts`). The first three change only
+D1 and set absolute values; hiding is refused for the default calendar and the
+last shown one. Creation uses the existing `calendar.create` operation with a
+new `extra` purpose (shown, default unchanged); Telegram asks "Make it the
+default?" when a default already exists, the Mini App sends the choice, and the
+Mini App allows one creation in flight at a time. A name must be non-empty, at
+most 100 characters, and not already used. Tests:
+`tests/miniapp/calendars-api.test.ts` (including cross-user and replay) and
+`tests/flows/calendar-choice.test.ts`. The screen was checked in headless
+Chromium against the local Worker with a stubbed Telegram object and a
+stateful stand-in for the API (synthetic data), in light and dark: switching,
+refusing to hide the default, changing the default, Sync now, and the New
+calendar sheet with a taken name and a successful creation. That check found
+and fixed cramped rows, a misplaced checkbox, and missing error text. It has not
+yet been checked inside Telegram.

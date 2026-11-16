@@ -6,8 +6,11 @@ import { calendarCreated } from "./setup";
 export const CREATE_CALENDAR = "calendar.create";
 
 export interface CreateCalendarIntent {
-  /** `task` creates the dedicated task calendar; `default` a new default for events. */
-  purpose: "default" | "task";
+  /**
+   * `task` creates the dedicated task calendar; `default` a new default for
+   * events; `extra` a calendar that is shown but leaves the default unchanged.
+   */
+  purpose: "default" | "task" | "extra";
   summary: string;
   timeZone: string;
   /** Calendar IDs known before the request, to recognize this one after a lost response. */
@@ -61,9 +64,11 @@ export function createCalendarHandler(config: AppConfig): OperationHandler {
       const name = intent.summary;
       switch (event.kind) {
         case "succeeded":
-          return intent.purpose === "task"
-            ? `Created ${name} for task deadlines.`
-            : `Created ${name}. New events go there unless you name another calendar.`;
+          if (intent.purpose === "task") return `Created ${name} for task deadlines.`;
+          if (intent.purpose === "extra") {
+            return `Created ${name}. It's shown in your views; new events still go to your default calendar.`;
+          }
+          return `Created ${name}. New events go there unless you name another calendar.`;
         case "pending":
           return event.outcomeUnknown
             ? `Pending: I couldn't confirm that ${name} was created. I'll check again automatically.`
