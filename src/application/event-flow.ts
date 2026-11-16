@@ -80,6 +80,8 @@ export interface EventFlowDeps extends SetupDeps {
 /** A creation in progress, or a move of an existing event. */
 export interface Draft {
   title: string;
+  /** Chosen in the guided flow when there is more than one event calendar. */
+  calendarId?: string;
   date?: LocalDate;
   time?: WallTime;
   /** Present when moving an existing event rather than creating one. */
@@ -122,6 +124,10 @@ export async function loadEvent(
     if (live.error.kind === "not_found") return null;
   }
   return findCachedEvent(deps.db, user.id, calendarId, eventId);
+}
+
+function readCalendarId(payload: Record<string, unknown>): string | null {
+  return typeof payload.calendarId === "string" ? payload.calendarId : null;
 }
 
 function readDraft(payload: Record<string, unknown>): Draft | null {
@@ -185,6 +191,41 @@ function ask(
 
 function askTitle(deps: EventFlowDeps, user: UserRecord): Reaction {
   return ask(deps, user, "event_title", {}, "What's the event called?");
+}
+
+function askCalendar(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  draft: Draft,
+  calendars: StoredCalendar[],
+): Reaction {
+  const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
+  const isDefault = (c: StoredCalendar) => c.calendarId === user.defaultCalendarId;
+  // The default comes first, so the usual answer is the top button.
+  const ordered = [...calendars].sort((a, b) => Number(isDefault(b)) - Number(isDefault(a)));
+  const rows = [
+    ...ordered.map((c) => [
+      buttons.button(`${isDefault(c) ? "✓ " : ""}${c.summary}`, "event_draft_calendar", {
+        draft,
+        calendarId: c.calendarId,
+      }),
+    ]),
+    cancelRow(buttons, `adding the event ${draft.title}`),
+  ];
+  return {
+    replies: [
+      keyboardMessage(
+        user,
+        `Which calendar is ${draft.title} in? ✓ marks your default.`,
+        { inline_keyboard: rows },
+        null,
+      ),
+    ],
+    statements: (db, guard) => [
+      clearPendingInputStatement(db, user.id),
+      ...buttons.statements(db, guard),
+    ],
+  };
 }
 
 export function askDate(deps: EventFlowDeps, user: UserRecord, draft: Draft): Reaction {
@@ -304,10 +345,15 @@ function overlapCalendarIds(user: UserRecord, calendars: StoredCalendar[]): stri
     .map((c) => c.calendarId);
 }
 
-function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFields): Reaction {
+function askEventRepeat(
+  deps: EventFlowDeps,
+  user: UserRecord,
+  fields: EventFields,
+  calendarId: string | null = null,
+): Reaction {
   const buttons = new ActionButtons(deps.ids, user.id, deps.clock.now());
   const option = (label: string, repeat: RepeatChoice | null) =>
-    buttons.button(label, "event_repeat", { fields, repeat });
+    buttons.button(label, "event_repeat", { fields, repeat, calendarId });
   return {
     replies: [
       keyboardMessage(
@@ -316,7 +362,7 @@ function askEventRepeat(deps: EventFlowDeps, user: UserRecord, fields: EventFiel
         {
           inline_keyboard: [
             ...repeatRows(option),
-            [buttons.button("Every…", "event_repeat_every", { fields })],
+            [buttons.button("Every…", "event_repeat_every", { fields, calendarId })],
             cancelRow(buttons, `adding the event ${fields.summary}`),
           ],
         },
@@ -977,11 +1023,12 @@ export async function handleEventAction(
       const fields = payload.fields as EventFields | undefined;
       if (!fields) return answer(callback, "This button is no longer valid.");
       const repeat = readRepeat(payload);
+      const calendarId = readCalendarId(payload);
       return combine(
         answer(callback),
         removeButtons(user, callback),
         await withTypingHint(user, "event", (note) =>
-          create(deps, user, fields, key, repeat, note ? { note } : {}),
+          create(deps, user, fields, key, repeat, { ...(note ? { note } : {}), calendarId }),
         ),
       );
     }
@@ -995,9 +1042,21 @@ export async function handleEventAction(
           deps,
           user,
           "event_repeat_interval",
-          { fields },
+          { fields, calendarId: readCalendarId(payload) },
           "How often? Type every 2 days, every 3 weeks, or every 6 months.",
         ),
+      );
+    }
+    case "event_draft_calendar": {
+      const draft = readDraft(payload);
+      const calendars = eventCalendars(user, await listStoredCalendars(deps.db, user.id));
+      const chosen = calendars.find((c) => c.calendarId === payload.calendarId);
+      if (!draft || !chosen)
+        return answer(callback, "That calendar isn't available for new events.");
+      return combine(
+        answer(callback),
+        removeButtons(user, callback),
+        askDate(deps, user, { ...draft, calendarId: chosen.calendarId }),
       );
     }
     case "event_date": {
@@ -1026,11 +1085,16 @@ export async function handleEventAction(
       return combine(
         answer(callback),
         removeButtons(user, callback),
-        askEventRepeat(deps, user, {
-          summary: draft.title,
-          start: { date: draft.date },
-          end: { date: addDays(draft.date, 1) },
-        }),
+        askEventRepeat(
+          deps,
+          user,
+          {
+            summary: draft.title,
+            start: { date: draft.date },
+            end: { date: addDays(draft.date, 1) },
+          },
+          draft.calendarId ?? null,
+        ),
       );
     }
     case "event_duration": {
@@ -1087,7 +1151,7 @@ async function finishTimed(
       note: `Work time for the task ${draft.title}. Its deadline is unchanged.`,
     });
   }
-  return askEventRepeat(deps, user, event);
+  return askEventRepeat(deps, user, event, draft.calendarId ?? null);
 }
 
 /** "Schedule time" on a task: guided day, time, and length for a work session. */
@@ -1125,7 +1189,11 @@ export async function handleEventInput(
       if (text.length === 0 || text.length > MAX_TITLE_LENGTH) {
         return message(user.privateChatId, `Send a name of up to ${MAX_TITLE_LENGTH} characters.`);
       }
-      return askDate(deps, user, { title: text });
+      const calendars = eventCalendars(user, await listStoredCalendars(deps.db, user.id));
+      const next: Draft = { title: text };
+      return calendars.length > 1
+        ? askCalendar(deps, user, next, calendars)
+        : askDate(deps, user, next);
     }
     case "event_date": {
       const date = parseDate(text, today);
@@ -1195,10 +1263,11 @@ export async function handleEventInput(
           "I didn't recognize that. Try every 2 days, every 3 weeks, or every 6 months.",
         );
       }
+      const calendarId = readCalendarId(pending.payload);
       return combine(
         clearInput(user),
         await withTypingHint(user, "event", (note) =>
-          create(deps, user, fields, key, repeat, note ? { note } : {}),
+          create(deps, user, fields, key, repeat, { ...(note ? { note } : {}), calendarId }),
         ),
       );
     }

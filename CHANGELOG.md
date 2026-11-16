@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`/event` asks which calendar** when you have more than one writable event calendar, as `/task` asks which list. Your default is listed first and marked; with only one calendar the question is skipped. Quick capture still uses the default or `on <calendar>`
+
 ### Changed
 
 - **Each scheduled run stays within Workers Free's per-invocation limits** (50 database queries and 50 Google or Telegram calls; [ADR 0009](docs/adr/0009-per-invocation-budget.md)). Work is done in priority order (replies, agendas and reminders, sending, calendar changes, sync, upkeep), and whatever doesn't fit waits for the next minute instead of failing the run

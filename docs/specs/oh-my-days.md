@@ -36,7 +36,7 @@ This document records the completed design interview. Sections describing propos
 - Voice notes, screenshots, image interpretation, and multi-instruction messages.
 - Completion-relative recurrence, such as three months after the previous completion.
 - Gmail email integration and Google Contacts integration.
-- A separate calendar frontend. Minimal Google authorization pages may be needed. Exception: a Telegram Mini App for tasks and a read-only day/week overview, approved 2026-10-08 (see [improvement plan](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)); it does not edit events or replace Google Calendar.
+- A separate calendar frontend. Minimal Google authorization pages may be needed. Exception: a Telegram Mini App for tasks and a read-only day/week overview, approved 2026-10-08 (see [improvement plan](../plans/improvements.md#7-phase-5--telegram-mini-app-d7-built-last)); it does not edit events or replace Google Calendar. Calendar management (choosing which calendars are shown and the default for new events, and creating a calendar) in the Mini App was approved 2026-11-16 ([proposal](../plans/miniapp-calendars.md)); renaming, deleting, and sharing calendars remain in Google Calendar.
 - Paid infrastructure, paid AI fallback, and automatic upgrades.
 
 ## 3. User setup and settings
@@ -49,6 +49,8 @@ This document records the completed design interview. Sections describing propos
 6. The user's initial timezone is **Asia/Singapore**. The user can change it explicitly when travelling or relocating.
 
 New events use the selected default calendar unless the instruction names another writable calendar. Task deadlines always use the dedicated task calendar.
+
+The guided `/event` flow asks which calendar right after the title, but only when more than one writable event calendar exists (the task calendar and view-only calendars are not offered). The default is listed first and marked, so choosing it is one tap, mirroring the guided task flow's list question. With one writable calendar the question is skipped. Quick capture never asks; it uses the default or `on <calendar>`. Added 2026-11-16.
 
 Permissions must be respected. Connecting an account does not grant organizer rights over someone else's meeting or write access to a read-only calendar. Explain unavailable actions instead of implying they succeeded.
 

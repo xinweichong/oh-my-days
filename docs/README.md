@@ -30,6 +30,7 @@ became of it.
 | [Backend plan](plans/backend.md) | Architecture, data model, and delivery gates; §10 is the implementation record | Current (§10), record (plan) |
 | [Architecture decisions](adr/) | Leases and guarded batches, custom domain and OAuth, recurring occurrences, next-due trigger, Mini App sign-in, landing page as static assets, Mini App display type and depth, several reminders per item, per-invocation budget (proposed) | Current |
 | [Improvement plan](plans/improvements.md) | The post-beta improvements, all released in 2.0.0 | Record |
+| [Mini App calendar management](plans/miniapp-calendars.md) | Approved scope for managing calendars in the Mini App; not yet built | Proposed |
 | [Connection-page plan](plans/connection-pages.md) | Layout and states of the Google connection pages, as built | Record |
 | [Stage 0 feasibility](feasibility/stage-0.md) | Checks made before anything was provisioned | Record |
 
