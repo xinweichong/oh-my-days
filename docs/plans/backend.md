@@ -649,7 +649,7 @@ reminder, and the event sheet; the owner then checked them inside Telegram
 after the deploy.
 
 Per-invocation budget (owner, 2026-10-22): on `feature/run-budget`, tested
-locally, not deployed ([ADR 0009](../adr/0009-per-invocation-budget.md)).
+locally and deployed in 2.5.0 ([ADR 0009](../adr/0009-per-invocation-budget.md)).
 `RunBudget` counts D1 statements and Google/Telegram requests for each
 scheduled run and webhook follow-up. The tick starts each unit only if its
 worst case fits (`UNIT_COSTS`), in priority order: replies, series and
@@ -664,8 +664,8 @@ within 50 queries).
 
 Event calendar choice and Mini App calendars (owner, 2026-11-16): the guided
 `/event` flow asks which calendar when more than one writable event calendar
-exists (PR 45, merged). On `feature/miniapp-calendars`, tested locally, not
-deployed: a Calendars screen in the Mini App ([plan](miniapp-calendars.md)).
+exists (PR 45, merged). On `feature/miniapp-calendars` (PR 46, merged), released in
+2.5.0: a Calendars screen in the Mini App ([plan](miniapp-calendars.md)).
 Selecting calendars, choosing the default, and the creation rules moved into
 `src/application/calendar-settings.ts`, shared with Telegram's pickers
 (`src/application/setup.ts`). The Mini App API is `GET calendars` and
@@ -683,5 +683,5 @@ Chromium against the local Worker with a stubbed Telegram object and a
 stateful stand-in for the API (synthetic data), in light and dark: switching,
 refusing to hide the default, changing the default, Sync now, and the New
 calendar sheet with a taken name and a successful creation. That check found
-and fixed cramped rows, a misplaced checkbox, and missing error text. It has not
-yet been checked inside Telegram.
+and fixed cramped rows, a misplaced checkbox, and missing error text. The owner then checked it
+inside Telegram after the deploy.

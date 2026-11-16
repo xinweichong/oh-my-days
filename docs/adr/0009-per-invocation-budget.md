@@ -1,6 +1,6 @@
 # ADR 0009: A per-invocation budget for D1 queries and outgoing calls
 
-Status: Proposed (implemented on `feature/run-budget`, not yet deployed)
+Status: Accepted (implemented and deployed in 2.5.0, 2026-11-16)
 Date: 2026-10-22
 
 ## Context

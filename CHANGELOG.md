@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-16
+
+Choose where events go, manage calendars in the Mini App, and runs that stay within the free plan's limits.
+
 ### Added
 
 - **Calendars in the Mini App**: a Calendars screen from Home shows each calendar's access and last sync, switches calendars on and off in views and reminders, chooses where new events go, and has **Sync now**. It keeps at least one calendar shown and won't hide the default. Renaming, deleting, and sharing stay in Google Calendar ([plan](docs/plans/miniapp-calendars.md))
@@ -155,7 +159,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/xinweichong/oh-my-days/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/xinweichong/oh-my-days/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/xinweichong/oh-my-days/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/xinweichong/oh-my-days/compare/v2.2.0...v2.3.0
