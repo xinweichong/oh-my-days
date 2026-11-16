@@ -2,6 +2,7 @@ import { type BackoffPolicy, retryDelayMs } from "../domain/retry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import { claimNextDelivery, type DeliveryOutcome, finishDelivery } from "../storage/outbox";
 import { isReplaySafe } from "../telegram/api";
 import type { TelegramClient, TelegramResult } from "../telegram/client";
@@ -16,6 +17,8 @@ export interface DeliveryDeps {
   ids: IdGenerator;
   telegram: TelegramClient;
   random: () => number;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /**
@@ -29,6 +32,7 @@ export async function deliverDue(
 ): Promise<number> {
   let attempted = 0;
   while (attempted < limit) {
+    if (!fits(deps.budget, UNIT_COSTS.delivery)) break;
     const claim = await claimNextDelivery(
       deps.db,
       deps.ids.next(),

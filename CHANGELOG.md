@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-16
+
+Choose where events go, manage calendars in the Mini App, and runs that stay within the free plan's limits.
+
+### Added
+
+- **Calendars in the Mini App**: a Calendars screen from Home shows each calendar's access and last sync, switches calendars on and off in views and reminders, chooses where new events go, and has **Sync now**. It keeps at least one calendar shown and won't hide the default. Renaming, deleting, and sharing stay in Google Calendar ([plan](docs/plans/miniapp-calendars.md))
+- **New calendar**, from the Mini App's Calendars screen and from Telegram's default-calendar picker, now asks whether new events should go there. Choosing no keeps your current default and still shows the new calendar. A name you already use is refused, and the Mini App allows one creation at a time
+- **`/event` asks which calendar** when you have more than one writable event calendar, as `/task` asks which list. Your default is listed first and marked; with only one calendar the question is skipped. Quick capture still uses the default or `on <calendar>`
+
+### Changed
+
+- **Each scheduled run stays within Workers Free's per-invocation limits** (50 database queries and 50 Google or Telegram calls; [ADR 0009](docs/adr/0009-per-invocation-budget.md)). Work is done in priority order (replies, agendas and reminders, sending, calendar changes, sync, upkeep), and whatever doesn't fit waits for the next minute instead of failing the run
+- Calendar sync reads 20 events per page (6 in the task calendar), so a large first sync spreads over several minutes instead of failing every time
+- A new daily repeating task creates its occurrences over a few runs
+- Each run's log line shows the queries and calls it used
+
 ## [2.4.1] - 2026-10-21
 
 Lighter scheduled runs.
@@ -142,7 +159,8 @@ The structured release: everything works through commands and buttons.
 - Durable operations with confirmations bound to the previewed change, and Undo
 - Product specification, backend plan, identity, and experience brief
 
-[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.4.1...HEAD
+[Unreleased]: https://github.com/xinweichong/oh-my-days/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/xinweichong/oh-my-days/compare/v2.4.1...v2.5.0
 [2.4.1]: https://github.com/xinweichong/oh-my-days/compare/v2.4.0...v2.4.1
 [2.4.0]: https://github.com/xinweichong/oh-my-days/compare/v2.3.0...v2.4.0
 [2.3.0]: https://github.com/xinweichong/oh-my-days/compare/v2.2.0...v2.3.0

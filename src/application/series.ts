@@ -4,6 +4,7 @@ import { addDays, localDateAt, zonedInstant } from "../domain/time";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import type { RunBudget } from "../shared/run-budget";
 import {
   advanceSeriesStatement,
   type SeriesRecord,
@@ -53,6 +54,8 @@ export interface SeriesDeps {
   db: D1Database;
   clock: Clock;
   ids: IdGenerator;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /**
@@ -66,14 +69,19 @@ export async function materializeSeries(deps: SeriesDeps, limit: number): Promis
   const horizon = (s: SeriesRecord) => addDays(localDateAt(now, s.timezone), SERIES_HORIZON_DAYS);
   let created = 0;
   for (const series of await seriesNeedingOccurrences(deps.db, horizon, limit)) {
+    // Two statements per occurrence and one for the cursor, within the budget.
+    const room = deps.budget
+      ? Math.min(OCCURRENCES_PER_RUN, Math.floor((deps.budget.queriesLeft() - 1) / 2))
+      : OCCURRENCES_PER_RUN;
+    if (room < 1) break;
     const through = horizon(series);
     const dates = occurrencesBetween(
       recurrenceOf(series),
       addDays(series.materializedThrough, 1),
       through,
-      OCCURRENCES_PER_RUN,
+      room,
     );
-    const reached = dates.length === OCCURRENCES_PER_RUN ? (dates.at(-1) as string) : through;
+    const reached = dates.length === room ? (dates.at(-1) as string) : through;
     const guard = seriesCursorGuard(series, reached);
     const statements: D1PreparedStatement[] = [
       advanceSeriesStatement(deps.db, series, reached, now),

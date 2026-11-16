@@ -76,6 +76,8 @@ export interface Home {
   allClear: boolean;
   lists: { id: string; name: string; open: number; overdue: number; inbox: boolean }[];
   recent: number;
+  /** Where new events go; null until one is chosen. */
+  defaultCalendar: string | null;
   sync: string;
   reconnect: boolean;
   tomorrowLabel: string;
@@ -153,4 +155,19 @@ export interface TaskDetail {
 export interface Recent {
   days: number;
   tasks: AppTask[];
+}
+
+export interface CalendarEntry {
+  id: string;
+  name: string;
+  access: "owner" | "edit" | "view";
+  selected: boolean;
+  isDefault: boolean;
+  canBeDefault: boolean;
+  sync: string;
+}
+
+export interface CalendarsView {
+  calendars: CalendarEntry[];
+  task: { name: string; sync: string } | null;
 }

@@ -25,10 +25,19 @@ Worker size since the first measurement, from `wrangler deploy --dry-run`:
 348 KiB (2026-10-04) → 557 KiB (2.0.0) → 622 KiB (2.3.0) → 663 KiB (2.4.0), all
 our own code; no large dependencies. Each fresh isolate parses the whole bundle,
 and that counts toward a run's CPU time, which fits idle runs roughly doubling
-(5 ms → 8–16 ms). From 2026-10-21 the bundle is minified (`minify` in
-`wrangler.jsonc`, 425 KiB) with source maps uploaded; CPU to be re-measured after
-that deploy. The next step, if needed, is serving the Mini App script and font
-(about 86 KB embedded as strings) as static assets.
+(5 ms → 8–16 ms). From 2.4.1 (2026-10-21) the bundle is minified (`minify` in
+`wrangler.jsonc`, 425 KiB), with source maps uploaded. **This did not lower CPU**
+(2026-10-22, 55 runs): idle median 11 ms (7–24), sync median 23 ms (11–38),
+maintenance median 22.5 ms (14–44). Bundle size is not the main cost, so
+serving the Mini App script and font as assets is not expected to help either.
+No run in about two hours of captures was cut off for CPU (`exceededCpu`); runs
+of 30–44 ms finished `ok`, so the 10 ms limit is not applied per run. One run
+ended in `exception` (2026-10-21 13:33 UTC): a transient
+`D1_ERROR: Network connection lost.` while claiming a delivery, not CPU and not
+a code fault; the outbox kept the message and a later run sent it (a claim
+whose reply is lost expires and is recovered). Each run syncs at most one calendar
+whatever the number of users, so more users mainly means more runs that sync,
+not heavier ones. Watch outcomes after each new user.
 
 Design rules that keep CPU down (`src/jobs/tick.ts`): one calendar sync per run;
 frequent maintenance (calendar lists, sync health, menu, confirmation expiry)
@@ -132,3 +141,26 @@ user is roughly 2,000 requests a day, well inside the 50,000 operating target.
 `wrangler rollback`, confirmed `/healthz` and `/privacy` served, then rolled
 forward to the current version. Migrations are additive, so the older version
 ran against the newer schema without errors.
+
+## Per-invocation budget (ADR 0009, 2026-10-22, not yet deployed)
+
+Workers Free allows 50 D1 queries (each statement in a batch counting) and 50
+subrequests per invocation. Measured in the test world before the change:
+
+| Work | D1 statements |
+|---|---:|
+| Idle run | 14–28 |
+| One message, whole webhook invocation | 15–22 |
+| One user's reminder pass with the morning agenda | 33 (37 with 20 reminders due) |
+| One user's horizon refresh (busy day) | 22 |
+| First sync of a 120-event calendar, before | 127 in one run |
+| A new daily task's first occurrences, before | about 63 in one run |
+
+Since the change, every run counts its statements and calls and starts a unit
+only if its worst case fits (`UNIT_COSTS` in `src/shared/run-budget.ts`). In
+`tests/jobs/run-budget.test.ts`, no run exceeded 50 queries in any of these
+cases: a 120-event first sync (spread over about 13 runs), five agendas in the
+same minute (all sent within 5 runs), a new daily task, a 30-message backlog
+under a nearly spent budget, and everything due at once. After deploying,
+`tick.finished` logs `queries` and `calls` for every run; record the live
+figures here.

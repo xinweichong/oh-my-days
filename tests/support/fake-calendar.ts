@@ -91,7 +91,7 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
 
   async listEventPage(
     calendarId: string,
-    cursor: { syncToken: string | null; pageToken: string | null },
+    cursor: { syncToken: string | null; pageToken: string | null; pageSize?: number },
   ): Promise<EventPageResult> {
     this.calls.push("list");
     if (this.inaccessible.has(calendarId)) return { ok: false, error: { kind: "not_found" } };
@@ -119,12 +119,14 @@ export class FakeCalendar implements CalendarPort, CalendarSyncSource {
         since === null ? e.status !== "cancelled" : (this.changedAt.get(k) ?? 0) > since,
       )
       .sort(([a], [b]) => (a < b ? -1 : 1));
-    const page = all.slice(offset, offset + this.pageSize);
-    const more = offset + this.pageSize < all.length;
+    // Like Google, maxResults is an upper bound.
+    const size = Math.min(this.pageSize, cursor.pageSize ?? this.pageSize);
+    const page = all.slice(offset, offset + size);
+    const more = offset + size < all.length;
     return {
       ok: true,
       items: page.map(([k, e]) => this.synced(k, e)),
-      nextPageToken: more ? JSON.stringify({ since, offset: offset + this.pageSize }) : null,
+      nextPageToken: more ? JSON.stringify({ since, offset: offset + size }) : null,
       nextSyncToken: more ? null : `${this.tokenEpoch}:${this.version}`,
     };
   }

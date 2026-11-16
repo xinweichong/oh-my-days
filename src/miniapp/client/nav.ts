@@ -14,6 +14,7 @@ export type Screen =
   | { name: "tasks"; view: "overdue" | "no_deadline" | "list"; list?: string }
   | { name: "task"; id: string }
   | { name: "recent" }
+  | { name: "calendars" }
   /** Shown once a day when everything today is behind you (ADR 0007). */
   | { name: "clear"; total: number };
 

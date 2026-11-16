@@ -155,7 +155,10 @@ export function createGoogleCalendar(
     },
 
     async listEventPage(calendarId, cursor) {
-      const query: Record<string, string> = { maxResults: EVENT_PAGE_SIZE, singleEvents: "false" };
+      const query: Record<string, string> = {
+        maxResults: cursor.pageSize ? String(cursor.pageSize) : EVENT_PAGE_SIZE,
+        singleEvents: "false",
+      };
       if (cursor.pageToken) query.pageToken = cursor.pageToken;
       if (cursor.syncToken) query.syncToken = cursor.syncToken;
       const path = `/calendars/${encodeURIComponent(calendarId)}/events`;
