@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Calendars in the Mini App**: a Calendars screen from Home shows each calendar's access and last sync, switches calendars on and off in views and reminders, chooses where new events go, and has **Sync now**. It keeps at least one calendar shown and won't hide the default. Renaming, deleting, and sharing stay in Google Calendar ([plan](docs/plans/miniapp-calendars.md))
+- **New calendar**, from the Mini App's Calendars screen and from Telegram's default-calendar picker, now asks whether new events should go there. Choosing no keeps your current default and still shows the new calendar. A name you already use is refused, and the Mini App allows one creation at a time
 - **`/event` asks which calendar** when you have more than one writable event calendar, as `/task` asks which list. Your default is listed first and marked; with only one calendar the question is skipped. Quick capture still uses the default or `on <calendar>`
 
 ### Changed

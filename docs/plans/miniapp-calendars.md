@@ -1,7 +1,9 @@
-# Mini App: calendar management (proposal)
+# Mini App: calendar management
 
 Status: **approved by the owner 2026-11-16 (both slices, plus "Make it the
-default" on creation in Telegram); nothing built yet.** The spec's Mini App
+default" on creation in Telegram); built and tested locally on
+`feature/miniapp-calendars`, not deployed. The screen is not yet checked in a
+browser or inside Telegram.** The spec's Mini App
 exception now covers calendar management (see the spec's Out of scope list). The
 [improvement plan](improvements.md) listed settings as "a later decision"; this
 is that decision.

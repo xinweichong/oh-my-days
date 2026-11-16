@@ -38,7 +38,13 @@ import { formatShortStart, formatWallTime } from "../telegram/format";
 import { TAGLINE } from "../telegram/messages";
 import type { InboundCallback, InboundMessage } from "../telegram/update";
 import { CREATE_CALENDAR, type CreateCalendarIntent } from "./calendar-operations";
-import { planDefaultChange, planSelection, selectableCalendars } from "./calendar-settings";
+import {
+  checkCalendarName,
+  MAX_CALENDAR_NAME,
+  planDefaultChange,
+  planSelection,
+  selectableCalendars,
+} from "./calendar-settings";
 import { guidedPrompt } from "./cancel";
 import { connectMessage } from "./google-connection";
 import { prepareProposal } from "./proposals";
@@ -596,6 +602,26 @@ export async function handleUiAction(
       );
     }
 
+    case "create_calendar": {
+      const checked = checkCalendarName(
+        typeof payload.name === "string" ? payload.name : "",
+        await listStoredCalendars(deps.db, user.id),
+      );
+      if (!checked.ok) return ack("That name is no longer available.");
+      const makeDefault = payload.makeDefault === true || !user.defaultCalendarId;
+      return combine(
+        ack("Creating the calendar."),
+        removeButtons(user, callback),
+        await proposeCalendar(
+          deps,
+          user,
+          makeDefault ? "default" : "extra",
+          checked.name,
+          `new-calendar:${callback.data}`,
+        ),
+      );
+    }
+
     case "create_task_calendar":
       if (user.taskCalendarId) return ack("The task calendar is already set up.");
       return combine(
@@ -888,16 +914,58 @@ export async function handlePendingInput(
   }
 
   // new_default_calendar_name
-  if (text.length === 0 || text.length > 100 || text.startsWith("/")) {
-    return message(user.privateChatId, "Send a calendar name of up to 100 characters.");
+  const checked = checkCalendarName(text, await listStoredCalendars(deps.db, user.id));
+  if (!checked.ok) {
+    return message(
+      user.privateChatId,
+      checked.reason === "name_taken"
+        ? "You already have a calendar with that name. Send a different name."
+        : `Send a calendar name of up to ${MAX_CALENDAR_NAME} characters.`,
+    );
   }
-  return combine(
-    clear,
-    await proposeCalendar(deps, user, "default", text, `default-calendar:${input.messageId}`),
-  );
+  // With no default yet (setup), the new calendar becomes it. Otherwise ask.
+  if (!user.defaultCalendarId) {
+    return combine(
+      clear,
+      await proposeCalendar(
+        deps,
+        user,
+        "default",
+        checked.name,
+        `default-calendar:${input.messageId}`,
+      ),
+    );
+  }
+  const buttons = new ActionButtons(deps.ids, user.id, now);
+  return combine(clear, {
+    replies: [
+      keyboardMessage(
+        user,
+        `Create ${checked.name}. Should new events go there?`,
+        {
+          inline_keyboard: [
+            [
+              buttons.button("Make it the default", "create_calendar", {
+                name: checked.name,
+                makeDefault: true,
+              }),
+            ],
+            [
+              buttons.button("Keep my current default", "create_calendar", {
+                name: checked.name,
+                makeDefault: false,
+              }),
+            ],
+          ],
+        },
+        null,
+      ),
+    ],
+    statements: (db, guard) => buttons.statements(db, guard),
+  });
 }
 
-async function proposeCalendar(
+export async function proposeCalendar(
   deps: SetupDeps,
   user: UserRecord,
   purpose: CreateCalendarIntent["purpose"],
@@ -928,6 +996,13 @@ export async function calendarCreated(
   calendarId: string,
 ): Promise<Reaction> {
   const now = deps.clock.now();
+  if (purpose === "extra") {
+    // Shown in views, and the default stays where it was.
+    return {
+      replies: [],
+      statements: (db) => [setCalendarSelectedStatement(db, user.id, calendarId, true, now)],
+    };
+  }
   const update: Reaction = {
     replies: [],
     statements: (db, guard) => [

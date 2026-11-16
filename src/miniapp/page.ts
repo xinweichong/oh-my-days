@@ -373,7 +373,9 @@ body.selecting .toast { bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + 136
   border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: transform 150ms; }
 .switch[aria-checked="true"] .switch-knob { transform: translateX(18px); }
 @media (prefers-reduced-motion: reduce) { .switch::before, .switch-knob { transition: none; } }
-.cal-actions { display: flex; justify-content: center; margin-top: 8px; }
+.cal-actions { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
+.check-line { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.check-line input { width: 22px; height: 22px; accent-color: var(--tide); }
 
 /* Reminders: the item's own, removable; presets as chips */
 .reminder-list { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--surface-sunk); }

@@ -23,6 +23,27 @@ export function selectableCalendars(
   );
 }
 
+export const MAX_CALENDAR_NAME = 100;
+
+/**
+ * A name for a calendar about to be created: trimmed, not empty, not a command,
+ * and not one the person already has (two with the same name could not be told
+ * apart in a picker, nor reliably recognized after a lost response).
+ */
+export function checkCalendarName(
+  input: string,
+  calendars: StoredCalendar[],
+): { ok: true; name: string } | { ok: false; reason: "bad_name" | "name_taken" } {
+  const name = input.trim();
+  if (name.length === 0 || name.length > MAX_CALENDAR_NAME || name.startsWith("/")) {
+    return { ok: false, reason: "bad_name" };
+  }
+  const taken = calendars.some(
+    (c) => c.listed && c.summary.trim().toLowerCase() === name.toLowerCase(),
+  );
+  return taken ? { ok: false, reason: "name_taken" } : { ok: true, name };
+}
+
 export type CalendarChange =
   | {
       ok: true;

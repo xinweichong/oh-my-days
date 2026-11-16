@@ -196,3 +196,55 @@ describe("Mini App calendars", () => {
     expect(["cooldown", "running"]).toContain((second.body as { result: string }).result);
   });
 });
+
+describe("Mini App: creating a calendar", () => {
+  const create = (world: World, body: Record<string, unknown>, key = "create-key-0001") =>
+    post(world, "calendars/create", { key, ...body });
+
+  it("creates it once Google confirms, keeping the current default unless asked", async () => {
+    const world = new World(env.DB);
+    await setUp(world);
+    const started = await create(world, { name: "Projects", makeDefault: false });
+    expect(started).toMatchObject({ status: 200, body: { started: true } });
+    await world.tick();
+
+    const view = (await appApi(world, "calendars")).body as unknown as View;
+    const projects = view.calendars.find((c) => c.name === "Projects");
+    expect(projects).toMatchObject({ selected: true, isDefault: false, access: "owner" });
+    expect(view.calendars.find((c) => c.isDefault)?.name).toBe(PRIMARY.summary);
+    expect(world.texts().some((t) => t.startsWith("Created Projects."))).toBe(true);
+  });
+
+  it("makes the new calendar the default when asked", async () => {
+    const world = new World(env.DB);
+    await setUp(world);
+    await create(world, { name: "Projects", makeDefault: true });
+    await world.tick();
+    const view = (await appApi(world, "calendars")).body as unknown as View;
+    expect(view.calendars.find((c) => c.isDefault)?.name).toBe("Projects");
+  });
+
+  it("creates nothing twice when the same request is repeated", async () => {
+    const world = new World(env.DB);
+    await setUp(world);
+    await create(world, { name: "Projects" });
+    const again = await create(world, { name: "Projects" });
+    expect(again.body).toMatchObject({ replayed: true });
+    await world.tick();
+    const view = (await appApi(world, "calendars")).body as unknown as View;
+    expect(view.calendars.filter((c) => c.name === "Projects")).toHaveLength(1);
+  });
+
+  it("refuses an empty, over-long, taken, or in-progress name", async () => {
+    const world = new World(env.DB);
+    await setUp(world);
+    expect((await create(world, { name: "   " })).body).toEqual({ error: "bad_name" });
+    expect((await create(world, { name: "x".repeat(101) })).body).toEqual({ error: "bad_name" });
+    expect((await create(world, { name: "work" })).body).toEqual({ error: "name_taken" });
+    expect((await post(world, "calendars/create", { name: "Projects" })).status).toBe(400); // no key
+    expect((await create(world, { name: "Projects" }, "create-key-0002")).status).toBe(200);
+    expect((await create(world, { name: "Other" }, "create-key-0003")).body).toEqual({
+      error: "creating",
+    });
+  });
+});

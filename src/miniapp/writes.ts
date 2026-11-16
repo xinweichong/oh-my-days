@@ -31,7 +31,7 @@ import {
 import type { UserRecord } from "../storage/users";
 import { formatDayLabel, formatWallTime } from "../telegram/format";
 import { apiError, json, type MiniAppDeps } from "./api";
-import { calendarWrite } from "./calendars";
+import { calendarCreate, calendarWrite } from "./calendars";
 import { MAX_BULK_WRITE, MAX_SELECTION } from "./limits";
 import { writeReminders } from "./reminders";
 import { pendingTaskIds, toAppTask } from "./views";
@@ -73,6 +73,10 @@ export async function handleWrite(
   if (path === "reconnect-link") return reconnectLink(deps, user);
   const calendarAction = /^calendars\/(select|default|sync)$/.exec(path)?.[1];
   if (calendarAction) return calendarWrite(deps, user, calendarAction, body);
+  if (path === "calendars/create") {
+    if (!key) return apiError("bad_request", 400);
+    return calendarCreate(deps, user, body, key);
+  }
   if (path === "reminders") {
     if (!key) return apiError("bad_request", 400);
     return writeReminders(deps, user, body, key);

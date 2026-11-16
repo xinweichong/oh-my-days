@@ -1,10 +1,14 @@
 import {
+  checkCalendarName,
   planDefaultChange,
   planSelection,
   selectableCalendars,
 } from "../application/calendar-settings";
+import { unavailable } from "../application/event-flow";
+import { proposeCalendar } from "../application/setup";
 import { isWritable } from "../calendar/port";
 import { requestForcePoll } from "../jobs/calendar-sync";
+import { findAppRequest, recordAppRequestStatement } from "../storage/app-requests";
 import { listStoredCalendars } from "../storage/google";
 import { unguarded } from "../storage/guard";
 import type { UserRecord } from "../storage/users";
@@ -99,4 +103,57 @@ export async function calendarWrite(
   await deps.db.batch(change.statements(deps.db, unguarded));
   const defaultCalendarId = action === "default" ? calendarId : user.defaultCalendarId;
   return json(await calendarsView(deps, { ...user, defaultCalendarId }, now));
+}
+
+/**
+ * Creates a calendar through the chat's operation: durable, retried, and
+ * reconciled if Google's answer is lost. The answer here is only "started"; the
+ * calendar appears once Google has confirmed it, and the chat says so too.
+ */
+export async function calendarCreate(
+  deps: MiniAppDeps,
+  user: UserRecord,
+  body: Body,
+  key: string,
+): Promise<Response> {
+  const now = deps.clock.now();
+  if (await findAppRequest(deps.db, user.id, key)) return json({ started: true, replayed: true });
+  const checked = checkCalendarName(
+    typeof body.name === "string" ? body.name : "",
+    await listStoredCalendars(deps.db, user.id),
+  );
+  if (!checked.ok) return apiError(checked.reason, checked.reason === "bad_name" ? 400 : 409);
+  if (await unavailable(deps, user)) return apiError("reconnect", 409);
+  // One creation at a time: a second could not be told from the first if Google's answer is lost.
+  const open = await deps.db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM operations WHERE user_id = ? AND kind = 'calendar.create'
+         AND status IN ('ready', 'applying', 'retry_wait', 'needs_resolution', 'auth_required')`,
+    )
+    .bind(user.id)
+    .first<{ n: number }>();
+  if ((open?.n ?? 0) > 0) return apiError("creating", 409);
+
+  // With no default yet, the new calendar becomes it.
+  const makeDefault = body.makeDefault === true || !user.defaultCalendarId;
+  const prepared = await proposeCalendar(
+    deps,
+    user,
+    makeDefault ? "default" : "extra",
+    checked.name,
+    `app-calendar:${key}`,
+  );
+  try {
+    await deps.db.batch([
+      ...(prepared.statements?.(deps.db, unguarded) ?? []),
+      recordAppRequestStatement(deps.db, user.id, key, { kind: "calendar" }, now),
+    ]);
+  } catch (error) {
+    // The key was already used: this is a retry of a request that went through.
+    if (error instanceof Error && /UNIQUE constraint failed/.test(error.message)) {
+      return json({ started: true, replayed: true });
+    }
+    throw error;
+  }
+  return json({ started: true, name: checked.name, makeDefault });
 }

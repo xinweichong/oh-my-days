@@ -1,10 +1,10 @@
 import { ApiError, errorText, write } from "./api";
 import { h } from "./dom";
-import { refresh } from "./nav";
+import { current, refresh } from "./nav";
 import { title } from "./rows";
 import { haptic } from "./telegram";
 import type { CalendarEntry, CalendarsView } from "./types";
-import { toast } from "./ui";
+import { sheet, toast } from "./ui";
 
 /**
  * Calendars: which are shown in views and reminders, and where new events go.
@@ -78,6 +78,70 @@ function row(c: CalendarEntry): HTMLElement {
   );
 }
 
+/** The calendar appears once Google confirms it, within a minute or so; check back while this screen is open. */
+function watchForNew(): void {
+  let checks = 0;
+  const check = () => {
+    if (++checks > 8 || current().name !== "calendars") return;
+    refresh();
+    window.setTimeout(check, 10_000);
+  };
+  window.setTimeout(check, 6_000);
+}
+
+function newCalendarSheet(hasDefault: boolean): void {
+  const input = h("input", {
+    type: "text",
+    maxlength: "100",
+    placeholder: "Name",
+    "aria-label": "Calendar name",
+    autocomplete: "off",
+  }) as HTMLInputElement;
+  const makeDefault = h("input", { type: "checkbox", id: "make-default" }) as HTMLInputElement;
+  let busy = false;
+  const form = h(
+    "form",
+    {
+      class: "stack-form",
+      onsubmit: (event) => {
+        event.preventDefault();
+        const name = input.value.trim();
+        if (!name || busy) return;
+        busy = true;
+        void write<{ started: boolean }>("calendars/create", {
+          name,
+          makeDefault: !hasDefault || makeDefault.checked,
+        })
+          .then(() => {
+            haptic("success");
+            close();
+            toast(`Creating ${name}. It will appear here in a moment.`);
+            watchForNew();
+          })
+          .catch((error) => {
+            haptic("error");
+            toast(errorText(error));
+          })
+          .finally(() => {
+            busy = false;
+          });
+      },
+    },
+    h("label", {}, "Name", input),
+    hasDefault
+      ? h(
+          "label",
+          { class: "check-line", for: "make-default" },
+          makeDefault,
+          " Send new events here by default",
+        )
+      : h("p", { class: "caption" }, "New events will go here until you choose another default."),
+    h("button", { class: "button wide", type: "submit" }, "Create calendar"),
+  );
+  const close = sheet("New calendar", form);
+  input.focus();
+}
+
 async function syncNow(): Promise<void> {
   try {
     const { result } = await write<{ result: string }>("calendars/sync", {});
@@ -128,6 +192,15 @@ export function calendarsScreen(view: CalendarsView): Node {
         "button",
         { class: "time-chip plain", type: "button", onclick: () => void syncNow() },
         "Sync now",
+      ),
+      h(
+        "button",
+        {
+          class: "time-chip plain",
+          type: "button",
+          onclick: () => newCalendarSheet(view.calendars.some((c) => c.isDefault)),
+        },
+        "New calendar",
       ),
     ),
     h(
