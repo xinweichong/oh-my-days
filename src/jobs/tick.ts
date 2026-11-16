@@ -2,6 +2,7 @@ import { type RunnerDeps, runDueOperations } from "../application/operation-runn
 import { materializeSeries } from "../application/series";
 import type { Clock } from "../shared/clock";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import { purgeAppRequestsStatement } from "../storage/app-requests";
 import { recordTickStatement } from "../storage/app-state";
 import { purgeExpiredCallbackRefsStatement } from "../storage/callback-refs";
@@ -63,6 +64,8 @@ export interface TickDeps {
   sync: SyncDeps;
   reminders: ReminderDeps;
   expiry: AccessExpiryDeps;
+  /** The invocation's budget (ADR 0009); absent in tests that don't measure it. */
+  budget?: RunBudget | undefined;
 }
 
 export interface TickSummary {
@@ -74,48 +77,63 @@ export interface TickSummary {
   reminders: number;
 }
 
-/** One scheduled tick. Interactive work comes before maintenance. */
+/**
+ * One scheduled tick. Work runs in priority order, and each unit starts only if
+ * the invocation's budget still covers it (ADR 0009): replies, then agendas and
+ * reminders, then sending, then calendar writes and reads, then upkeep. What
+ * doesn't fit is durable and runs on the next tick.
+ */
 export async function runTick(deps: TickDeps): Promise<TickSummary> {
   const now = deps.clock.now();
   const recoveredDeliveries = await recoverExpiredDeliveries(deps.db, now);
 
+  // 1. People waiting for a reply.
   let processedUpdates = 0;
   for (const userId of await usersWithInboxWork(deps.db, now, TICK_LIMITS.inboxUsers)) {
+    if (!fits(deps.budget, UNIT_COSTS.inboxUpdate)) break;
     processedUpdates += await processUserInbox(deps.inbox, userId, TICK_LIMITS.inboxUpdatesPerUser);
   }
 
-  const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
-  // New occurrences are created before reminders and agendas look at tasks.
+  // 2. Time-sensitive: new occurrences first, so agendas and reminders see them.
+  // Reminders use the horizon from its last refresh (at most 10 minutes old) and
+  // re-read each event from Google before sending.
   await materializeSeries(deps.reminders, TICK_LIMITS.series);
+  const reminders = await runReminders(deps.reminders, TICK_LIMITS.reminderUsers);
 
-  // At most one heavy job per tick (one calendar's sync, frequent maintenance,
-  // or cleanup), so each invocation stays inside the Workers Free CPU limit
-  // (measured in docs/capacity.md). Deferred jobs run on following ticks.
+  // 3. Send what is queued: replies, agendas, and reminders.
+  let attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
+
+  // 4. Calendar writes, then reads. At most one heavy job per tick (one
+  // calendar's sync, frequent maintenance, or cleanup), so each invocation stays
+  // near the Workers Free CPU limit (docs/capacity.md).
+  const attemptedOperations = await runDueOperations(deps.runner, TICK_LIMITS.operations);
+  await refreshHorizons(deps.reminders, TICK_LIMITS.horizons);
   const syncedCalendars = await syncDueCalendars(deps.sync, TICK_LIMITS.calendars);
-  // After a sync, maintenance runs only if it has been starved for too long.
-  const due = await claimMaintenance(deps.db, now, syncedCalendars > 0 ? 2 : 1);
 
+  // 5. Upkeep, with budget to spare; otherwise it stays due for the next tick.
+  // After a sync, maintenance runs only if it has been starved for too long.
+  const due = fits(deps.budget, UNIT_COSTS.maintenance)
+    ? await claimMaintenance(deps.db, now, syncedCalendars > 0 ? 2 : 1)
+    : { frequent: false, cleanup: false };
   if (due.frequent) {
     await deps.db.batch(scheduleCalendarsStatements(deps.db, deps.clock.now()));
     await refreshCalendarLists(deps.sync, TICK_LIMITS.calendarLists);
     await evaluateSyncHealth(deps.reminders);
     await warnBeforeAccessEnds(deps.expiry);
+    // Keep Telegram's command menu in step with the deployed code.
+    if (fits(deps.budget, UNIT_COSTS.commandMenu)) {
+      await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
+    }
   }
-
-  // Reminders and agendas come before delivery so they go out in this tick.
-  await refreshHorizons(deps.reminders, TICK_LIMITS.horizons);
-  const reminders = await runReminders(deps.reminders, TICK_LIMITS.reminderUsers);
-
-  const attemptedDeliveries = await deliverDue(deps.delivery, TICK_LIMITS.deliveries);
-
-  // Maintenance: keep Telegram's command menu in step with the deployed code.
-  if (due.frequent) {
-    await syncBotCommands({ db: deps.db, clock: deps.clock, telegram: deps.delivery.telegram });
-  }
-
   const later = deps.clock.now();
   if (due.frequent) await expireConfirmationsStatement(deps.db, later, TICK_LIMITS.purgeRows).run();
-  if (due.cleanup) await purge(deps.db, later);
+  if (due.cleanup && fits(deps.budget, UNIT_COSTS.cleanup)) await purge(deps.db, later);
+
+  // 6. Anything the work above queued, such as an operation's result.
+  attemptedDeliveries += await deliverDue(
+    deps.delivery,
+    TICK_LIMITS.deliveries - attemptedDeliveries,
+  );
 
   const summary = {
     recoveredDeliveries,
@@ -125,9 +143,15 @@ export async function runTick(deps: TickDeps): Promise<TickSummary> {
     syncedCalendars,
     reminders,
   };
-  // Recorded only when the tick got this far, so /healthz shows a stalled scheduler.
+  // Recorded only when the tick got this far, so /healthz shows a stalled
+  // scheduler. The budget's reserve always covers it.
   await recordTickStatement(deps.db, deps.clock.now()).run();
-  logEvent("tick.finished", { ...summary, frequent: due.frequent, cleanup: due.cleanup });
+  logEvent("tick.finished", {
+    ...summary,
+    frequent: due.frequent,
+    cleanup: due.cleanup,
+    ...(deps.budget ? deps.budget.used() : {}),
+  });
   return summary;
 }
 

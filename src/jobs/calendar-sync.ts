@@ -4,6 +4,7 @@ import { type BackoffPolicy, retryDelayMs } from "../domain/retry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import {
   deleteEventStatement,
   deleteStaleGenerationStatement,
@@ -17,8 +18,23 @@ import { invalidateHorizonStatement } from "../storage/reminders";
 /** Provisional polling interval per calendar (backend plan §5); tune after measuring. */
 export const SYNC_INTERVAL_MS = 5 * 60_000;
 export const SYNC_LEASE_MS = 60_000;
-/** Pages per calendar per run; the rest continue on the next tick. */
-export const MAX_PAGES_PER_RUN = 3;
+/** Pages per calendar per run, while the budget allows; the rest continue on the next tick. */
+export const MAX_PAGES_PER_RUN = 5;
+/**
+ * Events per page, so a page fits inside one run's 50 queries (ADR 0009) and a
+ * large first sync spreads over several runs. An event costs one statement for
+ * its synced copy; in the task calendar, up to four more (a task edited in
+ * Calendar), so its pages are smaller.
+ */
+export const SYNC_PAGE_SIZE = 20;
+export const TASK_SYNC_PAGE_SIZE = 6;
+
+/** A page's worst case, with the page's bookkeeping and a token refresh. */
+export function syncPageCost(taskCalendar: boolean) {
+  return taskCalendar
+    ? { queries: TASK_SYNC_PAGE_SIZE * 5 + 6, calls: 2 }
+    : { queries: SYNC_PAGE_SIZE + 6, calls: 2 };
+}
 /** Delay before continuing a page sequence, so one invocation cannot loop over it. */
 export const CONTINUE_DELAY_MS = 30_000;
 /** One-off events that ended longer ago than this are not cached. */
@@ -40,6 +56,8 @@ export interface SyncDeps {
     now: number,
     guard: Guard,
   ) => Promise<D1PreparedStatement[]>;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /** How often each user's calendar list (names, access, new calendars) is refreshed. */
@@ -60,8 +78,14 @@ export async function refreshCalendarLists(deps: SyncDeps, limit: number): Promi
     .bind(now - CALENDAR_LIST_REFRESH_MS, limit)
     .all<{ id: string }>();
   for (const { id } of results) {
+    if (!fits(deps.budget, UNIT_COSTS.calendarList)) break;
     const source = await deps.sourceFor(id);
     const listed = source ? await source.listCalendars() : null;
+    // One statement per calendar plus three; a list too long for what's left waits.
+    if (listed?.ok && !fits(deps.budget, { queries: listed.value.length + 3 })) {
+      logEvent("calendar_list.deferred", { userId: id, calendars: listed.value.length });
+      break;
+    }
     await deps.db.batch([
       ...(listed?.ok ? replaceCalendarListStatements(deps.db, id, listed.value, now, false) : []),
       deps.db.prepare("UPDATE users SET calendars_listed_at = ? WHERE id = ?").bind(now, id),
@@ -116,6 +140,16 @@ export async function syncDueCalendars(
 ): Promise<number> {
   let synced = 0;
   while (synced < limit) {
+    // Room to claim a calendar and read one ordinary page; the task calendar's
+    // larger worst case is checked once the calendar is known.
+    const page = syncPageCost(false);
+    if (
+      !fits(deps.budget, {
+        queries: UNIT_COSTS.syncClaim.queries + page.queries,
+        calls: page.calls,
+      })
+    )
+      break;
     const lease = deps.ids.next();
     const now = deps.clock.now();
     const row = await deps.db
@@ -165,10 +199,21 @@ async function syncCalendar(deps: SyncDeps, row: SyncRow, lease: string): Promis
   let pageToken = row.page_token;
   let resync = row.resync_generation ?? (syncToken ? null : row.generation + 1);
 
+  const taskCalendar =
+    (
+      await deps.db
+        .prepare("SELECT task_calendar_id FROM users WHERE id = ?")
+        .bind(row.user_id)
+        .first<{ task_calendar_id: string | null }>()
+    )?.task_calendar_id === row.calendar_id;
+  const cost = syncPageCost(taskCalendar);
   for (let page = 0; page < MAX_PAGES_PER_RUN; page++) {
+    // A page that doesn't fit what's left waits for the next run (pages read so far are kept).
+    if (!fits(deps.budget, cost)) break;
     const result = await source.listEventPage(row.calendar_id, {
       syncToken: pageToken ? null : syncToken,
       pageToken,
+      pageSize: taskCalendar ? TASK_SYNC_PAGE_SIZE : SYNC_PAGE_SIZE,
     });
     const now = deps.clock.now();
 

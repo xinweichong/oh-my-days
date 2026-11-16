@@ -3,6 +3,7 @@ import { type BackoffPolicy, retryDelayMs } from "../domain/retry";
 import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
+import { fits, type RunBudget, UNIT_COSTS } from "../shared/run-budget";
 import { insertCallbackRefStatement } from "../storage/callback-refs";
 import {
   type AttemptResult,
@@ -40,6 +41,8 @@ export interface RunnerDeps {
   calendarFor: CalendarPortFactory;
   /** Calendar-list access; absent where no handler needs it. */
   directoryFor?: CalendarDirectoryFactory;
+  /** The invocation's budget (ADR 0009); absent where the work has its own bounds. */
+  budget?: RunBudget | undefined;
 }
 
 /**
@@ -54,6 +57,7 @@ export async function runDueOperations(
 ): Promise<number> {
   let attempted = 0;
   while (attempted < limit) {
+    if (!fits(deps.budget, UNIT_COSTS.operation)) break;
     const op = await claimNextOperation(
       deps.db,
       deps.ids.next(),

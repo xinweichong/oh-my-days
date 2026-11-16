@@ -647,3 +647,17 @@ Chromium with a stubbed Telegram object and API responses taken from the test
 world (synthetic data): task detail, the reminders sheet, adding a typed
 reminder, and the event sheet; the owner then checked them inside Telegram
 after the deploy.
+
+Per-invocation budget (owner, 2026-10-22): on `feature/run-budget`, tested
+locally, not deployed ([ADR 0009](../adr/0009-per-invocation-budget.md)).
+`RunBudget` counts D1 statements and Google/Telegram requests for each
+scheduled run and webhook follow-up. The tick starts each unit only if its
+worst case fits (`UNIT_COSTS`), in priority order: replies, series and
+reminders, sending, operations, horizon, sync, maintenance, then a second
+sending pass. Sync pages are 20 events (6 in the task calendar), up to 5 per
+run. Series occurrences and the horizon are sized to what's left, and a
+calendar list too long for the run waits. `tick.finished` logs the queries and
+calls used. `src/storage/query-meter.ts` is replaced by the budget. Tests:
+`tests/jobs/run-budget.test.ts` (large first sync, five same-minute agendas,
+new daily series, backlog under a tight budget, everything at once; every run
+within 50 queries).
