@@ -1,10 +1,10 @@
 # Mini App: calendar management (proposal)
 
-Status: **proposed 2026-11-16, not approved, nothing built.** The spec's Mini App
-exception (§ Out of scope) covers tasks and a read-only day/week overview, and
-the [improvement plan](improvements.md) lists settings as "a later decision".
-This document is that decision's input. Build nothing until the owner approves
-the scope below and the spec's exception is amended.
+Status: **approved by the owner 2026-11-16 (both slices, plus "Make it the
+default" on creation in Telegram); nothing built yet.** The spec's Mini App
+exception now covers calendar management (see the spec's Out of scope list). The
+[improvement plan](improvements.md) listed settings as "a later decision"; this
+is that decision.
 
 ## Problem
 
@@ -88,9 +88,16 @@ create-only-as-default limit if the same option is added there.
 4. Unselecting then re-selecting a calendar changes nothing in the user's tasks
    or events.
 
-## Open decisions for the owner
+## Decisions (2026-11-16)
 
-1. Approve slice 1 only, or slices 1 and 2?
-2. Should "Make it the default" on creation also be added to Telegram?
-3. Should the guided `/event` calendar question (added 2026-11-16) get a
-   Mini App counterpart later? Not in this proposal: event creation stays out.
+1. Build slice 1 and slice 2.
+2. Telegram's **Create a new calendar** also offers "Make it the default" as a
+   choice, instead of always making the new calendar the default. This is part
+   of the shared creation operation, delivered with slice 2.
+3. Not decided: a Mini App counterpart to the guided `/event` calendar question.
+   Event creation stays out of the Mini App.
+
+## Delivery
+
+Slice 1 first (shared operations extracted from `setup.ts`, then the API and
+screen), then slice 2, each with its tests, screenshots and changelog entry.
