@@ -50,6 +50,8 @@ This document records the completed design interview. Sections describing propos
 
 New events use the selected default calendar unless the instruction names another writable calendar. Task deadlines always use the dedicated task calendar.
 
+The guided `/event` flow asks which calendar right after the title, but only when more than one writable event calendar exists (the task calendar and view-only calendars are not offered). The default is listed first and marked, so choosing it is one tap, mirroring the guided task flow's list question. With one writable calendar the question is skipped. Quick capture never asks; it uses the default or `on <calendar>`. Added 2026-11-16.
+
 Permissions must be respected. Connecting an account does not grant organizer rights over someone else's meeting or write access to a read-only calendar. Explain unavailable actions instead of implying they succeeded.
 
 Proposed implementation defaults:
