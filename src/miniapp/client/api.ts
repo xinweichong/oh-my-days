@@ -77,6 +77,14 @@ export function errorText(error: unknown): string {
       return "That time doesn't exist on that day (clocks change). Choose another.";
     case "bad_snooze":
       return "Choose a time later than now.";
+    case "is_default":
+      return "New events go to this calendar. Choose another default first.";
+    case "last_selected":
+      return "Keep at least one calendar shown.";
+    case "not_writable":
+      return "You can't add events to this calendar.";
+    case "unavailable":
+      return "This calendar is no longer available.";
     case "bad_title":
       return "Enter a title of up to 200 characters.";
     default:

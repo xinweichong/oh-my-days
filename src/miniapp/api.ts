@@ -6,6 +6,7 @@ import type { Clock } from "../shared/clock";
 import type { IdGenerator } from "../shared/ids";
 import { logEvent } from "../shared/log";
 import { findUserByTelegramId, type UserRecord } from "../storage/users";
+import { calendarsView } from "./calendars";
 import { verifyInitData } from "./init-data";
 import { eventReminders } from "./reminders";
 import { homeView, recentView, taskDetail, taskSetView, todayView, weekView } from "./views";
@@ -94,6 +95,8 @@ export async function handleAppApi(request: Request, deps: MiniAppDeps): Promise
     }
     case "recent":
       return json(await recentView(deps, user, now));
+    case "calendars":
+      return json(await calendarsView(deps, user, now));
     case "event-reminders": {
       const calendarId = url.searchParams.get("calendar") ?? "";
       const eventId = url.searchParams.get("event") ?? "";

@@ -12,6 +12,7 @@ import {
 } from "./actions";
 import { api } from "./api";
 import { mark, tideLines } from "./brand";
+import { calendarsScreen } from "./calendars";
 import { h } from "./dom";
 import { clockLabel, countdown, daysBetween, minutesOf, relativeDay, setLocal } from "./local";
 import { back, current, open, refresh, type Screen, swap } from "./nav";
@@ -21,6 +22,7 @@ import { selection } from "./select";
 import { mainButton, telegram } from "./telegram";
 import type {
   AppTask,
+  CalendarsView,
   Home,
   Recent,
   ReminderPanel,
@@ -51,6 +53,8 @@ export async function draw(screen: Screen): Promise<Node> {
       return taskScreen(await api<TaskDetail>(`tasks/${encodeURIComponent(screen.id)}`));
     case "recent":
       return recentScreen(await api<Recent>("recent"));
+    case "calendars":
+      return calendarsScreen(await api<CalendarsView>("calendars"));
     case "clear":
       return clearScreen(screen.total);
   }
@@ -317,6 +321,7 @@ function homeScreen(home: Home): Node {
       navRow("Completed and cancelled", home.recent ? String(home.recent) : "None", {
         name: "recent",
       }),
+      navRow("Calendars", home.defaultCalendar ?? "Choose", { name: "calendars" }),
     ),
     home.reconnect ? null : h("p", { class: "caption footer" }, home.sync),
   );

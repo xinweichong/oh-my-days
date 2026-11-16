@@ -249,12 +249,13 @@ export async function todayView(deps: ReadDeps, user: UserRecord, now: number) {
 
 export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
   const today = await todayView(deps, user, now);
-  const [lists, recent, open, connection, sync] = await Promise.all([
+  const [lists, recent, open, connection, sync, stored] = await Promise.all([
     listTaskLists(deps.db, user.id),
     listRecentTasks(deps.db, user.id, now - RECENT_DAYS * 86_400_000, 100),
     listOpenTasks(deps.db, user.id, null),
     findConnection(deps.db, user.id),
     syncSummary(deps.db, user.id),
+    listStoredCalendars(deps.db, user.id),
   ]);
   const weekEnd = addDays(weekStart(today.date), 7);
   const dueThisWeek = open.filter(
@@ -323,6 +324,7 @@ export async function homeView(deps: ReadDeps, user: UserRecord, now: number) {
       inbox: l.isInbox,
     })),
     recent: recent.length,
+    defaultCalendar: stored.find((c) => c.calendarId === user.defaultCalendarId)?.summary ?? null,
     sync: syncLine(connection?.status ?? null, sync, today.live, now),
     tomorrowLabel: tomorrowLabel(user),
     reconnect: connection?.status !== "active",

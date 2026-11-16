@@ -361,6 +361,20 @@ body.selecting .toast { bottom: calc(var(--tg-safe-area-inset-bottom, 0px) + 136
 .time-chip:disabled { opacity: 0.4; cursor: default; }
 .time-chip.plain { border-color: transparent; background: none; color: var(--tide); font-weight: 600; }
 
+/* Calendars: a switch per calendar, and where new events go */
+.cal-row { gap: 8px; padding-right: 8px; }
+.cal-badge { padding: 2px 10px; border-radius: 999px; background: var(--tide-soft); color: var(--tide);
+  font-size: 13px; line-height: 18px; font-weight: 600; }
+.switch { position: relative; flex: none; width: 56px; min-height: 44px; border: 0; background: none; cursor: pointer; }
+.switch::before { content: ""; position: absolute; top: 50%; left: 50%; width: 44px; height: 26px; translate: -50% -50%;
+  border-radius: 999px; background: var(--line-strong); transition: background 150ms; }
+.switch[aria-checked="true"]::before { background: var(--tide); }
+.switch-knob { position: absolute; top: 50%; left: 50%; width: 20px; height: 20px; margin: -10px 0 0 -19px;
+  border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,0.25); transition: transform 150ms; }
+.switch[aria-checked="true"] .switch-knob { transform: translateX(18px); }
+@media (prefers-reduced-motion: reduce) { .switch::before, .switch-knob { transition: none; } }
+.cal-actions { display: flex; justify-content: center; margin-top: 8px; }
+
 /* Reminders: the item's own, removable; presets as chips */
 .reminder-list { list-style: none; margin: 0; padding: 0; border-radius: 12px; background: var(--surface-sunk); }
 .reminder-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px;
