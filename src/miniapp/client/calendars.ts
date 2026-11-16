@@ -41,16 +41,18 @@ function row(c: CalendarEntry): HTMLElement {
     h(
       "div",
       { class: "row-text" },
-      h("span", { class: "headline" }, c.name),
+      h(
+        "span",
+        { class: "cal-name" },
+        h("span", { class: "headline" }, c.name),
+        c.isDefault ? h("span", { class: "cal-badge" }, "Default") : null,
+      ),
       h("span", { class: "caption" }, detail),
-    ),
-    c.isDefault
-      ? h("span", { class: "cal-badge" }, "Default")
-      : c.canBeDefault
+      !c.isDefault && c.canBeDefault
         ? h(
             "button",
             {
-              class: "time-chip plain",
+              class: "cal-link",
               type: "button",
               "aria-label": `Make ${c.name} the default calendar for new events`,
               onclick: () =>
@@ -63,6 +65,7 @@ function row(c: CalendarEntry): HTMLElement {
             "Make default",
           )
         : null,
+    ),
     h(
       "button",
       {
@@ -93,7 +96,7 @@ function newCalendarSheet(hasDefault: boolean): void {
   const input = h("input", {
     type: "text",
     maxlength: "100",
-    placeholder: "Name",
+    placeholder: "For example, Projects",
     "aria-label": "Calendar name",
     autocomplete: "off",
   }) as HTMLInputElement;
@@ -133,7 +136,7 @@ function newCalendarSheet(hasDefault: boolean): void {
           "label",
           { class: "check-line", for: "make-default" },
           makeDefault,
-          " Send new events here by default",
+          h("span", {}, "Send new events here by default"),
         )
       : h("p", { class: "caption" }, "New events will go here until you choose another default."),
     h("button", { class: "button wide", type: "submit" }, "Create calendar"),
@@ -172,7 +175,7 @@ export function calendarsScreen(view: CalendarsView): Node {
     view.task
       ? h(
           "ul",
-          { class: "group" },
+          { class: "group cal-task" },
           h(
             "li",
             { class: "row cal-row" },

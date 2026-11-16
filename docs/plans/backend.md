@@ -678,5 +678,10 @@ default?" when a default already exists, the Mini App sends the choice, and the
 Mini App allows one creation in flight at a time. A name must be non-empty, at
 most 100 characters, and not already used. Tests:
 `tests/miniapp/calendars-api.test.ts` (including cross-user and replay) and
-`tests/flows/calendar-choice.test.ts`. The screen itself has not yet been
-checked in a browser or inside Telegram.
+`tests/flows/calendar-choice.test.ts`. The screen was checked in headless
+Chromium against the local Worker with a stubbed Telegram object and a
+stateful stand-in for the API (synthetic data), in light and dark: switching,
+refusing to hide the default, changing the default, Sync now, and the New
+calendar sheet with a taken name and a successful creation. That check found
+and fixed cramped rows, a misplaced checkbox, and missing error text. It has not
+yet been checked inside Telegram.
